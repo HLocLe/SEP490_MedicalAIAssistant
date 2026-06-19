@@ -216,6 +216,7 @@ public sealed class AuthService : IAuthService
         var email = payload.Email.Trim();
 
         var user = await _userManager.FindByEmailAsync(email);
+
         if (user is null)
         {
             user = new ApplicationUser

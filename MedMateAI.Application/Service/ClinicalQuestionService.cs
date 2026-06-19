@@ -171,28 +171,10 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
         UpdateClinicalQuestionRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (id == Guid.Empty)
+        var validationErrors = GetUpdateValidationErrors(id, request);
+        if (validationErrors is not null)
         {
-            return (false, false, new[] { "Invalid clinical question id." }, null);
-        }
-
-        if (request is null)
-        {
-            return (false, false, new[] { "Request body is required." }, null);
-        }
-
-        if (request.QuestionVi is not null && string.IsNullOrWhiteSpace(request.QuestionVi))
-        {
-            return (false, false, new[] { "Question text cannot be empty when provided." }, null);
-        }
-
-        if (request.ChapterId is null
-            && request.ChapterCode is null
-            && request.QuestionVi is null
-            && request.EnglishPrefix is null
-            && request.SortOrder is null)
-        {
-            return (false, false, new[] { "No fields to update." }, null);
+            return (false, false, validationErrors, null);
         }
 
         var entity = await _unitOfWork.ClinicalQuestions.GetByIdAsync(id, cancellationToken);
@@ -201,45 +183,13 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
             return (false, true, new[] { "Clinical question not found." }, null);
         }
 
-        if (request.ChapterId is not null)
+        var chapterErrors = await ApplyChapterIdUpdateAsync(entity, request!, cancellationToken);
+        if (chapterErrors is not null)
         {
-            if (request.ChapterId.Value == Guid.Empty)
-            {
-                return (false, false, new[] { "Chapter id is invalid." }, null);
-            }
-
-            var chapterExists = await _unitOfWork.ClinicalQuestions.IcdChapterExistsAsync(
-                request.ChapterId.Value,
-                cancellationToken);
-
-            if (!chapterExists)
-            {
-                return (false, false, new[] { "ICD chapter not found." }, null);
-            }
-
-            entity.ChapterId = request.ChapterId.Value;
+            return (false, false, chapterErrors, null);
         }
 
-        if (request.ChapterCode is not null)
-        {
-            entity.ChapterCode = NormalizeChapterCode(request.ChapterCode);
-        }
-
-        if (request.QuestionVi is not null)
-        {
-            entity.QuestionVi = request.QuestionVi.Trim();
-        }
-
-        if (request.EnglishPrefix is not null)
-        {
-            entity.EnglishPrefix = NormalizeOptionalText(request.EnglishPrefix);
-        }
-
-        if (request.SortOrder is not null)
-        {
-            entity.SortOrder = request.SortOrder.Value;
-        }
-
+        ApplyScalarUpdates(entity, request!);
         entity.UpdatedAt = DateTime.UtcNow;
 
         _unitOfWork.ClinicalQuestions.Update(entity);
@@ -270,6 +220,89 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return (true, false, Array.Empty<string>());
+    }
+
+    // Private method thuộc UpdateClinicalQuestionAsync.
+    private static IEnumerable<string>? GetUpdateValidationErrors(Guid id, UpdateClinicalQuestionRequest? request)
+    {
+        if (id == Guid.Empty)
+        {
+            return new[] { "Invalid clinical question id." };
+        }
+
+        if (request is null)
+        {
+            return new[] { "Request body is required." };
+        }
+
+        if (request.QuestionVi is not null && string.IsNullOrWhiteSpace(request.QuestionVi))
+        {
+            return new[] { "Question text cannot be empty when provided." };
+        }
+
+        if (request.ChapterId is null
+            && request.ChapterCode is null
+            && request.QuestionVi is null
+            && request.EnglishPrefix is null
+            && request.SortOrder is null)
+        {
+            return new[] { "No fields to update." };
+        }
+
+        return null;
+    }
+
+    // Private method thuộc UpdateClinicalQuestionAsync.
+    private async Task<IEnumerable<string>?> ApplyChapterIdUpdateAsync(
+        ClinicalQuestion entity,
+        UpdateClinicalQuestionRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.ChapterId is null)
+        {
+            return null;
+        }
+
+        if (request.ChapterId.Value == Guid.Empty)
+        {
+            return new[] { "Chapter id is invalid." };
+        }
+
+        var chapterExists = await _unitOfWork.ClinicalQuestions.IcdChapterExistsAsync(
+            request.ChapterId.Value,
+            cancellationToken);
+
+        if (!chapterExists)
+        {
+            return new[] { "ICD chapter not found." };
+        }
+
+        entity.ChapterId = request.ChapterId.Value;
+        return null;
+    }
+
+    // Private method thuộc UpdateClinicalQuestionAsync.
+    private static void ApplyScalarUpdates(ClinicalQuestion entity, UpdateClinicalQuestionRequest request)
+    {
+        if (request.ChapterCode is not null)
+        {
+            entity.ChapterCode = NormalizeChapterCode(request.ChapterCode);
+        }
+
+        if (request.QuestionVi is not null)
+        {
+            entity.QuestionVi = request.QuestionVi.Trim();
+        }
+
+        if (request.EnglishPrefix is not null)
+        {
+            entity.EnglishPrefix = NormalizeOptionalText(request.EnglishPrefix);
+        }
+
+        if (request.SortOrder is not null)
+        {
+            entity.SortOrder = request.SortOrder.Value;
+        }
     }
 
     private async Task<List<string>> ValidateCreateFieldsAsync(

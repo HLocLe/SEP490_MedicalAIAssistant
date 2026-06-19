@@ -24,4 +24,8 @@ public interface ISymptomAnalysisService
     Task<ClinicalQuestionAnswersResponse> SubmitClinicalQuestionAnswersAsync(
         SubmitClinicalQuestionAnswersRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<DiagnosisSubmitResponse> SubmitDiagnosisAsync(
+        SubmitClinicalQuestionAnswersRequest request,
+        CancellationToken cancellationToken = default);
 }

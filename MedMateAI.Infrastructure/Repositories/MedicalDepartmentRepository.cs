@@ -41,7 +41,7 @@ public sealed class MedicalDepartmentRepository
             .Where(department =>
                 !department.IsDeleted
                 && department.ChapterCode != null
-                && department.ChapterCode.ToUpper() == normalizedChapterCode)
+                && department.ChapterCode.ToUpper().Contains(normalizedChapterCode))
             .FirstOrDefaultAsync(cancellationToken);
     }
 }
