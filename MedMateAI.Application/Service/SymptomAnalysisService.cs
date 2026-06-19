@@ -349,6 +349,72 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         };
     }
 
+    public async Task<DiagnosisSubmitResponse> SubmitDiagnosisAsync(
+        SubmitClinicalQuestionAnswersRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request is null)
+        {
+            throw new ArgumentException("Request is required.");
+        }
+
+        if (request.SessionId == Guid.Empty)
+        {
+            throw new ArgumentException("Session id is required.");
+        }
+
+        var session = await _unitOfWork.SymptomAnalysisSessions.GetByIdAsync(request.SessionId, cancellationToken);
+
+        if (session is null || session.IsDeleted)
+        {
+            throw new ArgumentException("Symptom analysis session not found.");
+        }
+
+        if (string.IsNullOrWhiteSpace(session.InputText))
+        {
+            throw new ArgumentException("Session input text is missing.");
+        }
+
+        var existingAnswers = await _unitOfWork.SessionClinicalQuestionAnswers
+            .GetTrackedBySessionIdAsync(session.Id, cancellationToken);
+
+        if (existingAnswers.Count == 0)
+        {
+            throw new ArgumentException("No clinical questions found for this session.");
+        }
+
+        var trueQuestionIds = (request.Answers ?? [])
+            .Where(answer => answer.QuestionId != Guid.Empty && answer.Answer)
+            .Select(answer => answer.QuestionId)
+            .ToHashSet();
+
+
+
+        foreach (var existingAnswer in existingAnswers)
+        {
+            existingAnswer.Answer = trueQuestionIds.Contains(existingAnswer.ClinicalQuestionId);
+            existingAnswer.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var bayesianPrompt = await BuildMedGemmaBayesianPromptAsync(
+            session.InputText,
+            existingAnswers,
+            cancellationToken);
+
+        var analysis = await ExecuteMedGemmaForDiagnosisAnalysisAsync(session, bayesianPrompt, cancellationToken);
+
+        return new DiagnosisSubmitResponse
+        {
+            SessionId = session.Id,
+            UserInput = session.InputText,
+            Status = analysis.Status,
+            Model = analysis.Model,
+            Diagnoses = analysis.Diagnoses,
+        };
+    }
+
     // private method cho SubmitClinicalQuestionAnswersAsync
     private async Task<SymptomAnalysisAnalyzeResponse> ExecuteMedGemmaAnalysisAsync(
         SymptomAnalysisSession session,
@@ -379,6 +445,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         }
 
         var pB = parsedDiagnoses.Sum(d => d.PA * d.PBGivenA);
+
         var diagnoses = parsedDiagnoses
             .Select(d => new BayesianDiagnosisResponse
             {
@@ -397,7 +464,8 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             })
             .ToList();
 
-        var primaryDiagnosis = diagnoses.FirstOrDefault();
+        var primaryDiagnosis = SelectPrimaryDiagnosisByPluralityChapter(diagnoses);
+
         var chapterCode = ExtractIcdChapterCode(primaryDiagnosis?.Icd10Code);
 
         var (recommendedDepartment, recommendedFacilities) =
@@ -428,6 +496,102 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             RecommendedDepartment = recommendedDepartment,
             RecommendedFacilities = recommendedFacilities,
         };
+    }
+
+    //
+    private async Task<DiagnosisDisplayAnalyzeResponse> ExecuteMedGemmaForDiagnosisAnalysisAsync(
+       SymptomAnalysisSession session,
+       string bayesianPrompt,
+       CancellationToken cancellationToken)
+    {
+        MedGemmaChatResult aiResult;
+
+        try
+        {
+            aiResult = await _medGemmaChatService.GenerateAsync(bayesianPrompt, cancellationToken);
+        }
+        catch (Exception)
+        {
+            session.Status = SymptomAnalysisSessionStatus.Failed;
+            session.UpdatedAt = DateTime.UtcNow;
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            throw;
+        }
+
+        if (!TryParseDiagnosesJson(aiResult.Content, out var parsedDiagnoses))
+        {
+            session.Status = SymptomAnalysisSessionStatus.Failed;
+            session.UpdatedAt = DateTime.UtcNow;
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            throw new InvalidOperationException("Failed to parse MedGemma diagnoses JSON response.");
+        }
+
+        var pB = parsedDiagnoses.Sum(d => d.PA * d.PBGivenA);
+
+        var diagnoses = parsedDiagnoses
+            .Select(d => new BayesianDiagnosisResponse
+            {
+                DiseaseName = d.DiseaseName,
+                Icd10Code = d.Icd10Code,
+                PA = d.PA,
+                PBGivenA = d.PBGivenA,
+                PAGivenB = pB > 0 ? (d.PA * d.PBGivenA) / pB : 0,
+                ClinicalReasoning = d.ClinicalReasoning,
+            })
+            .OrderByDescending(d => d.PAGivenB)
+            .Select((d, index) =>
+            {
+                d.Rank = index + 1;
+                return d;
+            })
+            .ToList();
+
+          await ReplaceSessionSymptomsAsync(session.Id, diagnoses, cancellationToken);
+
+        session.Status = SymptomAnalysisSessionStatus.Completed;
+        session.CompletedAt = DateTime.UtcNow;
+        session.UpdatedAt = DateTime.UtcNow;
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new DiagnosisDisplayAnalyzeResponse
+        {
+            SessionId = session.Id,
+            Status = session.Status,
+            Model = aiResult.Model,
+            Diagnoses = diagnoses,
+           
+        };
+    }
+
+    // private method cho ExecuteMedGemmaAnalysisAsync
+    private static BayesianDiagnosisResponse? SelectPrimaryDiagnosisByPluralityChapter(
+    IReadOnlyList<BayesianDiagnosisResponse> diagnoses)
+    {
+        if (diagnoses.Count == 0)
+        {
+            return null;
+        }
+        var chapterGroups = diagnoses
+            .Select(d => new { Diagnosis = d, Chapter = ExtractIcdChapterCode(d.Icd10Code) })
+            .Where(x => !string.IsNullOrEmpty(x.Chapter))
+            .GroupBy(x => x.Chapter!)
+            .OrderByDescending(g => g.Count())
+            .ToList();
+
+        if (chapterGroups.Count == 0)
+        {
+            return diagnoses.MaxBy(d => d.PAGivenB);
+        }
+
+        var winningGroup = chapterGroups
+        .OrderByDescending(g => g.Count())
+        .ThenByDescending(g => g.Max(x => x.Diagnosis.PAGivenB))
+        .First();
+
+        return winningGroup
+        .Select(x => x.Diagnosis)
+        .MaxBy(d => d.PAGivenB);
     }
 
     private async Task<(RecommendedDepartmentResponse? Department, IReadOnlyList<MedicalFacilityResponse> Facilities)>
@@ -526,8 +690,8 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         builder.AppendLine("1. Identify the most likely differential diagnoses.");
         builder.AppendLine("2. Provide the standard ICD-10 code for each disease.");
         builder.AppendLine("3. Estimate two numeric probabilities for each disease:");
-        builder.AppendLine("   - p_A: prior probability of the disease in the general population.");
-        builder.AppendLine("   - p_B_given_A: probability of this exact symptom pattern given the disease.");
+        builder.AppendLine("   - p_A = annual symptomatic incidence in general population (0-1).Common respiratory: 0.05-0.20. Rare: 0.0001-0.001.");
+        builder.AppendLine("   - p_B_given_A = probability of this exact symptom pattern given the disease.");
         builder.AppendLine();
         builder.AppendLine("Probability rules:");
         builder.AppendLine("- p_A must be a numeric float between 0 and 1.");
@@ -540,7 +704,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         builder.AppendLine("- Common diseases should generally have higher p_A than rare diseases.");
         builder.AppendLine("- Diseases that strongly match the patient's presenting symptoms should have higher p_B_given_A.");
         builder.AppendLine("- Diseases contradicted by absent symptoms should have lower p_B_given_A.");
-        builder.AppendLine("- Return 3 to 5 diagnoses.");
+        builder.AppendLine("- Return under 10 diagnoses.");
         builder.AppendLine();
         builder.AppendLine("Patient:");
         builder.AppendLine($"Symptoms: {translatedInput}");
@@ -644,6 +808,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             return false;
         }
     }
+
 
     //private method cho SuggestClinicalQuestionAsync
     private static bool Check2WordDistanceByArray(IReadOnlyList<string> words, string w1, string w2, int maxDistance)

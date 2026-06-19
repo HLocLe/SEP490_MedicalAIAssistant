@@ -5,8 +5,6 @@ using MedMateAI.Application.DTOs.IcdChapters.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Persistence;
-using MedMateAI.Domain.Repository;
-
 namespace MedMateAI.Application.Service;
 
 public sealed class IcdChapterService : IIcdChapterService
@@ -76,7 +74,7 @@ public sealed class IcdChapterService : IIcdChapterService
         }
 
         var validationErrors = ValidateChapterFields(request.ChapterCode, request.ChapterName);
-        
+
         if (validationErrors.Count > 0)
         {
             return (false, validationErrors, null);
@@ -113,100 +111,30 @@ public sealed class IcdChapterService : IIcdChapterService
         BulkCreateIcdChaptersRequest request,
         CancellationToken cancellationToken = default)
     {
-        var errors = new List<string>();
-
         if (request is null || request.Chapters is null || request.Chapters.Count == 0)
         {
             return (false, new[] { "At least one chapter is required." }, null);
         }
 
-        var preparedChapters = new List<(int RequestIndex, string ChapterCode, string ChapterName, Dictionary<string, int> KeywordWeights)>();
-
-        for (var index = 0; index < request.Chapters.Count; index++)
+        var (preparationErrors, preparedChapters) = PrepareBulkIcdChapters(request);
+        if (preparationErrors.Count > 0)
         {
-            var chapterRequest = request.Chapters[index];
-            if (chapterRequest is null)
-            {
-                errors.Add($"Chapters[{index}]: Item is required.");
-                continue;
-            }
-
-            var fieldErrors = ValidateChapterFields(chapterRequest.ChapterCode, chapterRequest.ChapterName);
-            foreach (var fieldError in fieldErrors)
-            {
-                errors.Add($"Chapters[{index}]: {fieldError}");
-            }
-
-            if (fieldErrors.Count > 0)
-            {
-                continue;
-            }
-
-            preparedChapters.Add((
-                index,
-                NormalizeChapterCode(chapterRequest.ChapterCode)!,
-                chapterRequest.ChapterName.Trim(),
-                NormalizeKeywordWeights(chapterRequest.KeywordWeights)));
+            return (false, preparationErrors, null);
         }
 
-        if (errors.Count > 0)
+        var duplicateErrors = GetDuplicateChapterCodeErrors(preparedChapters);
+        if (duplicateErrors.Count > 0)
         {
-            return (false, errors, null);
+            return (false, duplicateErrors, null);
         }
 
-        foreach (var duplicateGroup in preparedChapters.GroupBy(item => item.ChapterCode, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
+        var existingErrors = await GetExistingChapterCodeErrorsAsync(preparedChapters, cancellationToken);
+        if (existingErrors.Count > 0)
         {
-            errors.Add($"Duplicate chapter code '{duplicateGroup.Key}' in request.");
+            return (false, existingErrors, null);
         }
 
-        if (errors.Count > 0)
-        {
-            return (false, errors, null);
-        }
-
-        var allChapters = await _unitOfWork.IcdChapters.GetAllAsync(cancellationToken);
-        var existingChapterCodes = allChapters
-            .Where(chapter => !chapter.IsDeleted)
-            .Select(chapter => chapter.ChapterCode)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var preparedChapter in preparedChapters)
-        {
-            if (existingChapterCodes.Contains(preparedChapter.ChapterCode))
-            {
-                errors.Add($"Chapters[{preparedChapter.RequestIndex}]: Chapter code '{preparedChapter.ChapterCode}' already exists.");
-            }
-        }
-
-        if (errors.Count > 0)
-        {
-            return (false, errors, null);
-        }
-
-        var createdAtUtc = DateTime.UtcNow;
-        var newChapters = preparedChapters
-            .Select(preparedChapter => new IcdChapter
-            {
-                Id = Guid.NewGuid(),
-                ChapterCode = preparedChapter.ChapterCode,
-                ChapterName = preparedChapter.ChapterName,
-                KeywordWeights = preparedChapter.KeywordWeights,
-                CreatedAt = createdAtUtc,
-            })
-            .ToList();
-
-        foreach (var chapter in newChapters)
-        {
-            _unitOfWork.IcdChapters.Add(chapter);
-        }
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        var responses = newChapters
-            .OrderBy(chapter => chapter.ChapterCode, StringComparer.OrdinalIgnoreCase)
-            .Select(chapter => _mapper.Map<IcdChapterResponse>(chapter))
-            .ToList();
-
+        var responses = await PersistBulkIcdChaptersAsync(preparedChapters, cancellationToken);
         return (true, Array.Empty<string>(), responses);
     }
 
@@ -283,6 +211,101 @@ public sealed class IcdChapterService : IIcdChapterService
         return (true, false, Array.Empty<string>());
     }
 
+    // Private method thuộc BulkCreateIcdChaptersAsync.
+    private static (List<string> Errors, List<PreparedBulkIcdChapter> Chapters) PrepareBulkIcdChapters(
+        BulkCreateIcdChaptersRequest request)
+    {
+        var errors = new List<string>();
+        var preparedChapters = new List<PreparedBulkIcdChapter>();
+
+        for (var index = 0; index < request.Chapters.Count; index++)
+        {
+            var chapterRequest = request.Chapters[index];
+            if (chapterRequest is null)
+            {
+                errors.Add($"Chapters[{index}]: Item is required.");
+                continue;
+            }
+
+            var fieldErrors = ValidateChapterFields(chapterRequest.ChapterCode, chapterRequest.ChapterName);
+            foreach (var fieldError in fieldErrors)
+            {
+                errors.Add($"Chapters[{index}]: {fieldError}");
+            }
+
+            if (fieldErrors.Count > 0)
+            {
+                continue;
+            }
+
+            preparedChapters.Add(new PreparedBulkIcdChapter(
+                index,
+                NormalizeChapterCode(chapterRequest.ChapterCode)!,
+                chapterRequest.ChapterName.Trim(),
+                NormalizeKeywordWeights(chapterRequest.KeywordWeights)));
+        }
+
+        return (errors, preparedChapters);
+    }
+
+    // Private method thuộc BulkCreateIcdChaptersAsync.
+    private static List<string> GetDuplicateChapterCodeErrors(IReadOnlyList<PreparedBulkIcdChapter> preparedChapters)
+    {
+        return preparedChapters
+            .GroupBy(item => item.ChapterCode, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => $"Duplicate chapter code '{group.Key}' in request.")
+            .ToList();
+    }
+
+    // Private method thuộc BulkCreateIcdChaptersAsync.
+    private async Task<List<string>> GetExistingChapterCodeErrorsAsync(
+        IReadOnlyList<PreparedBulkIcdChapter> preparedChapters,
+        CancellationToken cancellationToken)
+    {
+        var allChapters = await _unitOfWork.IcdChapters.GetAllAsync(cancellationToken);
+        var existingChapterCodes = allChapters
+            .Where(chapter => !chapter.IsDeleted)
+            .Select(chapter => chapter.ChapterCode)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return preparedChapters
+            .Where(preparedChapter => existingChapterCodes.Contains(preparedChapter.ChapterCode))
+            .Select(preparedChapter =>
+                $"Chapters[{preparedChapter.RequestIndex}]: Chapter code '{preparedChapter.ChapterCode}' already exists.")
+            .ToList();
+    }
+
+    // Private method thuộc BulkCreateIcdChaptersAsync.
+    private async Task<IReadOnlyList<IcdChapterResponse>> PersistBulkIcdChaptersAsync(
+        IReadOnlyList<PreparedBulkIcdChapter> preparedChapters,
+        CancellationToken cancellationToken)
+    {
+        var createdAtUtc = DateTime.UtcNow;
+        var newChapters = preparedChapters
+            .Select(preparedChapter => new IcdChapter
+            {
+                Id = Guid.NewGuid(),
+                ChapterCode = preparedChapter.ChapterCode,
+                ChapterName = preparedChapter.ChapterName,
+                KeywordWeights = preparedChapter.KeywordWeights,
+                CreatedAt = createdAtUtc,
+            })
+            .ToList();
+
+        foreach (var chapter in newChapters)
+        {
+            _unitOfWork.IcdChapters.Add(chapter);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return newChapters
+            .OrderBy(chapter => chapter.ChapterCode, StringComparer.OrdinalIgnoreCase)
+            .Select(chapter => _mapper.Map<IcdChapterResponse>(chapter))
+            .ToList();
+    }
+
     private static List<string> ValidateChapterFields(string chapterCode, string chapterName)
     {
         var errors = new List<string>();
@@ -322,5 +345,11 @@ public sealed class IcdChapterService : IIcdChapterService
             .GroupBy(pair => pair.Key.Trim().ToLowerInvariant(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Last().Value, StringComparer.OrdinalIgnoreCase);
     }
+    
+     private sealed record PreparedBulkIcdChapter(
+        int RequestIndex,
+        string ChapterCode,
+        string ChapterName,
+        Dictionary<string, int> KeywordWeights);
 
 }
