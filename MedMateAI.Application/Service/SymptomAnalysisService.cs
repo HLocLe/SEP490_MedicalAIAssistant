@@ -177,7 +177,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
 
                 if (keywordTokens.Length == 1)
                 {
-                    isMatch = normalizedInput.Contains(normalizedKeyword, StringComparison.Ordinal);
+                    isMatch = inputWords.Contains(keywordTokens[0]);
                 }
 
                 else if (keywordTokens.Length == 2)
@@ -618,7 +618,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         builder.AppendLine();
         builder.AppendLine("Clinical task:");
         builder.AppendLine("1. Identify the most likely differential diagnoses.");
-        builder.AppendLine("2. Provide the standard ICD-10 code for each disease.");
+        builder.AppendLine("2. Provide the precise,standard ICD-10 code for each disease.");
         builder.AppendLine("3. Estimate two numeric probabilities for each disease:");
         builder.AppendLine("   - p_A = annual symptomatic incidence in general population (0-1).Common respiratory: 0.05-0.20. Rare: 0.0001-0.001.");
         builder.AppendLine("   - p_B_given_A = probability of this exact symptom pattern given the disease.");
@@ -634,7 +634,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         builder.AppendLine("- Common diseases should generally have higher p_A than rare diseases.");
         builder.AppendLine("- Diseases that strongly match the patient's presenting symptoms should have higher p_B_given_A.");
         builder.AppendLine("- Diseases contradicted by absent symptoms should have lower p_B_given_A.");
-        builder.AppendLine("- Return under 10 diagnoses.");
+        builder.AppendLine("- Return 6 diagnoses.");
         builder.AppendLine();
         builder.AppendLine("Patient:");
         builder.AppendLine($"Symptoms: {translatedInput}");
