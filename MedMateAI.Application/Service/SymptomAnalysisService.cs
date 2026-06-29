@@ -28,6 +28,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
     private readonly IUserService _userService;
     private readonly ITranslationService _translationService;
     private readonly IMedGemmaChatService _medGemmaChatService;
+    private readonly IIcdLookupService _icdLookupService;
     private readonly IMapper _mapper;
 
     public SymptomAnalysisService(
@@ -35,12 +36,14 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         IUserService userService,
         ITranslationService translationService,
         IMedGemmaChatService medGemmaChatService,
+        IIcdLookupService icdLookupService,
         IMapper mapper)
     {
         _unitOfWork = unitOfWork;
         _userService = userService;
         _translationService = translationService;
         _medGemmaChatService = medGemmaChatService;
+        _icdLookupService = icdLookupService;
         _mapper = mapper;
     }
 
@@ -245,6 +248,10 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
                 continue;
             }
 
+            var questionAnswers = ResolveQuestionAnswers(question);
+
+            var defaultAnswerValues = CreateDefaultAnswerValues(questionAnswers);
+
             results.Add(new SuggestedClinicalQuestionResponse
             {
                 QuestionId = question.Id,
@@ -253,6 +260,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
                 ChapterCode = question.ChapterCode ?? chapterMatch.ChapterCode,
                 TotalScore = chapterMatch.TotalScore,
                 MatchedKeywords = chapterMatch.MatchedKeywords,
+                Answers = questionAnswers,
             });
 
             _unitOfWork.SessionClinicalQuestionAnswers.Add(new SessionClinicalQuestionAnswer
@@ -260,7 +268,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
                 Id = Guid.NewGuid(),
                 SymptomAnalysisSessionId = session.Id,
                 ClinicalQuestionId = question.Id,
-                Answer = false,
+                AnswerValues = defaultAnswerValues,
                 CreatedAt = DateTime.UtcNow,
             });
         }
@@ -295,6 +303,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             SessionId = prepared.Session.Id,
             UserInput = prepared.Session.InputText,
             Answers =  _mapper.Map<List<ClinicalQuestionAnswerResult>>(prepared.Answers),
+            MedGemmaPrompt = prepared.BayesianPrompt,
             Analysis = analysis,
         };
     }
@@ -347,14 +356,20 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
     if (existingAnswers.Count == 0)
         throw new ArgumentException("No clinical questions found for this session.");
 
-    var trueQuestionIds = (request.Answers ?? [])
-        .Where(a => a.QuestionId != Guid.Empty && a.Answer)
-        .Select(a => a.QuestionId)
-        .ToHashSet();
+    var submittedByQuestionId = (request.Answers ?? [])
+        .Where(a => a.QuestionId != Guid.Empty)
+        .GroupBy(a => a.QuestionId)
+        .ToDictionary(g => g.Key, g => g.Last().Answers);
 
     foreach (var existingAnswer in existingAnswers)
     {
-        existingAnswer.Answer = trueQuestionIds.Contains(existingAnswer.ClinicalQuestionId);
+        var question = existingAnswer.ClinicalQuestion
+            ?? throw new InvalidOperationException("ClinicalQuestion is required.");
+
+        var validOptions = ResolveQuestionAnswers(question);
+        submittedByQuestionId.TryGetValue(existingAnswer.ClinicalQuestionId, out var submitted);
+
+        existingAnswer.AnswerValues = MergeSubmittedAnswerValues(validOptions, submitted);
         existingAnswer.UpdatedAt = DateTime.UtcNow;
     }
 
@@ -464,23 +479,29 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
 
         var pB = parsedDiagnoses.Sum(d => d.PA * d.PBGivenA);
 
-        var diagnoses = parsedDiagnoses
-            .Select(d => new BayesianDiagnosisResponse
-            {
-                DiseaseName = d.DiseaseName,
-                Icd10Code = d.Icd10Code,
-                PA = d.PA,
-                PBGivenA = d.PBGivenA,
-                PAGivenB = pB > 0 ? (d.PA * d.PBGivenA) / pB : 0,
-                ClinicalReasoning = d.ClinicalReasoning,
-            })
-            .OrderByDescending(d => d.PAGivenB)
-            .Select((d, index) =>
-            {
-                d.Rank = index + 1;
-                return d;
-            })
-            .ToList();
+        var diagnoses = new List<BayesianDiagnosisResponse>(parsedDiagnoses.Count);
+        foreach (var parsed in parsedDiagnoses)     
+        
+        {
+        var lookup = string.IsNullOrWhiteSpace(parsed.SearchKeyword)
+        ? null
+        : await _icdLookupService.SearchFirstAsync(parsed.SearchKeyword, cancellationToken);
+        diagnoses.Add(new BayesianDiagnosisResponse
+        {
+        DiseaseName = parsed.DiseaseName,
+        SearchKeyword = parsed.SearchKeyword,
+        Icd10Code = lookup?.Icd10Code ?? string.Empty,  
+        PA = parsed.PA,
+        PBGivenA = parsed.PBGivenA,
+        PAGivenB = pB > 0 ? (parsed.PA * parsed.PBGivenA) / pB : 0,
+        ClinicalReasoning = parsed.ClinicalReasoning,
+        });
+        }
+
+        diagnoses = diagnoses
+        .OrderByDescending(d => d.PAGivenB)
+        .Select((d, index) => { d.Rank = index + 1; return d; })
+        .ToList();
 
         await ReplaceSessionSymptomsAsync(session.Id, diagnoses, cancellationToken);
 
@@ -603,9 +624,9 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         IReadOnlyList<SessionClinicalQuestionAnswer> answers,
         CancellationToken cancellationToken)
     {
-        var translatedInput = await _translationService.TranslateToEnglishAsync(
-            userInput,
-            cancellationToken: cancellationToken);
+        //var translatedInput = await _translationService.TranslateToEnglishAsync(
+        //    userInput,
+        //    cancellationToken: cancellationToken);
 
         var builder = new StringBuilder();
 
@@ -636,29 +657,63 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         builder.AppendLine("- Diseases contradicted by absent symptoms should have lower p_B_given_A.");
         builder.AppendLine("- Return 6 diagnoses.");
         builder.AppendLine();
-        builder.AppendLine("Patient:");
-        builder.AppendLine($"Symptoms: {translatedInput}");
+        builder.AppendLine("Keyword Extraction Rules for 'search_keyword':");
+        builder.AppendLine("- The keyword MUST be optimized for a strict string-matching medical database API.");
+        builder.AppendLine("- REMOVE descriptive qualifiers, etiologies, and clinical states such as: 'viral', 'bacterial', 'acute', 'chronic', 'unspecified', 'infection', 'disease', 'infantile'.");
+        builder.AppendLine("- Examples of transformation:");
+        builder.AppendLine("  * 'Viral Exanthem' -> 'Exanthem'");
+        builder.AppendLine("  * 'Rocky Mountain Spotted Fever' -> 'Spotted Fever'");
+        builder.AppendLine("  * 'Acute Bronchitis' -> 'Bronchitis'");
+        builder.AppendLine("- Keep the keyword to maximum 1 core nouns.");
         builder.AppendLine();
-        builder.AppendLine("Interview:");
 
-        foreach (var answer in answers)
+        var positive = new List<string>();
+
+        var negative = new List<string>();
+        
+        foreach (var sessionAnswer in answers)
         {
-            var label = string.IsNullOrWhiteSpace(answer.ClinicalQuestion?.EnglishPrefix)
-                ? "unspecified"
-                : answer.ClinicalQuestion.EnglishPrefix.Trim();
-
-            var response = answer.Answer ? "Yes" : "No";
-            builder.AppendLine($"- {label}: {response}");
+            var question = sessionAnswer.ClinicalQuestion;
+            if (question is null || question.Answers.Count == 0)
+            {
+                continue;
+            }
+            var values = sessionAnswer.AnswerValues ?? new Dictionary<string, bool>();
+            foreach (var (vietnameseKey, englishLabel) in question.Answers)
+            {
+                var en = string.IsNullOrWhiteSpace(englishLabel)
+                    ? vietnameseKey
+                    : englishLabel.Trim();
+                var isYes = values.TryGetValue(vietnameseKey, out var selected) && selected;
+                if (isYes)
+                {
+                    positive.Add(en);
+                }
+                else
+                {
+                    negative.Add(en);
+                }
+              
+            }
+        }
+        if (positive.Count > 0)
+        {
+            builder.AppendLine($"patient has the following signs: {string.Join(", ", positive)}");
+        }
+        if (negative.Count > 0)
+        {
+            builder.AppendLine($"patient does not has the following signs: {string.Join(", ", negative)}");
         }
 
         builder.AppendLine();
+
         builder.AppendLine("Output JSON schema:");
         builder.AppendLine("diagnoses: array of diagnosis objects");
         builder.AppendLine();
         builder.AppendLine("Each diagnosis object must contain:");
         builder.AppendLine("rank: integer");
         builder.AppendLine("disease_name: string");
-        builder.AppendLine("icd10_code: string");
+        builder.AppendLine("search_keyword: string (The cleaned 1 word core noun based on the rules above)");
         builder.AppendLine("p_A: numeric float");
         builder.AppendLine("p_B_given_A: numeric float");
         builder.AppendLine("clinical_reasoning: string");
@@ -699,8 +754,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
                 SymptomAnalysisSessionId = sessionId,
                 SymptomName = diagnosis.DiseaseName,
                 ConfidenceScore = diagnosis.PAGivenB,
-                ExtractedText =
-                    $"{diagnosis.Icd10Code} | p_A={diagnosis.PA:F4} | p_A|B={diagnosis.PAGivenB:F4} | {diagnosis.ClinicalReasoning}",
+                ExtractedText =diagnosis.ClinicalReasoning,
                 CreatedAt = DateTime.UtcNow,
             });
         }
@@ -894,5 +948,46 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
     new(@"[.,?!;:]", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
      private static readonly Regex MatchingWhitespaceRegex =
     new(@"\s+", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+
+    private static Dictionary<string, string> ResolveQuestionAnswers(ClinicalQuestion question)
+    {
+        if (question.Answers.Count > 0)
+        {
+            return question.Answers;
+        }
+
+        var englishLabel = string.IsNullOrWhiteSpace(question.EnglishPrefix)
+            ? "symptom"
+            : question.EnglishPrefix.Trim();
+
+        return new Dictionary<string, string> { ["có"] = englishLabel };
+    }
+
+    private static Dictionary<string, bool> CreateDefaultAnswerValues(Dictionary<string, string> questionAnswers)
+    {
+        return questionAnswers.Keys.ToDictionary(key => key, _ => false);
+    }
+
+    private static Dictionary<string, bool> MergeSubmittedAnswerValues(
+        Dictionary<string, string> validOptions,
+        Dictionary<string, bool>? submitted)
+    {
+        var merged = CreateDefaultAnswerValues(validOptions);
+
+        if (submitted is null)
+        {
+            return merged;
+        }
+
+        foreach (var (key, value) in submitted)
+        {
+            if (validOptions.ContainsKey(key))
+            {
+                merged[key] = value;
+            }
+        }
+
+        return merged;
+    }
 }
 

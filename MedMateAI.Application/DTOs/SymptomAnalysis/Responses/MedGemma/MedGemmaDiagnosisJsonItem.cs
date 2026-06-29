@@ -10,8 +10,8 @@ internal sealed class MedGemmaDiagnosisJsonItem
     [JsonPropertyName("disease_name")]
     public string DiseaseName { get; set; } = string.Empty;
 
-    [JsonPropertyName("icd10_code")]
-    public string Icd10Code { get; set; } = string.Empty;
+    [JsonPropertyName("search_keyword")]
+    public string SearchKeyword { get; set; } = string.Empty;
 
     [JsonPropertyName("p_A")]
     public double PA { get; set; }

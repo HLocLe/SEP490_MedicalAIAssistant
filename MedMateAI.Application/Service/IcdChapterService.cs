@@ -158,7 +158,12 @@ public sealed class IcdChapterService : IIcdChapterService
             return (false, false, new[] { "Chapter name cannot be empty when provided." }, null);
         }
 
-        if (request.ChapterName is null && request.KeywordWeights is null)
+        if (request.ChapterCode is not null && string.IsNullOrWhiteSpace(request.ChapterCode))
+        {
+            return (false, false, new[] { "Chapter code cannot be empty when provided." }, null);
+        }
+
+        if (request.ChapterName is null && request.KeywordWeights is null && request.ChapterCode is null)
         {
             return (false, false, new[] { "No fields to update." }, null);
         }
@@ -167,6 +172,15 @@ public sealed class IcdChapterService : IIcdChapterService
         if (chapter is null || chapter.IsDeleted)
         {
             return (false, true, new[] { "ICD chapter not found." }, null);
+        }
+
+        if (request.ChapterCode is not null)
+        {
+            var normalizedCode = NormalizeChapterCode(request.ChapterCode)!;
+           
+
+                chapter.ChapterCode = normalizedCode;
+        
         }
 
         if (request.ChapterName is not null)

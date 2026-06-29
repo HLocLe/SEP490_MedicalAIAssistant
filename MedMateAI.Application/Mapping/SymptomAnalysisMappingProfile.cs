@@ -24,7 +24,8 @@ public sealed class SymptomAnalysisMappingProfile : Profile
                 opt => opt.MapFrom(src => src.ClinicalQuestion != null ? src.ClinicalQuestion.QuestionVi : null))
             .ForMember(
                 dest => dest.EnglishPrefix,
-                opt => opt.MapFrom(src => src.ClinicalQuestion != null ? src.ClinicalQuestion.EnglishPrefix : null));
+                opt => opt.MapFrom(src => src.ClinicalQuestion != null ? src.ClinicalQuestion.EnglishPrefix : null))
+            .ForMember(dest => dest.Answers, opt => opt.MapFrom(src => src.AnswerValues));
 
         CreateMap<DepartmentRecommendation, RecommendedDepartmentResponse>()
             .ForMember(

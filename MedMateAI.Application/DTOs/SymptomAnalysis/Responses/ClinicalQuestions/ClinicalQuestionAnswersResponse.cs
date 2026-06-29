@@ -9,5 +9,7 @@ public sealed class ClinicalQuestionAnswersResponse
     public IReadOnlyList<ClinicalQuestionAnswerResult> Answers { get; set; } =
         Array.Empty<ClinicalQuestionAnswerResult>();
 
+        public string MedGemmaPrompt { get; set; } = string.Empty;
+
     public SymptomAnalysisAnalyzeResponse? Analysis { get; set; }
 }

@@ -14,6 +14,8 @@ public sealed class ClinicalQuestionResponse
 
     public int SortOrder { get; set; }
 
+    public Dictionary<string, string> Answers { get; set; } = new();
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime? UpdatedAt { get; set; }

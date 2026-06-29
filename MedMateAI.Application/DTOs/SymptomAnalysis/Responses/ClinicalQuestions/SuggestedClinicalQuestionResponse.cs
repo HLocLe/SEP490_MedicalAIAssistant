@@ -13,4 +13,6 @@ public sealed class SuggestedClinicalQuestionResponse
     public int TotalScore { get; set; }
 
     public List<string> MatchedKeywords { get; set; } = new();
+
+    public Dictionary<string, string> Answers { get; set; } = new();
 }
