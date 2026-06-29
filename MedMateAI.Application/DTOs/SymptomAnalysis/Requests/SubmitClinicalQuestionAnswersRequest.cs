@@ -6,10 +6,3 @@ public sealed class SubmitClinicalQuestionAnswersRequest
 
     public List<ClinicalQuestionAnswerItem> Answers { get; set; } = new();
 }
-
-public sealed class ClinicalQuestionAnswerItem
-{
-    public Guid QuestionId { get; set; }
-
-    public bool Answer { get; set; }
-}

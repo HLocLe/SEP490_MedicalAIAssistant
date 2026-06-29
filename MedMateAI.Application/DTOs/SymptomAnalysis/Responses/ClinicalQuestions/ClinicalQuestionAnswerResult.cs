@@ -8,5 +8,5 @@ public sealed class ClinicalQuestionAnswerResult
 
     public string? QuestionVi { get; set; }
 
-    public bool Answer { get; set; }
+    public Dictionary<string, bool> Answers { get; set; } = new();
 }

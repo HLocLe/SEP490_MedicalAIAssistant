@@ -12,6 +12,8 @@ public sealed class ClinicalQuestion : BaseEntity
 
     public int SortOrder { get; set; }
 
+    public Dictionary<string, string> Answers { get; set; } = new();
+
     public ICollection<SessionClinicalQuestionAnswer> SessionAnswers { get; set; } =
         new List<SessionClinicalQuestionAnswer>();
 

@@ -18,6 +18,8 @@ using MedMateAI.Infrastructure.Email.Brevo.Options;
 using MedMateAI.Infrastructure.AI;
 using MedMateAI.Infrastructure.AI.Options;
 using MedMateAI.Infrastructure.Payments.PayOS;
+using MedMateAI.Infrastructure.NationalInstitutesofHealth;
+using MedMateAI.Infrastructure.NationalInstitutesofHealth.Options;
 using MedMateAI.Infrastructure.Translation;
 using MedMateAI.Infrastructure.Translation.Options;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -81,6 +83,7 @@ public static class DependencyInjection
         
         //
         services.Configure<MedGemmaOptions>(configuration.GetSection(MedGemmaOptions.SectionName));
+        services.Configure<NihClinicalTablesOptions>(configuration.GetSection(NihClinicalTablesOptions.SectionName));
         //
         services.AddHttpContextAccessor();
 
@@ -111,6 +114,11 @@ public static class DependencyInjection
 
         //
         services.AddHttpClient<ITranslationService, AzureTranslationService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
+
+        services.AddHttpClient<IIcdLookupService, NihIcdLookupService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(15);
         });

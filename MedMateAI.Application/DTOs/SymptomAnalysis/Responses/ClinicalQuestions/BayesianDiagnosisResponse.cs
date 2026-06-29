@@ -8,6 +8,8 @@ public sealed class BayesianDiagnosisResponse
 
     public string Icd10Code { get; set; } = string.Empty;
 
+    public string SearchKeyword { get; set; } = string.Empty;
+
     public double PA { get; set; }
 
     public double PBGivenA { get; set; }

@@ -83,14 +83,17 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
             return (false, validationErrors, null);
         }
 
+        var chapterCode = await ResolveChapterCodeAsync(request.ChapterId, cancellationToken);
+
         var entity = new ClinicalQuestion
         {
             Id = Guid.NewGuid(),
             ChapterId = request.ChapterId,
-            ChapterCode = NormalizeChapterCode(request.ChapterCode),
+            ChapterCode = chapterCode,
             QuestionVi = request.QuestionVi.Trim(),
             EnglishPrefix = NormalizeOptionalText(request.EnglishPrefix),
             SortOrder = request.SortOrder,
+            Answers = NormalizeAnswers(request.Answers),
             CreatedAt = DateTime.UtcNow,
         };
 
@@ -133,16 +136,19 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
                 continue;
             }
 
+            var chapterCode = await ResolveChapterCodeAsync(questionRequest.ChapterId, cancellationToken);
+
             preparedQuestions.Add((
                 index,
                 new ClinicalQuestion
                 {
                     Id = Guid.NewGuid(),
                     ChapterId = questionRequest.ChapterId,
-                    ChapterCode = NormalizeChapterCode(questionRequest.ChapterCode),
+                    ChapterCode = chapterCode,
                     QuestionVi = questionRequest.QuestionVi.Trim(),
                     EnglishPrefix = NormalizeOptionalText(questionRequest.EnglishPrefix),
                     SortOrder = questionRequest.SortOrder,
+                    Answers = NormalizeAnswers(questionRequest.Answers),
                     CreatedAt = DateTime.UtcNow,
                 }));
         }
@@ -187,6 +193,15 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
         if (chapterErrors is not null)
         {
             return (false, false, chapterErrors, null);
+        }
+
+        if (request!.Answers is not null)
+        {
+            var answerErrors = ValidateAnswers(request.Answers);
+            if (answerErrors.Count > 0)
+            {
+                return (false, false, answerErrors, null);
+            }
         }
 
         ApplyScalarUpdates(entity, request!);
@@ -241,10 +256,10 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
         }
 
         if (request.ChapterId is null
-            && request.ChapterCode is null
             && request.QuestionVi is null
             && request.EnglishPrefix is null
-            && request.SortOrder is null)
+            && request.SortOrder is null
+            && request.Answers is null)
         {
             return new[] { "No fields to update." };
         }
@@ -268,27 +283,20 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
             return new[] { "Chapter id is invalid." };
         }
 
-        var chapterExists = await _unitOfWork.ClinicalQuestions.IcdChapterExistsAsync(
-            request.ChapterId.Value,
-            cancellationToken);
-
-        if (!chapterExists)
+        var chapter = await _unitOfWork.IcdChapters.GetByIdAsync(request.ChapterId.Value, cancellationToken);
+        if (chapter is null || chapter.IsDeleted)
         {
             return new[] { "ICD chapter not found." };
         }
 
         entity.ChapterId = request.ChapterId.Value;
+        entity.ChapterCode = chapter.ChapterCode;
         return null;
     }
 
     // Private method thuộc UpdateClinicalQuestionAsync.
     private static void ApplyScalarUpdates(ClinicalQuestion entity, UpdateClinicalQuestionRequest request)
     {
-        if (request.ChapterCode is not null)
-        {
-            entity.ChapterCode = NormalizeChapterCode(request.ChapterCode);
-        }
-
         if (request.QuestionVi is not null)
         {
             entity.QuestionVi = request.QuestionVi.Trim();
@@ -302,6 +310,11 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
         if (request.SortOrder is not null)
         {
             entity.SortOrder = request.SortOrder.Value;
+        }
+
+        if (request.Answers is not null)
+        {
+            entity.Answers = NormalizeAnswers(request.Answers);
         }
     }
 
@@ -332,17 +345,54 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
             errors.Add("Question text is required.");
         }
 
+        errors.AddRange(ValidateAnswers(request.Answers));
+
         return errors;
     }
 
-    private static string? NormalizeChapterCode(string? chapterCode)
+    private static List<string> ValidateAnswers(Dictionary<string, string>? answers)
     {
-        if (string.IsNullOrWhiteSpace(chapterCode))
+        var errors = new List<string>();
+
+        if (answers is null || answers.Count == 0)
         {
-            return null;
+            return errors;
         }
 
-        return chapterCode.Trim().ToUpperInvariant();
+        foreach (var (vietnameseLabel, englishLabel) in answers)
+        {
+            if (string.IsNullOrWhiteSpace(vietnameseLabel))
+            {
+                errors.Add("Answer Vietnamese label cannot be empty.");
+            }
+
+            if (string.IsNullOrWhiteSpace(englishLabel))
+            {
+                errors.Add($"Answer '{vietnameseLabel}' must have an English label.");
+            }
+        }
+
+        return errors;
+    }
+
+    private static Dictionary<string, string> NormalizeAnswers(Dictionary<string, string>? answers)
+    {
+        if (answers is null || answers.Count == 0)
+        {
+            return new Dictionary<string, string>();
+        }
+
+        return answers.ToDictionary(
+            pair => pair.Key.Trim(),
+            pair => pair.Value.Trim());
+    }
+
+    private async Task<string?> ResolveChapterCodeAsync(
+        Guid chapterId,
+        CancellationToken cancellationToken)
+    {
+        var chapter = await _unitOfWork.IcdChapters.GetByIdAsync(chapterId, cancellationToken);
+        return chapter is null || chapter.IsDeleted ? null : chapter.ChapterCode;
     }
 
     private static string? NormalizeOptionalText(string? value)
