@@ -18,7 +18,7 @@ public class Program
         options.AddPolicy("AllowFrontend", policy =>
           {
         
-        policy.WithOrigins("http://localhost:3000","https://sep-490-fe-medical-ai-assistant.vercel.app")
+        policy.WithOrigins("http://localhost:3000","https://sep-490-fe-medical-ai-assistant.vercel.app", "https://sep-490-fe-medical-ai-assista-git-9aca09-dhas-projects-901181f4.vercel.app")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials(); 
