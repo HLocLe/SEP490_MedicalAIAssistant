@@ -64,4 +64,20 @@ public sealed class ClinicalQuestionRepository
             .AsNoTracking()
             .AnyAsync(chapter => chapter.Id == icdChapterId && !chapter.IsDeleted, cancellationToken);
     }
+
+    public async Task UpdateChapterCodeByChapterIdAsync(
+        Guid chapterId,
+        string chapterCode,
+        CancellationToken cancellationToken = default)
+    {
+        var updatedAt = DateTime.UtcNow;
+
+        await _context.ClinicalQuestions
+            .Where(question => question.ChapterId == chapterId)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(question => question.ChapterCode, chapterCode)
+                    .SetProperty(question => question.UpdatedAt, updatedAt),
+                cancellationToken);
+    }
 }

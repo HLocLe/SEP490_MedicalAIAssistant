@@ -23,4 +23,16 @@ public sealed class IcdChapterRepository
             .Where(chapter => !chapter.IsDeleted)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task UpdateChapterCodeByIdAsync(
+        Guid id,
+        string chapterCode,
+        CancellationToken cancellationToken = default)
+    {
+        await _context.IcdChapters
+            .Where(chapter => chapter.Id == id)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(chapter => chapter.ChapterCode, chapterCode),
+                cancellationToken);
+    }
 }

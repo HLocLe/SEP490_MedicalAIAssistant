@@ -44,4 +44,55 @@ public sealed class MedicalDepartmentRepository
                 && department.ChapterCode.ToUpper().Contains(normalizedChapterCode))
             .FirstOrDefaultAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyList<Guid>> DetachChapterCodeAsync(
+        string chapterCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(chapterCode))
+        {
+            return Array.Empty<Guid>();
+        }
+
+        var ids = await _context.MedicalDepartments
+            .Where(department => department.ChapterCode == chapterCode)
+            .Select(department => department.Id)
+            .ToListAsync(cancellationToken);
+
+        if (ids.Count == 0)
+        {
+            return ids;
+        }
+
+        var updatedAt = DateTime.UtcNow;
+        await _context.MedicalDepartments
+            .Where(department => ids.Contains(department.Id))
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(department => department.ChapterCode, (string?)null)
+                    .SetProperty(department => department.UpdatedAt, updatedAt),
+                cancellationToken);
+
+        return ids;
+    }
+
+    public async Task AttachChapterCodeAsync(
+        IReadOnlyList<Guid> ids,
+        string chapterCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (ids is null || ids.Count == 0)
+        {
+            return;
+        }
+
+        var updatedAt = DateTime.UtcNow;
+        await _context.MedicalDepartments
+            .Where(department => ids.Contains(department.Id))
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(department => department.ChapterCode, chapterCode)
+                    .SetProperty(department => department.UpdatedAt, updatedAt),
+                cancellationToken);
+    }
 }

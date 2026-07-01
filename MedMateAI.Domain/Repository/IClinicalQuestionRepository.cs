@@ -15,4 +15,9 @@ public interface IClinicalQuestionRepository : IGenericRepository<ClinicalQuesti
         CancellationToken cancellationToken = default);
 
     Task<bool> IcdChapterExistsAsync(Guid icdChapterId, CancellationToken cancellationToken = default);
+
+    Task UpdateChapterCodeByChapterIdAsync(
+        Guid chapterId,
+        string chapterCode,
+        CancellationToken cancellationToken = default);
 }
