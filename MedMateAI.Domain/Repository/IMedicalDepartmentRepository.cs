@@ -10,4 +10,13 @@ public interface IMedicalDepartmentRepository : IGenericRepository<MedicalDepart
     Task<MedicalDepartment?> GetActiveByChapterCodeAsync(
         string chapterCode,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Guid>> DetachChapterCodeAsync(
+        string chapterCode,
+        CancellationToken cancellationToken = default);
+
+    Task AttachChapterCodeAsync(
+        IReadOnlyList<Guid> ids,
+        string chapterCode,
+        CancellationToken cancellationToken = default);
 }

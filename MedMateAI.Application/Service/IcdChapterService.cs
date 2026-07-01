@@ -174,13 +174,29 @@ public sealed class IcdChapterService : IIcdChapterService
             return (false, true, new[] { "ICD chapter not found." }, null);
         }
 
-        if (request.ChapterCode is not null)
+        var newCode = request.ChapterCode is not null ? NormalizeChapterCode(request.ChapterCode) : null;
+        if (newCode is not null)
         {
-            var normalizedCode = NormalizeChapterCode(request.ChapterCode)!;
-           
+            var validationErrors = ValidateChapterFields(newCode, request.ChapterName ?? chapter.ChapterName);
+            if (validationErrors.Count > 0)
+            {
+                return (false, false, validationErrors, null);
+            }
+        }
 
-                chapter.ChapterCode = normalizedCode;
-        
+        var codeChanging = newCode is not null
+            && !string.Equals(chapter.ChapterCode, newCode, StringComparison.OrdinalIgnoreCase);
+
+        if (codeChanging)
+        {
+            var exists = await _unitOfWork.IcdChapters.FirstOrDefaultAsync(
+                c => c.ChapterCode == newCode && !c.IsDeleted && c.Id != id,
+                cancellationToken: cancellationToken);
+
+            if (exists is not null)
+            {
+                return (false, false, new[] { "Chapter code already exists." }, null);
+            }
         }
 
         if (request.ChapterName is not null)
@@ -195,10 +211,49 @@ public sealed class IcdChapterService : IIcdChapterService
 
         chapter.UpdatedAt = DateTime.UtcNow;
 
-        _unitOfWork.IcdChapters.Update(chapter);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        if (codeChanging)
+        {
+            await CascadeChapterCodeUpdateAsync(chapter, newCode!, cancellationToken);
+        }
+        else
+        {
+            _unitOfWork.IcdChapters.Update(chapter);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
 
         return (true, false, Array.Empty<string>(), _mapper.Map<IcdChapterResponse>(chapter));
+    }
+
+    private async Task CascadeChapterCodeUpdateAsync(
+        IcdChapter chapter,
+        string newCode,
+        CancellationToken cancellationToken)
+    {
+        var oldCode = chapter.ChapterCode;
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var sessionIds = await _unitOfWork.SymptomAnalysisSessions.DetachChapterCodeAsync(oldCode, cancellationToken);
+            var departmentIds = await _unitOfWork.MedicalDepartments.DetachChapterCodeAsync(oldCode, cancellationToken);
+
+            await _unitOfWork.ClinicalQuestions.UpdateChapterCodeByChapterIdAsync(chapter.Id, newCode, cancellationToken);
+
+            await _unitOfWork.IcdChapters.UpdateChapterCodeByIdAsync(chapter.Id, newCode, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            await _unitOfWork.SymptomAnalysisSessions.AttachChapterCodeAsync(sessionIds, newCode, cancellationToken);
+            await _unitOfWork.MedicalDepartments.AttachChapterCodeAsync(departmentIds, newCode, cancellationToken);
+
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            chapter.ChapterCode = newCode;
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            throw;
+        }
     }
 
     public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors)> SoftDeleteIcdChapterAsync(

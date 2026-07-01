@@ -10,4 +10,13 @@ public interface ISymptomAnalysisSessionRepository : IGenericRepository<SymptomA
         int pageNumber,
         int pageSize,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Guid>> DetachChapterCodeAsync(
+        string chapterCode,
+        CancellationToken cancellationToken = default);
+
+    Task AttachChapterCodeAsync(
+        IReadOnlyList<Guid> ids,
+        string chapterCode,
+        CancellationToken cancellationToken = default);
 }
