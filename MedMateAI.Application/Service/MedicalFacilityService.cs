@@ -143,70 +143,22 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             return (false, new[] { "Request body is required." }, null);
         }
 
-        var errors = new List<string>();
-
-        var facilityName = NormalizeText(request.FacilityName);
-        if (string.IsNullOrWhiteSpace(facilityName))
+        var validation = ValidateCreateMedicalFacilityRequest(request);
+        if (validation.Errors.Count > 0)
         {
-            errors.Add("Facility name is required.");
+            return (false, validation.Errors, null);
         }
 
-        if (request.Latitude.HasValue && !IsLatitudeValid(request.Latitude.Value))
-        {
-            errors.Add("Latitude must be between -90 and 90.");
-        }
-
-        if (request.Longitude.HasValue && !IsLongitudeValid(request.Longitude.Value))
-        {
-            errors.Add("Longitude must be between -180 and 180.");
-        }
-
-        var website = NormalizeText(request.Website);
-        if (!string.IsNullOrWhiteSpace(website) && !IsValidAbsoluteUrl(website))
-        {
-            errors.Add("Website must be a valid absolute URL.");
-        }
-
-        var imageUrl = NormalizeText(request.ImageUrl);
-        if (imageUrl is not null)
-        {
-            if (imageUrl.Length > ImageUrlMaxLength)
-            {
-                errors.Add("ImageUrl must be 2048 characters or fewer.");
-            }
-
-            if (!IsValidHttpUrl(imageUrl))
-            {
-                errors.Add("ImageUrl must be a valid absolute http or https URL.");
-            }
-        }
-
-        var departmentIds = request.DepartmentIds?.ToList() ?? new List<Guid>();
-        if (departmentIds.Any(x => x == Guid.Empty))
-        {
-            errors.Add("DepartmentIds contains invalid empty guid.");
-        }
-
-        if (departmentIds.Count != departmentIds.Distinct().Count())
-        {
-            errors.Add("DepartmentIds must contain distinct values.");
-        }
-
-        if (errors.Count > 0)
-        {
-            return (false, errors, null);
-        }
-
-        var distinctDepartmentIds = departmentIds.Distinct().ToList();
+        var distinctDepartmentIds = validation.DepartmentIds.Distinct().ToList();
         var invalidDepartmentIds = await GetInvalidDepartmentIdsAsync(distinctDepartmentIds, cancellationToken);
         if (invalidDepartmentIds.Count > 0)
         {
-            errors.Add("Some DepartmentIds do not exist or are deleted.");
-            return (false, errors, null);
+            validation.Errors.Add("Some DepartmentIds do not exist or are deleted.");
+            return (false, validation.Errors, null);
         }
 
         var normalizedAddress = NormalizeText(request.Address);
-        if (await HasDuplicateFacilityAsync(null, facilityName!, normalizedAddress, cancellationToken))
+        if (await HasDuplicateFacilityAsync(null, validation.FacilityName!, normalizedAddress, cancellationToken))
         {
             return (false, new[] { "Medical facility with same facility name and address already exists." }, null);
         }
@@ -215,13 +167,13 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         var entity = new MedicalFacility
         {
             Id = Guid.NewGuid(),
-            FacilityName = facilityName,
+            FacilityName = validation.FacilityName,
             Address = normalizedAddress,
             Latitude = request.Latitude,
             Longitude = request.Longitude,
             Phone = NormalizeText(request.Phone),
-            Website = website,
-            ImageUrl = imageUrl,
+            Website = validation.Website,
+            ImageUrl = validation.ImageUrl,
             OpeningHours = NormalizeText(request.OpeningHours),
             FacilityType = NormalizeText(request.FacilityType),
             IsActive = request.IsActive,
@@ -603,6 +555,86 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
     {
         await _cache.RemoveAsync(ActiveFacilitiesCacheKey, cancellationToken);
         await _cache.RemoveAsync(GetFacilityCacheKey(id), cancellationToken);
+    }
+
+    private static (
+        List<string> Errors,
+        string? FacilityName,
+        string? Website,
+        string? ImageUrl,
+        List<Guid> DepartmentIds) ValidateCreateMedicalFacilityRequest(CreateMedicalFacilityRequest request)
+    {
+        var errors = new List<string>();
+        var facilityName = NormalizeText(request.FacilityName);
+        if (string.IsNullOrWhiteSpace(facilityName))
+        {
+            errors.Add("Facility name is required.");
+        }
+
+        ValidateCoordinates(request.Latitude, request.Longitude, errors);
+
+        var website = NormalizeText(request.Website);
+        ValidateWebsite(website, errors);
+
+        var imageUrl = NormalizeText(request.ImageUrl);
+        ValidateImageUrl(imageUrl, errors);
+
+        var departmentIds = request.DepartmentIds?.ToList() ?? new List<Guid>();
+        ValidateDepartmentIds(departmentIds, errors);
+
+        return (errors, facilityName, website, imageUrl, departmentIds);
+    }
+
+    private static void ValidateCoordinates(decimal? latitude, decimal? longitude, List<string> errors)
+    {
+        if (latitude.HasValue && !IsLatitudeValid(latitude.Value))
+        {
+            errors.Add("Latitude must be between -90 and 90.");
+        }
+
+        if (longitude.HasValue && !IsLongitudeValid(longitude.Value))
+        {
+            errors.Add("Longitude must be between -180 and 180.");
+        }
+    }
+
+    private static void ValidateWebsite(string? website, List<string> errors)
+    {
+        if (!string.IsNullOrWhiteSpace(website) && !IsValidAbsoluteUrl(website))
+        {
+            errors.Add("Website must be a valid absolute URL.");
+        }
+    }
+
+    private static void ValidateImageUrl(string? imageUrl, List<string> errors)
+    {
+        if (imageUrl is null)
+        {
+            return;
+        }
+
+        if (imageUrl.Length > ImageUrlMaxLength)
+        {
+            errors.Add("ImageUrl must be 2048 characters or fewer.");
+        }
+
+        if (!IsValidHttpUrl(imageUrl))
+        {
+            errors.Add("ImageUrl must be a valid absolute http or https URL.");
+        }
+    }
+
+    private static void ValidateDepartmentIds(IReadOnlyCollection<Guid> departmentIds, List<string> errors)
+    {
+        if (departmentIds.Any(x => x == Guid.Empty))
+        {
+            errors.Add("DepartmentIds contains invalid empty guid.");
+        }
+
+        if (departmentIds.Count != departmentIds.Distinct().Count())
+        {
+            errors.Add("DepartmentIds must contain distinct values.");
+        }
     }
 
     private static bool IsLatitudeValid(decimal latitude)
