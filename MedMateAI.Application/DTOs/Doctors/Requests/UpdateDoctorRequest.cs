@@ -12,6 +12,8 @@ public sealed class UpdateDoctorRequest
 
     public string? AcademicTitle { get; set; }
 
+    public string? ImageUrl { get; set; }
+
     public DepartmentRole? DepartmentRole { get; set; }
 
     public int? YearsOfExperience { get; set; }

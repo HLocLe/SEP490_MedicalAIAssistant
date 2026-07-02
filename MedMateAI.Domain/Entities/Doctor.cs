@@ -14,6 +14,8 @@ public sealed class Doctor : BaseEntity
 
     public string? AcademicTitle { get; set; }
 
+    public string? ImageUrl { get; set; }
+
     public DepartmentRole DepartmentRole { get; set; } = DepartmentRole.Doctor;
 
     public int? YearsOfExperience { get; set; }

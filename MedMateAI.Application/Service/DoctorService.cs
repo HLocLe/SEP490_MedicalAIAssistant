@@ -13,6 +13,7 @@ namespace MedMateAI.Application.Service;
 public sealed class DoctorService : IDoctorService
 {
     private const string DoctorCacheKeyPrefix = "doctors:";
+    private const int ImageUrlMaxLength = 2048;
 
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
     private static readonly DistributedCacheEntryOptions CacheOptions = new()
@@ -158,6 +159,20 @@ public sealed class DoctorService : IDoctorService
             errors.Add("YearsOfExperience must be greater than or equal to 0.");
         }
 
+        var imageUrl = NormalizeText(request.ImageUrl);
+        if (imageUrl is not null)
+        {
+            if (imageUrl.Length > ImageUrlMaxLength)
+            {
+                errors.Add("ImageUrl must be 2048 characters or fewer.");
+            }
+
+            if (!IsValidHttpUrl(imageUrl))
+            {
+                errors.Add("ImageUrl must be a valid absolute http or https URL.");
+            }
+        }
+
         if (!IsValidDepartmentRole(request.DepartmentRole))
         {
             errors.Add("DepartmentRole is invalid.");
@@ -217,6 +232,7 @@ public sealed class DoctorService : IDoctorService
             FullName = fullName,
             Specialty = NormalizeText(request.Specialty),
             AcademicTitle = NormalizeText(request.AcademicTitle),
+            ImageUrl = imageUrl,
             DepartmentRole = request.DepartmentRole,
             YearsOfExperience = request.YearsOfExperience,
             IsActive = request.IsActive,
@@ -254,6 +270,7 @@ public sealed class DoctorService : IDoctorService
 
         var errors = new List<string>();
         string? fullNameFromRequest = null;
+        string? imageUrlFromRequest = null;
 
         if (request.FullName is not null)
         {
@@ -267,6 +284,23 @@ public sealed class DoctorService : IDoctorService
         if (request.YearsOfExperience.HasValue && request.YearsOfExperience.Value < 0)
         {
             errors.Add("YearsOfExperience must be greater than or equal to 0.");
+        }
+
+        if (request.ImageUrl is not null)
+        {
+            imageUrlFromRequest = NormalizeText(request.ImageUrl);
+            if (imageUrlFromRequest is not null)
+            {
+                if (imageUrlFromRequest.Length > ImageUrlMaxLength)
+                {
+                    errors.Add("ImageUrl must be 2048 characters or fewer.");
+                }
+
+                if (!IsValidHttpUrl(imageUrlFromRequest))
+                {
+                    errors.Add("ImageUrl must be a valid absolute http or https URL.");
+                }
+            }
         }
 
         if (request.DepartmentRole.HasValue && !IsValidDepartmentRole(request.DepartmentRole.Value))
@@ -342,6 +376,11 @@ public sealed class DoctorService : IDoctorService
         if (request.AcademicTitle is not null)
         {
             entity.AcademicTitle = NormalizeText(request.AcademicTitle);
+        }
+
+        if (request.ImageUrl is not null)
+        {
+            entity.ImageUrl = imageUrlFromRequest;
         }
 
         if (request.DepartmentRole.HasValue)
@@ -489,6 +528,7 @@ public sealed class DoctorService : IDoctorService
             FullName = entity.FullName ?? string.Empty,
             Specialty = entity.Specialty,
             AcademicTitle = entity.AcademicTitle,
+            ImageUrl = entity.ImageUrl,
             DepartmentRole = entity.DepartmentRole,
             DepartmentRoleName = entity.DepartmentRole.ToString(),
             YearsOfExperience = entity.YearsOfExperience,
@@ -508,6 +548,12 @@ public sealed class DoctorService : IDoctorService
         return string.IsNullOrWhiteSpace(value)
             ? null
             : value.Trim();
+    }
+
+    private static bool IsValidHttpUrl(string value)
+    {
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
     }
 
     private static bool IsValidDepartmentRole(DepartmentRole role)

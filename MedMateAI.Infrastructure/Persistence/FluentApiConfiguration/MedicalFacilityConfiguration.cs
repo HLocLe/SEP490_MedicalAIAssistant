@@ -12,5 +12,9 @@ public sealed class MedicalFacilityConfiguration : IEntityTypeConfiguration<Medi
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("FacilityId").ValueGeneratedOnAdd();
+
+        builder.Property(x => x.ImageUrl)
+            .HasMaxLength(2048)
+            .IsRequired(false);
     }
 }
