@@ -14,6 +14,8 @@ public sealed class UpdateMedicalFacilityRequest
 
     public string? Website { get; set; }
 
+    public string? ImageUrl { get; set; }
+
     public string? OpeningHours { get; set; }
 
     public string? FacilityType { get; set; }

@@ -16,6 +16,8 @@ public sealed class MedicalFacilityResponse
 
     public string? Website { get; set; }
 
+    public string? ImageUrl { get; set; }
+
     public string? OpeningHours { get; set; }
 
     public string? FacilityType { get; set; }

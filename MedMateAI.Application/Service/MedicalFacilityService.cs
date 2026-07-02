@@ -14,6 +14,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
 {
     private const string ActiveFacilitiesCacheKey = "medical-facilities:active";
     private const string FacilityCacheKeyPrefix = "medical-facilities:";
+    private const int ImageUrlMaxLength = 2048;
 
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
     private static readonly DistributedCacheEntryOptions CacheOptions = new()
@@ -166,6 +167,20 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             errors.Add("Website must be a valid absolute URL.");
         }
 
+        var imageUrl = NormalizeText(request.ImageUrl);
+        if (imageUrl is not null)
+        {
+            if (imageUrl.Length > ImageUrlMaxLength)
+            {
+                errors.Add("ImageUrl must be 2048 characters or fewer.");
+            }
+
+            if (!IsValidHttpUrl(imageUrl))
+            {
+                errors.Add("ImageUrl must be a valid absolute http or https URL.");
+            }
+        }
+
         var departmentIds = request.DepartmentIds?.ToList() ?? new List<Guid>();
         if (departmentIds.Any(x => x == Guid.Empty))
         {
@@ -206,6 +221,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             Longitude = request.Longitude,
             Phone = NormalizeText(request.Phone),
             Website = website,
+            ImageUrl = imageUrl,
             OpeningHours = NormalizeText(request.OpeningHours),
             FacilityType = NormalizeText(request.FacilityType),
             IsActive = request.IsActive,
@@ -257,6 +273,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         string? facilityNameFromRequest = null;
         string? addressFromRequest = null;
         string? websiteFromRequest = null;
+        string? imageUrlFromRequest = null;
 
         if (request.FacilityName is not null)
         {
@@ -288,6 +305,23 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             if (!string.IsNullOrWhiteSpace(websiteFromRequest) && !IsValidAbsoluteUrl(websiteFromRequest))
             {
                 errors.Add("Website must be a valid absolute URL.");
+            }
+        }
+
+        if (request.ImageUrl is not null)
+        {
+            imageUrlFromRequest = NormalizeText(request.ImageUrl);
+            if (imageUrlFromRequest is not null)
+            {
+                if (imageUrlFromRequest.Length > ImageUrlMaxLength)
+                {
+                    errors.Add("ImageUrl must be 2048 characters or fewer.");
+                }
+
+                if (!IsValidHttpUrl(imageUrlFromRequest))
+                {
+                    errors.Add("ImageUrl must be a valid absolute http or https URL.");
+                }
             }
         }
 
@@ -361,6 +395,11 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         if (request.Website is not null)
         {
             entity.Website = websiteFromRequest;
+        }
+
+        if (request.ImageUrl is not null)
+        {
+            entity.ImageUrl = imageUrlFromRequest;
         }
 
         if (request.OpeningHours is not null)
@@ -579,6 +618,12 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
     private static bool IsValidAbsoluteUrl(string value)
     {
         return Uri.TryCreate(value, UriKind.Absolute, out _);
+    }
+
+    private static bool IsValidHttpUrl(string value)
+    {
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
     }
 
     private static string? NormalizeText(string? value)

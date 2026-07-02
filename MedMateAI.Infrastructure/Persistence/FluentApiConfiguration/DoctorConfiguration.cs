@@ -18,6 +18,10 @@ public sealed class DoctorConfiguration : IEntityTypeConfiguration<Doctor>
         builder.Property(x => x.UserId)
             .IsRequired(false);
 
+        builder.Property(x => x.ImageUrl)
+            .HasMaxLength(2048)
+            .IsRequired(false);
+
         builder.HasIndex(x => x.UserId).IsUnique();
 
         builder.HasOne<ApplicationUser>()

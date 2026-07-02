@@ -24,6 +24,8 @@ public sealed class DoctorResponse
 
     public string? AcademicTitle { get; set; }
 
+    public string? ImageUrl { get; set; }
+
     public DepartmentRole DepartmentRole { get; set; }
 
     public string DepartmentRoleName { get; set; } = string.Empty;
