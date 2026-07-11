@@ -1,5 +1,6 @@
 using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Repository;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,6 +19,7 @@ public sealed class SymptomAnalysisSessionRepository
 
     public async Task<PagedResult<SymptomAnalysisSession>> GetPagedByUserIdAsync(
         Guid userId,
+        SymptomAnalysisSessionType? sessionType,
         int pageNumber,
         int pageSize,
         CancellationToken cancellationToken = default)
@@ -29,6 +31,11 @@ public sealed class SymptomAnalysisSessionRepository
         var query = _context.SymptomAnalysisSessions
             .AsNoTracking()
             .Where(session => !session.IsDeleted && session.UserId == userId);
+
+        if (sessionType.HasValue)
+        {
+            query = query.Where(session => session.SessionType == sessionType.Value);
+        }
 
         var totalCount = await query.CountAsync(cancellationToken);
 

@@ -20,5 +20,10 @@ public sealed class PatientProfileConfiguration : IEntityTypeConfiguration<Patie
             .WithOne(x => x.PatientProfile)
             .HasForeignKey<PatientProfile>(x => x.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(x => x.ChronicDiseases)
+            .WithOne(x => x.PatientProfile)
+            .HasForeignKey(x => x.PatientProfileId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -13,6 +13,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<PatientProfile> PatientProfiles => Set<PatientProfile>();
 
+    public DbSet<PatientChronicDisease> PatientChronicDiseases => Set<PatientChronicDisease>();
+
     public DbSet<SymptomAnalysisSession> SymptomAnalysisSessions => Set<SymptomAnalysisSession>();
 
     public DbSet<SessionSymptom> SessionSymptoms => Set<SessionSymptom>();

@@ -12,6 +12,8 @@ public sealed class SymptomAnalysisSession : BaseEntity
 
     public SymptomAnalysisSessionStatus Status { get; set; } = SymptomAnalysisSessionStatus.Processing;
 
+    public SymptomAnalysisSessionType SessionType { get; set; } = SymptomAnalysisSessionType.None;
+
     public bool DisclaimerShown { get; set; }
 
     public DateTime? CompletedAt { get; set; }
@@ -26,8 +28,6 @@ public sealed class SymptomAnalysisSession : BaseEntity
         new List<SessionClinicalQuestionAnswer>();
 
     public ICollection<DepartmentRecommendation> DepartmentRecommendations { get; set; } = new List<DepartmentRecommendation>();
-
-    public ICollection<ConsultationSession> ConsultationSessions { get; set; } = new List<ConsultationSession>();
 
     public ICollection<AISystemConfig> AISystemConfigs { get; set; } = new List<AISystemConfig>();
 

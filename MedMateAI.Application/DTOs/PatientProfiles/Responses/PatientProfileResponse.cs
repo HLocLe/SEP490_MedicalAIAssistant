@@ -14,7 +14,8 @@ public sealed class PatientProfileResponse
 
     public string? AllergyNote { get; set; }
 
-    public string? ChronicDiseaseNote { get; set; }
+    public IReadOnlyList<PatientChronicDiseaseResponse> ChronicDiseases { get; set; } =
+        Array.Empty<PatientChronicDiseaseResponse>();
 
     public DateTime CreatedAt { get; set; }
 

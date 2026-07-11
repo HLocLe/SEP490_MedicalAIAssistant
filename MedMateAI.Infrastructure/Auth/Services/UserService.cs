@@ -131,8 +131,7 @@ public sealed class UserService : IUserService
         var paged = await _userRepository.GetPagedAsync(
             pageNumber,
             pageSize,
-            u => !u.IsDeleted,
-            q => q.OrderBy(u => u.Email),
+            orderBy: q => q.OrderBy(u => u.Email),
             cancellationToken: cancellationToken);
 
         var rolesByUserId = await GetRoleNamesByUserIdsAsync(paged.Items, cancellationToken);

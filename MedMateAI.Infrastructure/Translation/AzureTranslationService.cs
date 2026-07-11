@@ -43,10 +43,54 @@ public sealed class AzureTranslationService : ITranslationService
             return string.Empty;
         }
 
-        var requestUri = BuildTranslateUri(_options.DefaultSourceLanguage, _options.DefaultTargetLanguage);
+        var results = await TranslateBatchAsync(
+            new[] { text.Trim() },
+            _options.DefaultSourceLanguage,
+            _options.DefaultTargetLanguage,
+            cancellationToken);
 
+        return results[0];
+    }
+
+    public Task<IReadOnlyList<string>> TranslateBatchToVietnameseAsync(
+        IReadOnlyList<string> texts,
+        CancellationToken cancellationToken = default)
+    {
+        if (texts is null || texts.Count == 0)
+        {
+            return Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+        }
+
+        return TranslateBatchAsync(
+            texts,
+            _options.DefaultTargetLanguage,
+            _options.DefaultSourceLanguage,
+            cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<string>> TranslateBatchAsync(
+        IReadOnlyList<string> texts,
+        string from,
+        string to,
+        CancellationToken cancellationToken)
+    {
+        var normalized = texts
+            .Select(text => string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim())
+            .ToArray();
+
+        if (normalized.Length == 0)
+        {
+            return normalized;
+        }
+
+        if (normalized.All(string.IsNullOrEmpty))
+        {
+            return normalized;
+        }
+
+        var requestUri = BuildTranslateUri(from, to);
         var payload = JsonSerializer.Serialize(
-            new[] { new AzureTranslateRequest { Text = text.Trim() } },
+            normalized.Select(text => new AzureTranslateRequest { Text = text }).ToArray(),
             RequestJsonOptions);
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, requestUri);
@@ -67,29 +111,46 @@ public sealed class AzureTranslationService : ITranslationService
                     (int)httpResponse.StatusCode,
                     Truncate(responseBody, 500));
 
-                return text.Trim();
+                return normalized;
             }
 
             var results = JsonSerializer.Deserialize<AzureTranslateResponseItem[]>(responseBody, ResponseJsonOptions);
-
-            var translated = results?
-                .FirstOrDefault()?
-                .Translations?
-                .FirstOrDefault()?
-                .Text;
-
-            if (string.IsNullOrWhiteSpace(translated))
+            if (results is null || results.Length != normalized.Length)
             {
-                _logger.LogWarning("Azure Translator returned an empty translation. Using original text.");
-                return text.Trim();
+                _logger.LogWarning(
+                    "Azure Translator returned an unexpected batch size. Expected {ExpectedCount}, got {ActualCount}. Using original texts.",
+                    normalized.Length,
+                    results?.Length ?? 0);
+
+                return normalized;
             }
 
-            return translated.Trim();
+            var translated = new string[normalized.Length];
+
+            for (var i = 0; i < normalized.Length; i++)
+            {
+                if (string.IsNullOrEmpty(normalized[i]))
+                {
+                    translated[i] = string.Empty;
+                    continue;
+                }
+
+                var translatedText = results[i]
+                    .Translations?
+                    .FirstOrDefault()?
+                    .Text;
+
+                translated[i] = string.IsNullOrWhiteSpace(translatedText)
+                    ? normalized[i]
+                    : translatedText.Trim();
+            }
+
+            return translated;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogWarning(ex, "Azure Translator request failed. Using original text.");
-            return text.Trim();
+            _logger.LogWarning(ex, "Azure Translator request failed. Using original texts.");
+            return normalized;
         }
     }
 

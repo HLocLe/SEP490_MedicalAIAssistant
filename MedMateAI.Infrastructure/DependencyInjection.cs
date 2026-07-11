@@ -67,6 +67,7 @@ public static class DependencyInjection
         services.AddScoped<IAIConfigService, AIConfigService>();
         services.AddScoped<IWebChatbotService, WebChatbotService>();
         services.AddScoped<ISymptomAnalysisService, SymptomAnalysisService>();
+        services.AddScoped<IConsultationSessionService, ConsultationSessionService>();
         services.AddScoped<IPayOSService, PayOSService>();
         services.AddScoped<IUserSubscriptionService, UserSubscriptionService>();
         services.AddScoped<IPaymentService, PaymentService>();
@@ -83,6 +84,7 @@ public static class DependencyInjection
         
         //
         services.Configure<MedGemmaOptions>(configuration.GetSection(MedGemmaOptions.SectionName));
+        services.Configure<CloudFlareAIOptions>(configuration.GetSection(CloudFlareAIOptions.SectionName));
         services.Configure<NihClinicalTablesOptions>(configuration.GetSection(NihClinicalTablesOptions.SectionName));
         //
         services.AddHttpContextAccessor();
@@ -108,6 +110,11 @@ public static class DependencyInjection
 
         //
         services.AddHttpClient<IMedGemmaChatService, MedGemmaChatService>(client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(5);
+        });
+
+        services.AddHttpClient<ICloudFlareAIChatService, CloudFlareAIChatService>(client =>
         {
             client.Timeout = TimeSpan.FromMinutes(5);
         });

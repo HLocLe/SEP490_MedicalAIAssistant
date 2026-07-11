@@ -12,5 +12,11 @@ public sealed class ConsultationQuestionConfiguration : IEntityTypeConfiguration
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("QuestionId").ValueGeneratedOnAdd();
+
+        builder.Property(x => x.Category)
+            .HasMaxLength(64);
+
+        builder.Property(x => x.Priority)
+            .HasDefaultValue(0);
     }
 }

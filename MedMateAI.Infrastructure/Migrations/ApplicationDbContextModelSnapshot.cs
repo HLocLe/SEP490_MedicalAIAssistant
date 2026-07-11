@@ -221,6 +221,10 @@ namespace MedMateAI.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("QuestionId");
 
+                    b.Property<string>("Category")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<Guid>("ConsultationSessionId")
                         .HasColumnType("uuid");
 
@@ -234,7 +238,9 @@ namespace MedMateAI.Infrastructure.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<int>("Priority")
-                        .HasColumnType("integer");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
 
                     b.Property<string>("QuestionText")
                         .HasColumnType("text");
@@ -259,29 +265,21 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("CurrentSymptoms")
-                        .HasColumnType("text");
-
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("DepartmentId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("DoctorId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("FacilityId")
-                        .HasColumnType("uuid");
-
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Status")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("SymptomAnalysisSessionId")
-                        .HasColumnType("uuid");
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Processing");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -289,18 +287,12 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("VisitReason")
+                    b.Property<string>("UserSymptoms")
                         .HasColumnType("text");
 
                     b.HasKey("Id");
 
                     b.HasIndex("DepartmentId");
-
-                    b.HasIndex("DoctorId");
-
-                    b.HasIndex("FacilityId");
-
-                    b.HasIndex("SymptomAnalysisSessionId");
 
                     b.HasIndex("UserId");
 
@@ -958,6 +950,52 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.ToTable("Notification", (string)null);
                 });
 
+            modelBuilder.Entity("MedMateAI.Domain.Entities.PatientChronicDisease", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("PatientChronicDiseaseId");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DiseaseName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateOnly?>("From")
+                        .HasColumnType("date")
+                        .HasColumnName("FromDate");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("PatientProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("To")
+                        .HasColumnType("date")
+                        .HasColumnName("ToDate");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PatientProfileId");
+
+                    b.ToTable("PatientChronicDisease", (string)null);
+                });
+
             modelBuilder.Entity("MedMateAI.Domain.Entities.PatientProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -969,9 +1007,6 @@ namespace MedMateAI.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("BloodType")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ChronicDiseaseNote")
                         .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
@@ -1347,6 +1382,11 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("SessionType")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("SeverityLevel")
                         .HasColumnType("text");
 
@@ -1368,6 +1408,8 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.HasIndex("ChapterCode");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "SessionType");
 
                     b.ToTable("SymptomAnalysisSession", (string)null);
                 });
@@ -1968,23 +2010,6 @@ namespace MedMateAI.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MedMateAI.Domain.Entities.Doctor", "Doctor")
-                        .WithMany("ConsultationSessions")
-                        .HasForeignKey("DoctorId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("MedMateAI.Domain.Entities.MedicalFacility", "Facility")
-                        .WithMany("ConsultationSessions")
-                        .HasForeignKey("FacilityId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedMateAI.Domain.Entities.SymptomAnalysisSession", "SymptomAnalysisSession")
-                        .WithMany("ConsultationSessions")
-                        .HasForeignKey("SymptomAnalysisSessionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("MedMateAI.Infrastructure.Identity.ApplicationUser", null)
                         .WithMany("ConsultationSessions")
                         .HasForeignKey("UserId")
@@ -1992,12 +2017,6 @@ namespace MedMateAI.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Department");
-
-                    b.Navigation("Doctor");
-
-                    b.Navigation("Facility");
-
-                    b.Navigation("SymptomAnalysisSession");
                 });
 
             modelBuilder.Entity("MedMateAI.Domain.Entities.DepartmentRecommendation", b =>
@@ -2163,6 +2182,17 @@ namespace MedMateAI.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Reminder");
+                });
+
+            modelBuilder.Entity("MedMateAI.Domain.Entities.PatientChronicDisease", b =>
+                {
+                    b.HasOne("MedMateAI.Domain.Entities.PatientProfile", "PatientProfile")
+                        .WithMany("ChronicDiseases")
+                        .HasForeignKey("PatientProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PatientProfile");
                 });
 
             modelBuilder.Entity("MedMateAI.Domain.Entities.PatientProfile", b =>
@@ -2438,8 +2468,6 @@ namespace MedMateAI.Infrastructure.Migrations
 
             modelBuilder.Entity("MedMateAI.Domain.Entities.Doctor", b =>
                 {
-                    b.Navigation("ConsultationSessions");
-
                     b.Navigation("TreatmentJourneys");
                 });
 
@@ -2493,13 +2521,16 @@ namespace MedMateAI.Infrastructure.Migrations
 
             modelBuilder.Entity("MedMateAI.Domain.Entities.MedicalFacility", b =>
                 {
-                    b.Navigation("ConsultationSessions");
-
                     b.Navigation("FacilityDepartments");
 
                     b.Navigation("FeedbackReviews");
 
                     b.Navigation("TreatmentJourneys");
+                });
+
+            modelBuilder.Entity("MedMateAI.Domain.Entities.PatientProfile", b =>
+                {
+                    b.Navigation("ChronicDiseases");
                 });
 
             modelBuilder.Entity("MedMateAI.Domain.Entities.Payment", b =>
@@ -2528,8 +2559,6 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.Navigation("AISystemConfigs");
 
                     b.Navigation("ClinicalQuestionAnswers");
-
-                    b.Navigation("ConsultationSessions");
 
                     b.Navigation("DepartmentRecommendations");
 

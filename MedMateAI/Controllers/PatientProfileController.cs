@@ -37,6 +37,39 @@ public sealed class PatientProfileController : ControllerBase
         });
     }
 
+    [HttpGet("by-user/{userId}")]
+    [ProducesResponseType(typeof(ApiResponse<PatientProfileResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PatientProfileResponse>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<PatientProfileResponse>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetByUserId(Guid userId, CancellationToken cancellationToken)
+    {
+        if (userId == Guid.Empty)
+        {
+            return BadRequest(new ApiResponse<PatientProfileResponse>
+            {
+                Success = false,
+                Message = "Invalid user id.",
+            });
+        }
+
+        var (notFound, data) = await _patientProfileService.GetPatientProfileByUserIdAsync(userId, cancellationToken);
+        if (notFound || data is null)
+        {
+            return NotFound(new ApiResponse<PatientProfileResponse>
+            {
+                Success = false,
+                Message = "Patient profile not found.",
+            });
+        }
+
+        return Ok(new ApiResponse<PatientProfileResponse>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data,
+        });
+    }
+
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(ApiResponse<PatientProfileResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<PatientProfileResponse>), StatusCodes.Status404NotFound)]

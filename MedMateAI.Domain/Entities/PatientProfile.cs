@@ -12,5 +12,6 @@ public sealed class PatientProfile : BaseEntity
 
     public string? AllergyNote { get; set; }
 
-    public string? ChronicDiseaseNote { get; set; }
+    public ICollection<PatientChronicDisease> ChronicDiseases { get; set; } =
+        new List<PatientChronicDisease>();
 }

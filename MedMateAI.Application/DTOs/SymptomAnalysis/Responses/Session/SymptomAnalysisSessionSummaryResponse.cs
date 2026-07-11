@@ -12,5 +12,7 @@ public sealed class SymptomAnalysisSessionSummaryResponse
 
     public SymptomAnalysisSessionStatus Status { get; set; }
 
+    public SymptomAnalysisSessionType SessionType { get; set; }
+
     public DateTime CreatedAt { get; set; }
 }

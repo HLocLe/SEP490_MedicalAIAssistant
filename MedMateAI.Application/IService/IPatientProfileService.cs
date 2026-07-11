@@ -18,6 +18,10 @@ public interface IPatientProfileService
         Guid id,
         CancellationToken cancellationToken = default);
 
+    Task<(bool NotFound, PatientProfileResponse? Data)> GetPatientProfileByUserIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
     Task<(bool Succeeded, IEnumerable<string> Errors, PatientProfileResponse? Data)> CreatePatientProfileAsync(
         CreatePatientProfileRequest request,
         CancellationToken cancellationToken = default);

@@ -3,6 +3,7 @@ using MedMateAI.Application.DTOs.SymptomAnalysis.Requests;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
 using MedMateAI.Application.IService;
+using MedMateAI.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -175,6 +176,7 @@ public sealed class SymptomAnalysisController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<SymptomAnalysisSessionSummaryResponse>>), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetMySessions(
         [FromQuery] PaginationQuery query,
+        [FromQuery] SymptomAnalysisSessionType? sessionType,
         CancellationToken cancellationToken = default)
     {
         var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
@@ -189,6 +191,7 @@ public sealed class SymptomAnalysisController : ControllerBase
 
         var data = await _symptomAnalysisService.GetSessionsByUserIdAsync(
             currentUser.Id,
+            sessionType,
             query.PageNumber,
             query.PageSize,
             cancellationToken);
