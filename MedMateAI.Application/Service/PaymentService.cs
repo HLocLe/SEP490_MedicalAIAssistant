@@ -1,6 +1,8 @@
 using System.Globalization;
+using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Payments.PayOS;
 using MedMateAI.Application.DTOs.Payments.Responses;
+using MedMateAI.Domain.Common;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
@@ -114,6 +116,39 @@ public sealed class PaymentService : IPaymentService
         return BuildPaymentStatusResponse(transaction, orderCode);
     }
 
+    public async Task<PagedResponse<PaymentResponse>> GetAllPaymentsAsync(
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var paged = await _unitOfWork.Payments.GetPagedWithSubscriptionAsync(
+            pageNumber,
+            pageSize,
+            cancellationToken);
+
+        return MapToPagedResponse(paged);
+    }
+
+    public async Task<PagedResponse<PaymentResponse>> GetPaymentsByUserIdAsync(
+        Guid userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return CreateEmptyPagedResponse(pageNumber, pageSize);
+        }
+
+        var paged = await _unitOfWork.Payments.GetPagedByUserIdWithSubscriptionAsync(
+            userId,
+            pageNumber,
+            pageSize,
+            cancellationToken);
+
+        return MapToPagedResponse(paged);
+    }
+
     public async Task<PaymentResponse?> GetPaymentByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default)
@@ -129,19 +164,7 @@ public sealed class PaymentService : IPaymentService
             return null;
         }
 
-        return new PaymentResponse
-        {
-            Id = payment.Id,
-            UserId = payment.UserId,
-            UserSubscriptionId = payment.UserSubscriptionId,
-            Amount = payment.Amount,
-            Currency = payment.Currency,
-            Status = payment.Status,
-            StatusName = payment.Status.ToString(),
-            PaidAt = payment.PaidAt,
-            CreatedAt = payment.CreatedAt,
-            UpdatedAt = payment.UpdatedAt,
-        };
+        return MapToResponse(payment);
     }
 
     private async Task<PayOSReturnResponse> BuildPayOSRedirectStatusResponseAsync(
@@ -326,6 +349,54 @@ public sealed class PaymentService : IPaymentService
             IsActive = isActive,
             IsCancelled = isCancelled,
             Message = BuildPaymentStatusMessage(payment?.Status, subscription?.Status),
+        };
+    }
+
+    private static PagedResponse<PaymentResponse> MapToPagedResponse(
+        PagedResult<Payment> paged)
+    {
+        return new PagedResponse<PaymentResponse>
+        {
+            PageNumber = paged.PageNumber,
+            PageSize = paged.PageSize,
+            TotalCount = paged.TotalCount,
+            TotalPages = paged.TotalPages,
+            Items = paged.Items.Select(MapToResponse).ToList(),
+        };
+    }
+
+    private static PaymentResponse MapToResponse(Payment payment)
+    {
+        return new PaymentResponse
+        {
+            Id = payment.Id,
+            UserId = payment.UserId,
+            UserSubscriptionId = payment.UserSubscriptionId,
+            Amount = payment.Amount,
+            Currency = payment.Currency,
+            Status = payment.Status,
+            StatusName = payment.Status.ToString(),
+            PaidAt = payment.PaidAt,
+            CreatedAt = payment.CreatedAt,
+            UpdatedAt = payment.UpdatedAt,
+        };
+    }
+
+    private static PagedResponse<PaymentResponse> CreateEmptyPagedResponse(
+        int pageNumber,
+        int pageSize)
+    {
+        var normalizedPageNumber = pageNumber < 1 ? 1 : pageNumber;
+        var normalizedPageSize = pageSize < 1 ? 10 : pageSize;
+        normalizedPageSize = normalizedPageSize > 100 ? 100 : normalizedPageSize;
+
+        return new PagedResponse<PaymentResponse>
+        {
+            PageNumber = normalizedPageNumber,
+            PageSize = normalizedPageSize,
+            TotalCount = 0,
+            TotalPages = 0,
+            Items = Array.Empty<PaymentResponse>(),
         };
     }
 

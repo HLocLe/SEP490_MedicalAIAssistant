@@ -105,6 +105,58 @@ public sealed class PaymentsController : ControllerBase
         });
     }
 
+    [Authorize(Roles = "Admin")]
+    [HttpGet]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<PaymentResponse>>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> List(
+        [FromQuery] PaginationQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        var data = await _paymentService.GetAllPaymentsAsync(
+            query.PageNumber,
+            query.PageSize,
+            cancellationToken);
+
+        return Ok(new ApiResponse<PagedResponse<PaymentResponse>>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data,
+        });
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpGet("user/{userId:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<PaymentResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<PaymentResponse>>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetByUserId(
+        Guid userId,
+        [FromQuery] PaginationQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return BadRequest(new ApiResponse<PagedResponse<PaymentResponse>>
+            {
+                Success = false,
+                Message = "Invalid user id.",
+            });
+        }
+
+        var data = await _paymentService.GetPaymentsByUserIdAsync(
+            userId,
+            query.PageNumber,
+            query.PageSize,
+            cancellationToken);
+
+        return Ok(new ApiResponse<PagedResponse<PaymentResponse>>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data,
+        });
+    }
+
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ApiResponse<PaymentResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<PaymentResponse>), StatusCodes.Status400BadRequest)]
