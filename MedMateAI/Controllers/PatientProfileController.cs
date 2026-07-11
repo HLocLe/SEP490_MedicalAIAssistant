@@ -12,6 +12,8 @@ namespace MedMateAI.Controllers;
 
 public sealed class PatientProfileController : ControllerBase
 {
+    private const string PatientProfileNotFoundMessage = "Patient profile not found.";
+
     private readonly IPatientProfileService _patientProfileService;
 
     public PatientProfileController(IPatientProfileService patientProfileService)
@@ -30,6 +32,39 @@ public sealed class PatientProfileController : ControllerBase
             cancellationToken);
 
         return Ok(new ApiResponse<PagedResponse<PatientProfileResponse>>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data,
+        });
+    }
+
+    [HttpGet("by-user/{userId}")]
+    [ProducesResponseType(typeof(ApiResponse<PatientProfileResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PatientProfileResponse>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<PatientProfileResponse>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetByUserId(Guid userId, CancellationToken cancellationToken)
+    {
+        if (userId == Guid.Empty)
+        {
+            return BadRequest(new ApiResponse<PatientProfileResponse>
+            {
+                Success = false,
+                Message = "Invalid user id.",
+            });
+        }
+
+        var (notFound, data) = await _patientProfileService.GetPatientProfileByUserIdAsync(userId, cancellationToken);
+        if (notFound || data is null)
+        {
+            return NotFound(new ApiResponse<PatientProfileResponse>
+            {
+                Success = false,
+                Message = PatientProfileNotFoundMessage,
+            });
+        }
+
+        return Ok(new ApiResponse<PatientProfileResponse>
         {
             Success = true,
             Message = "OK",
@@ -57,7 +92,7 @@ public sealed class PatientProfileController : ControllerBase
             return NotFound(new ApiResponse<PatientProfileResponse>
             {
                 Success = false,
-                Message = "Patient profile not found.",
+                Message = PatientProfileNotFoundMessage,
             });
         }
 
@@ -116,7 +151,7 @@ public sealed class PatientProfileController : ControllerBase
             return NotFound(new ApiResponse<PatientProfileResponse>
             {
                 Success = false,
-                Message = "Patient profile not found.",
+                Message = PatientProfileNotFoundMessage,
             });
         }
 
@@ -161,7 +196,7 @@ public sealed class PatientProfileController : ControllerBase
             return NotFound(new ApiResponse
             {
                 Success = false,
-                Message = "Patient profile not found.",
+                Message = PatientProfileNotFoundMessage,
             });
         }
 

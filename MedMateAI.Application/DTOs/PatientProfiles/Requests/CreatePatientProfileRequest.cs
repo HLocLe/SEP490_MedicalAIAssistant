@@ -13,5 +13,5 @@ public sealed class CreatePatientProfileRequest
 
     public string? AllergyNote { get; set; }
 
-    public string? ChronicDiseaseNote { get; set; }
+    public IReadOnlyList<PatientChronicDiseaseItemCreateRequest>? ChronicDiseases { get; set; }
 }

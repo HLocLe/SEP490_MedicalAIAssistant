@@ -10,5 +10,5 @@ public sealed class UpdatePatientProfileRequest
 
     public string? AllergyNote { get; set; }
 
-    public string? ChronicDiseaseNote { get; set; }
+    public IReadOnlyList<PatientChronicDiseaseItemUpdateRequest>? ChronicDiseases { get; set; }
 }

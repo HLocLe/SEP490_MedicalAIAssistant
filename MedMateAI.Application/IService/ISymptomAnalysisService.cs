@@ -2,6 +2,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Requests;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
+using MedMateAI.Domain.Enums;
 
 namespace MedMateAI.Application.IService;
 
@@ -13,6 +14,7 @@ public interface ISymptomAnalysisService
 
     Task<PagedResponse<SymptomAnalysisSessionSummaryResponse>> GetSessionsByUserIdAsync(
         Guid userId,
+        SymptomAnalysisSessionType? sessionType,
         int pageNumber,
         int pageSize,
         CancellationToken cancellationToken = default);

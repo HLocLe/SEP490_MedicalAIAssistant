@@ -69,6 +69,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
     // 
     public async Task<PagedResponse<SymptomAnalysisSessionSummaryResponse>> GetSessionsByUserIdAsync(
         Guid userId,
+        SymptomAnalysisSessionType? sessionType,
         int pageNumber,
         int pageSize,
         CancellationToken cancellationToken = default)
@@ -80,6 +81,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
 
         var paged = await _unitOfWork.SymptomAnalysisSessions.GetPagedByUserIdAsync(
             userId,
+            sessionType,
             pageNumber,
             pageSize,
             cancellationToken);
@@ -97,6 +99,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
                     InputText = session.InputText,
                     SeverityLevel = session.SeverityLevel,
                     Status = session.Status,
+                    SessionType = session.SessionType,
                     CreatedAt = session.CreatedAt,
                 })
                 .ToList(),
@@ -406,8 +409,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             await SaveDepartmentRecommendationAsync(session.Id, recommendedDepartment, cancellationToken);
         }
 
-        await ReplaceSessionSymptomsAsync(session.Id, coreResult.Diagnoses, cancellationToken);
-
+        session.SessionType = SymptomAnalysisSessionType.Department;
         session.Status = SymptomAnalysisSessionStatus.Completed;
         session.CompletedAt = DateTime.UtcNow;
         session.UpdatedAt = DateTime.UtcNow;
@@ -434,6 +436,17 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
        
         var coreResult = await RunMedGemmaAnalysisCoreAsync(session, bayesianPrompt, cancellationToken);
 
+        var vietnameseDiagnoses = await TranslateDiagnosesToVietnameseAsync(
+            coreResult.Diagnoses,
+            cancellationToken);
+
+        await ReplaceSessionSymptomsAsync(session.Id, vietnameseDiagnoses, cancellationToken);
+
+        session.SessionType = SymptomAnalysisSessionType.Diagnoses;
+        session.Status = SymptomAnalysisSessionStatus.Completed;
+        session.CompletedAt = DateTime.UtcNow;
+        session.UpdatedAt = DateTime.UtcNow;
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return new DiagnosisDisplayAnalyzeResponse
@@ -441,7 +454,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             SessionId = session.Id,
             Status = session.Status,
             Model = coreResult.Model,
-            Diagnoses = coreResult.Diagnoses,
+            Diagnoses = vietnameseDiagnoses,
            
         };
     }
@@ -480,34 +493,29 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         var pB = parsedDiagnoses.Sum(d => d.PA * d.PBGivenA);
 
         var diagnoses = new List<BayesianDiagnosisResponse>(parsedDiagnoses.Count);
-        foreach (var parsed in parsedDiagnoses)     
-        
+
+        foreach (var parsed in parsedDiagnoses)
+
         {
-        var lookup = string.IsNullOrWhiteSpace(parsed.SearchKeyword)
-        ? null
-        : await _icdLookupService.SearchFirstAsync(parsed.SearchKeyword, cancellationToken);
-        diagnoses.Add(new BayesianDiagnosisResponse
-        {
-        DiseaseName = parsed.DiseaseName,
-        SearchKeyword = parsed.SearchKeyword,
-        Icd10Code = lookup?.Icd10Code ?? string.Empty,  
-        PA = parsed.PA,
-        PBGivenA = parsed.PBGivenA,
-        PAGivenB = pB > 0 ? (parsed.PA * parsed.PBGivenA) / pB : 0,
-        ClinicalReasoning = parsed.ClinicalReasoning,
-        });
+            var lookup = string.IsNullOrWhiteSpace(parsed.SearchKeyword)
+            ? null
+            : await _icdLookupService.SearchFirstAsync(parsed.SearchKeyword, cancellationToken);
+            diagnoses.Add(new BayesianDiagnosisResponse
+            {
+                DiseaseName = parsed.DiseaseName,
+                SearchKeyword = parsed.SearchKeyword,
+                Icd10Code = lookup?.Icd10Code ?? string.Empty,
+                PA = parsed.PA,
+                PBGivenA = parsed.PBGivenA,
+                PAGivenB = pB > 0 ? (parsed.PA * parsed.PBGivenA) / pB : 0,
+                ClinicalReasoning = parsed.ClinicalReasoning,
+            });
         }
 
         diagnoses = diagnoses
         .OrderByDescending(d => d.PAGivenB)
         .Select((d, index) => { d.Rank = index + 1; return d; })
         .ToList();
-
-        await ReplaceSessionSymptomsAsync(session.Id, diagnoses, cancellationToken);
-
-        session.Status = SymptomAnalysisSessionStatus.Completed;
-        session.CompletedAt = DateTime.UtcNow;
-        session.UpdatedAt = DateTime.UtcNow;
 
         return new MedGemmaAnalysisCoreResult(diagnoses, aiResult.Model);
     }
@@ -624,9 +632,9 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         IReadOnlyList<SessionClinicalQuestionAnswer> answers,
         CancellationToken cancellationToken)
     {
-        //var translatedInput = await _translationService.TranslateToEnglishAsync(
-        //    userInput,
-        //    cancellationToken: cancellationToken);
+        var translatedInput = await _translationService.TranslateToEnglishAsync(
+            userInput,
+            cancellationToken: cancellationToken);
 
         var builder = new StringBuilder();
 
@@ -700,6 +708,12 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         {
             builder.AppendLine($"patient has the following signs: {string.Join(", ", positive)}");
         }
+
+        else if (!string.IsNullOrWhiteSpace(translatedInput))
+        {
+            builder.AppendLine($"patient has the following signs: {translatedInput}");
+        }
+
         if (negative.Count > 0)
         {
             builder.AppendLine($"patient does not has the following signs: {string.Join(", ", negative)}");
@@ -724,6 +738,49 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         builder.AppendLine("}");
 
         return builder.ToString();
+    }
+
+    //
+    private async Task<IReadOnlyList<BayesianDiagnosisResponse>> TranslateDiagnosesToVietnameseAsync(
+        IReadOnlyList<BayesianDiagnosisResponse> diagnoses,
+        CancellationToken cancellationToken)
+    {
+        if (diagnoses.Count == 0)
+        {
+            return diagnoses;
+        }
+
+        var texts = diagnoses
+            .SelectMany(diagnosis => new[] { diagnosis.DiseaseName, diagnosis.ClinicalReasoning })
+            .ToList();
+
+        var translatedTexts = await _translationService.TranslateBatchToVietnameseAsync(texts, cancellationToken);
+
+        if (translatedTexts.Count != texts.Count)
+        {
+            return diagnoses;
+        }
+
+        var vietnameseDiagnoses = new List<BayesianDiagnosisResponse>(diagnoses.Count);
+
+        for (var i = 0; i < diagnoses.Count; i++)
+        {
+            var diagnosis = diagnoses[i];
+
+            vietnameseDiagnoses.Add(new BayesianDiagnosisResponse
+            {
+                Rank = diagnosis.Rank,
+                DiseaseName = translatedTexts[i * 2],
+                SearchKeyword = diagnosis.SearchKeyword,
+                Icd10Code = diagnosis.Icd10Code,
+                PA = diagnosis.PA,
+                PBGivenA = diagnosis.PBGivenA,
+                PAGivenB = diagnosis.PAGivenB,
+                ClinicalReasoning = translatedTexts[(i * 2) + 1],
+            });
+        }
+
+        return vietnameseDiagnoses;
     }
 
     //

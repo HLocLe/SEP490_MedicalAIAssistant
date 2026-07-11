@@ -21,6 +21,10 @@ public sealed class SymptomAnalysisSessionConfiguration : IEntityTypeConfigurati
             .IsRequired()
             .HasDefaultValue(SymptomAnalysisSessionStatus.Processing);
 
+        builder.Property(x => x.SessionType)
+            .IsRequired()
+            .HasDefaultValue(SymptomAnalysisSessionType.None);
+
         builder.HasOne<ApplicationUser>()
             .WithMany(x => x.SymptomAnalysisSessions)
             .HasForeignKey(x => x.UserId)
@@ -39,6 +43,7 @@ public sealed class SymptomAnalysisSessionConfiguration : IEntityTypeConfigurati
 
         builder.HasIndex(x => x.ChapterCode);
         builder.HasIndex(x => x.UserId);
+        builder.HasIndex(x => new { x.UserId, x.SessionType });
 
         builder.HasMany(x => x.SessionSymptoms)
             .WithOne(x => x.SymptomAnalysisSession)
@@ -49,10 +54,5 @@ public sealed class SymptomAnalysisSessionConfiguration : IEntityTypeConfigurati
             .WithOne(x => x.SymptomAnalysisSession)
             .HasForeignKey(x => x.SymptomAnalysisSessionId)
             .OnDelete(DeleteBehavior.Cascade);
-
-        builder.HasMany(x => x.ConsultationSessions)
-            .WithOne(x => x.SymptomAnalysisSession)
-            .HasForeignKey(x => x.SymptomAnalysisSessionId)
-            .OnDelete(DeleteBehavior.Restrict);
     }
 }
