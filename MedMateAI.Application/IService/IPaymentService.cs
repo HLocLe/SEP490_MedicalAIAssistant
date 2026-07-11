@@ -1,3 +1,4 @@
+using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Payments.Responses;
 
 namespace MedMateAI.Application.IService;
@@ -18,6 +19,17 @@ public interface IPaymentService
 
     Task<PayOSPaymentStatusResponse?> GetPayOSPaymentStatusAsync(
         long orderCode,
+        CancellationToken cancellationToken = default);
+
+    Task<PagedResponse<PaymentResponse>> GetAllPaymentsAsync(
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default);
+
+    Task<PagedResponse<PaymentResponse>> GetPaymentsByUserIdAsync(
+        Guid userId,
+        int pageNumber,
+        int pageSize,
         CancellationToken cancellationToken = default);
 
     Task<PaymentResponse?> GetPaymentByIdAsync(
