@@ -1,9 +1,9 @@
 using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.MedGemma;
 using MedMateAI.Application.IService;
 using MedMateAI.Infrastructure.AI.DTOs.MedGemma;
+using MedMateAI.Infrastructure.AI.Helpers;
 using MedMateAI.Infrastructure.AI.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -67,24 +67,14 @@ public sealed class MedGemmaChatService : IMedGemmaChatService
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/chat/completions");
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        httpRequest.Content = new StringContent(
-            JsonSerializer.Serialize(payload),
-            Encoding.UTF8,
-            "application/json");
+        AiHttpClientHelper.SetJsonContent(httpRequest, payload);
 
-        using var httpResponse = await _httpClient.SendAsync(httpRequest, cancellationToken);
-        var responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!httpResponse.IsSuccessStatusCode)
-        {
-            _logger.LogWarning(
-                "MedGemma request failed with status code {StatusCode}. Response: {ResponseBody}",
-                (int)httpResponse.StatusCode,
-                Truncate(responseBody, 500));
-
-            throw new InvalidOperationException(
-                $"MedGemma request failed with status code {(int)httpResponse.StatusCode}. Response: {Truncate(responseBody, 500)}");
-        }
+        var responseBody = await AiHttpClientHelper.SendJsonAsync(
+            _httpClient,
+            httpRequest,
+            _logger,
+            "MedGemma",
+            cancellationToken);
 
         MedGemmaChatCompletionResponse? response;
         try
@@ -108,15 +98,5 @@ public sealed class MedGemmaChatService : IMedGemmaChatService
             Content = content.Trim(),
             Model = response?.Model ?? model,
         };
-    }
-
-    private static string Truncate(string value, int maxLength)
-    {
-        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
-        {
-            return value;
-        }
-
-        return value[..maxLength];
     }
 }

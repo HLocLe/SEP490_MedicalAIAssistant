@@ -1,9 +1,9 @@
 using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
 using MedMateAI.Application.DTOs.CloudFlareAI.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Infrastructure.AI.DTOs.CloudFlare;
+using MedMateAI.Infrastructure.AI.Helpers;
 using MedMateAI.Infrastructure.AI.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -60,24 +60,14 @@ public sealed class CloudFlareAIChatService : ICloudFlareAIChatService
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, _options.Endpoint.Trim());
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiToken.Trim());
         httpRequest.Headers.TryAddWithoutValidation("cf-aig-gateway-id", _options.GatewayId.Trim());
-        httpRequest.Content = new StringContent(
-            JsonSerializer.Serialize(payload),
-            Encoding.UTF8,
-            "application/json");
+        AiHttpClientHelper.SetJsonContent(httpRequest, payload);
 
-        using var httpResponse = await _httpClient.SendAsync(httpRequest, cancellationToken);
-        var responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!httpResponse.IsSuccessStatusCode)
-        {
-            _logger.LogWarning(
-                "CloudFlare AI request failed with status code {StatusCode}. Response: {ResponseBody}",
-                (int)httpResponse.StatusCode,
-                Truncate(responseBody, 500));
-
-            throw new InvalidOperationException(
-                $"CloudFlare AI request failed with status code {(int)httpResponse.StatusCode}. Response: {Truncate(responseBody, 500)}");
-        }
+        var responseBody = await AiHttpClientHelper.SendJsonAsync(
+            _httpClient,
+            httpRequest,
+            _logger,
+            "CloudFlare AI",
+            cancellationToken);
 
         CloudFlareAIRunResponse? response;
         try
@@ -158,15 +148,5 @@ public sealed class CloudFlareAIChatService : ICloudFlareAIChatService
             new { role = "system", content = systemPrompt.Trim() },
             new { role = "user", content = userPrompt.Trim() },
         ];
-    }
-
-    private static string Truncate(string value, int maxLength)
-    {
-        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
-        {
-            return value;
-        }
-
-        return value[..maxLength];
     }
 }
