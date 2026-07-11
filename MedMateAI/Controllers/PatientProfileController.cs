@@ -12,6 +12,8 @@ namespace MedMateAI.Controllers;
 
 public sealed class PatientProfileController : ControllerBase
 {
+    private const string PatientProfileNotFoundMessage = "Patient profile not found.";
+
     private readonly IPatientProfileService _patientProfileService;
 
     public PatientProfileController(IPatientProfileService patientProfileService)
@@ -58,7 +60,7 @@ public sealed class PatientProfileController : ControllerBase
             return NotFound(new ApiResponse<PatientProfileResponse>
             {
                 Success = false,
-                Message = "Patient profile not found.",
+                Message = PatientProfileNotFoundMessage,
             });
         }
 
@@ -90,7 +92,7 @@ public sealed class PatientProfileController : ControllerBase
             return NotFound(new ApiResponse<PatientProfileResponse>
             {
                 Success = false,
-                Message = "Patient profile not found.",
+                Message = PatientProfileNotFoundMessage,
             });
         }
 
@@ -149,7 +151,7 @@ public sealed class PatientProfileController : ControllerBase
             return NotFound(new ApiResponse<PatientProfileResponse>
             {
                 Success = false,
-                Message = "Patient profile not found.",
+                Message = PatientProfileNotFoundMessage,
             });
         }
 
@@ -194,7 +196,7 @@ public sealed class PatientProfileController : ControllerBase
             return NotFound(new ApiResponse
             {
                 Success = false,
-                Message = "Patient profile not found.",
+                Message = PatientProfileNotFoundMessage,
             });
         }
 

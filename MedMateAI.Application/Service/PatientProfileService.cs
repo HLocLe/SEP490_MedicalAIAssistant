@@ -11,6 +11,8 @@ namespace MedMateAI.Application.Service;
 
 public sealed class PatientProfileService : IPatientProfileService
 {
+    private const int MaxChronicDiseaseItems = 100;
+
     private readonly IUserService _userService;
     private readonly IGenericRepository<PatientProfile> _patientProfiles;
     private readonly IGenericRepository<PatientChronicDisease> _chronicDiseases;
@@ -140,7 +142,7 @@ public sealed class PatientProfileService : IPatientProfileService
         CancellationToken cancellationToken = default)
     {
        
-        if (request.UserId==Guid.Empty)
+        if (request.UserId == Guid.Empty)
         {
             return (false, new[] { "userid is required." }, null);
         }
@@ -331,7 +333,7 @@ public sealed class PatientProfileService : IPatientProfileService
                 DiseaseName = item.DiseaseName.Trim(),
                 From = item.From,
                 To = item.To,
-                Note = string.IsNullOrWhiteSpace(item.Note) ? null : item.Note.Trim(),
+                Note = NormalizeChronicDiseaseNote(item.Note),
                 CreatedAt = DateTime.UtcNow,
             });
         }
@@ -349,53 +351,96 @@ public sealed class PatientProfileService : IPatientProfileService
             asNoTracking: false,
             cancellationToken: cancellationToken);
 
-        var requestedIds = items
-            .Where(item => item.Id.HasValue && item.Id.Value != Guid.Empty)
-            .Select(item => item.Id!.Value)
-            .ToHashSet();
-
-        foreach (var existingDisease in existing.Items)
-        {
-            if (!requestedIds.Contains(existingDisease.Id))
-            {
-                existingDisease.IsDeleted = true;
-                existingDisease.DeletedAt = DateTime.UtcNow;
-                existingDisease.UpdatedAt = DateTime.UtcNow;
-            }
-        }
+        MarkRemovedChronicDiseases(existing.Items, GetRequestedChronicDiseaseIds(items));
 
         foreach (var item in items)
         {
-            if (item.Id.HasValue && item.Id.Value != Guid.Empty)
+            var syncError = ApplyChronicDiseaseSyncItem(patientProfileId, item, existing.Items);
+            if (syncError is not null)
             {
-                var existingDisease = existing.Items.FirstOrDefault(disease => disease.Id == item.Id.Value);
-                if (existingDisease is null)
-                {
-                    return new[] { $"Chronic disease '{item.Id.Value}' was not found for this profile." };
-                }
-
-                existingDisease.DiseaseName = item.DiseaseName.Trim();
-                existingDisease.From = item.From;
-                existingDisease.To = item.To;
-                existingDisease.Note = string.IsNullOrWhiteSpace(item.Note) ? null : item.Note.Trim();
-                existingDisease.UpdatedAt = DateTime.UtcNow;
-                continue;
+                return new[] { syncError };
             }
-
-            _chronicDiseases.Add(new PatientChronicDisease
-            {
-                Id = Guid.NewGuid(),
-                PatientProfileId = patientProfileId,
-                DiseaseName = item.DiseaseName.Trim(),
-                From = item.From,
-                To = item.To,
-                Note = string.IsNullOrWhiteSpace(item.Note) ? null : item.Note.Trim(),
-                CreatedAt = DateTime.UtcNow,
-            });
         }
 
         return Array.Empty<string>();
     }
+
+    private static HashSet<Guid> GetRequestedChronicDiseaseIds(
+        IReadOnlyList<PatientChronicDiseaseItemUpdateRequest> items)
+    {
+        return items
+            .Where(item => HasExistingChronicDiseaseId(item.Id))
+            .Select(item => item.Id!.Value)
+            .ToHashSet();
+    }
+
+    private static void MarkRemovedChronicDiseases(
+        IReadOnlyList<PatientChronicDisease> existingDiseases,
+        HashSet<Guid> requestedIds)
+    {
+        var utcNow = DateTime.UtcNow;
+
+        foreach (var existingDisease in existingDiseases.Where(disease => !requestedIds.Contains(disease.Id)))
+        {
+            existingDisease.IsDeleted = true;
+            existingDisease.DeletedAt = utcNow;
+            existingDisease.UpdatedAt = utcNow;
+        }
+    }
+
+    private string? ApplyChronicDiseaseSyncItem(
+        Guid patientProfileId,
+        PatientChronicDiseaseItemUpdateRequest item,
+        IReadOnlyList<PatientChronicDisease> existingDiseases)
+    {
+        if (!HasExistingChronicDiseaseId(item.Id))
+        {
+            AddChronicDiseaseFromUpdateRequest(patientProfileId, item);
+            return null;
+        }
+
+        var existingDisease = existingDiseases.FirstOrDefault(disease => disease.Id == item.Id!.Value);
+        if (existingDisease is null)
+        {
+            return $"Chronic disease '{item.Id!.Value}' was not found for this profile.";
+        }
+
+        UpdateChronicDiseaseFromRequest(existingDisease, item);
+        return null;
+    }
+
+    private void AddChronicDiseaseFromUpdateRequest(
+        Guid patientProfileId,
+        PatientChronicDiseaseItemUpdateRequest item)
+    {
+        _chronicDiseases.Add(new PatientChronicDisease
+        {
+            Id = Guid.NewGuid(),
+            PatientProfileId = patientProfileId,
+            DiseaseName = item.DiseaseName.Trim(),
+            From = item.From,
+            To = item.To,
+            Note = NormalizeChronicDiseaseNote(item.Note),
+            CreatedAt = DateTime.UtcNow,
+        });
+    }
+
+    private static void UpdateChronicDiseaseFromRequest(
+        PatientChronicDisease existingDisease,
+        PatientChronicDiseaseItemUpdateRequest item)
+    {
+        existingDisease.DiseaseName = item.DiseaseName.Trim();
+        existingDisease.From = item.From;
+        existingDisease.To = item.To;
+        existingDisease.Note = NormalizeChronicDiseaseNote(item.Note);
+        existingDisease.UpdatedAt = DateTime.UtcNow;
+    }
+
+    private static bool HasExistingChronicDiseaseId(Guid? id) =>
+        id.HasValue && id.Value != Guid.Empty;
+
+    private static string? NormalizeChronicDiseaseNote(string? note) =>
+        string.IsNullOrWhiteSpace(note) ? null : note.Trim();
 
     private async Task SoftDeleteChronicDiseasesAsync(
         Guid patientProfileId,
@@ -417,38 +462,38 @@ public sealed class PatientProfileService : IPatientProfileService
     }
 
     private static IReadOnlyList<string> ValidateChronicDiseaseCreateItems(
-        IReadOnlyList<PatientChronicDiseaseItemCreateRequest>? items)
-    {
-        if (items is null || items.Count == 0)
-        {
-            return Array.Empty<string>();
-        }
-
-        var errors = new List<string>();
-
-        for (var index = 0; index < items.Count; index++)
-        {
-            var item = items[index];
-            ValidateChronicDiseaseFields(item.DiseaseName, item.From, item.To, index, errors);
-        }
-
-        return errors;
-    }
+        IReadOnlyList<PatientChronicDiseaseItemCreateRequest>? items) =>
+        ValidateChronicDiseaseItems(items, item => (item.DiseaseName, item.From, item.To));
 
     private static IReadOnlyList<string> ValidateChronicDiseaseUpdateItems(
-        IReadOnlyList<PatientChronicDiseaseItemUpdateRequest>? items)
+        IReadOnlyList<PatientChronicDiseaseItemUpdateRequest>? items) =>
+        ValidateChronicDiseaseItems(items, item => (item.DiseaseName, item.From, item.To));
+
+    private static IReadOnlyList<string> ValidateChronicDiseaseItems<T>(
+        IReadOnlyList<T>? items,
+        Func<T, (string DiseaseName, DateOnly? From, DateOnly? To)> fieldSelector)
     {
         if (items is null || items.Count == 0)
         {
             return Array.Empty<string>();
         }
 
+        if (items.Count > MaxChronicDiseaseItems)
+        {
+            return new[] { $"At most {MaxChronicDiseaseItems} chronic diseases are allowed." };
+        }
+
         var errors = new List<string>();
 
-        for (var index = 0; index < items.Count; index++)
+        for (var index = 0; index < MaxChronicDiseaseItems; index++)
         {
-            var item = items[index];
-            ValidateChronicDiseaseFields(item.DiseaseName, item.From, item.To, index, errors);
+            if (index >= items.Count)
+            {
+                break;
+            }
+
+            var fields = fieldSelector(items[index]);
+            ValidateChronicDiseaseFields(fields.DiseaseName, fields.From, fields.To, index, errors);
         }
 
         return errors;
