@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace MedMateAI.Application.DTOs.FeedbackReviews.Responses;
 
 public sealed class FeedbackReviewResponse
@@ -16,7 +18,8 @@ public sealed class FeedbackReviewResponse
 
     public string? Comment { get; set; }
 
-    public string? ImageUrl { get; set; }
+    [JsonPropertyName("imageUrls")]
+    public Dictionary<string, string> ImageUrls { get; set; } = new();
 
     public string? Status { get; set; }
 

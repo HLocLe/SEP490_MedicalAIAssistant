@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace MedMateAI.Application.DTOs.FeedbackReviews.Requests;
 
 public sealed class UpdateFeedbackReviewRequest
@@ -6,5 +8,6 @@ public sealed class UpdateFeedbackReviewRequest
 
     public string? Comment { get; set; }
 
-    public string? ImageUrl { get; set; }
+    [JsonPropertyName("imageUrls")]
+    public Dictionary<string, string?>? ImageUrls { get; set; }
 }
