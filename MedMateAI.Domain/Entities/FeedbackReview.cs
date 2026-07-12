@@ -10,6 +10,8 @@ public sealed class FeedbackReview : BaseEntity
 
     public string? Comment { get; set; }
 
+    public string? ImageUrl { get; set; }
+
     public string? Status { get; set; }
 
     public MedicalFacility Facility { get; set; } = null!;

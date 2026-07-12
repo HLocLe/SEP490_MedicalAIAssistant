@@ -7,4 +7,6 @@ public sealed class CreateFeedbackReviewRequest
     public int Rating { get; set; }
 
     public string? Comment { get; set; }
+
+    public string? ImageUrl { get; set; }
 }

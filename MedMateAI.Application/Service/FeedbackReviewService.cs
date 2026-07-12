@@ -19,6 +19,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
     private const string RejectedStatus = "Rejected";
     private const string PendingStatus = "Pending";
     private const int MaxCommentLength = 1000;
+    private const int ImageUrlMaxLength = 2048;
 
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
     private static readonly DistributedCacheEntryOptions CacheOptions = new()
@@ -153,6 +154,9 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             errors.Add($"Comment must be less than or equal to {MaxCommentLength} characters.");
         }
 
+        var imageUrl = NormalizeText(request.ImageUrl);
+        ValidateImageUrl(imageUrl, errors);
+
         var userId = GetCurrentUserId();
         if (!userId.HasValue)
         {
@@ -196,6 +200,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             FacilityId = request.FacilityId,
             Rating = request.Rating,
             Comment = comment,
+            ImageUrl = imageUrl,
             Status = ApprovedStatus,
             CreatedAt = DateTime.UtcNow,
         };
@@ -237,6 +242,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
 
         var errors = new List<string>();
         string? commentFromRequest = null;
+        string? imageUrlFromRequest = null;
 
         if (request.Rating.HasValue && !IsRatingValid(request.Rating.Value))
         {
@@ -252,6 +258,12 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             }
         }
 
+        if (request.ImageUrl is not null)
+        {
+            imageUrlFromRequest = NormalizeText(request.ImageUrl);
+            ValidateImageUrl(imageUrlFromRequest, errors);
+        }
+
         if (errors.Count > 0)
         {
             return (false, false, errors, null);
@@ -265,6 +277,11 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
         if (request.Comment is not null)
         {
             entity.Comment = commentFromRequest;
+        }
+
+        if (request.ImageUrl is not null)
+        {
+            entity.ImageUrl = imageUrlFromRequest;
         }
 
         entity.UpdatedAt = DateTime.UtcNow;
@@ -378,6 +395,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             FacilityAddress = entity.Facility?.Address,
             Rating = entity.Rating,
             Comment = entity.Comment,
+            ImageUrl = entity.ImageUrl,
             Status = entity.Status,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
@@ -412,6 +430,30 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
         return string.IsNullOrWhiteSpace(value)
             ? null
             : value.Trim();
+    }
+
+    private static bool IsValidHttpUrl(string value)
+    {
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+    }
+
+    private static void ValidateImageUrl(string? imageUrl, ICollection<string> errors)
+    {
+        if (imageUrl is null)
+        {
+            return;
+        }
+
+        if (imageUrl.Length > ImageUrlMaxLength)
+        {
+            errors.Add("ImageUrl must be 2048 characters or fewer.");
+        }
+
+        if (!IsValidHttpUrl(imageUrl))
+        {
+            errors.Add("ImageUrl must be a valid absolute http or https URL.");
+        }
     }
 
     private static bool TryNormalizeStatus(string? rawStatus, out string normalizedStatus)
