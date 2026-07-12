@@ -32,6 +32,15 @@ public interface IPaymentService
         int pageSize,
         CancellationToken cancellationToken = default);
 
+    Task<(bool Succeeded, IEnumerable<string> Errors, PagedResponse<PaymentResponse>? Data)> GetMyPaymentsAsync(
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default);
+
+    Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, PaymentResponse? Data)> GetMyPaymentByIdAsync(
+        Guid id,
+        CancellationToken cancellationToken = default);
+
     Task<PaymentResponse?> GetPaymentByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default);

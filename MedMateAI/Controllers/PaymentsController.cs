@@ -157,6 +157,88 @@ public sealed class PaymentsController : ControllerBase
         });
     }
 
+    [Authorize]
+    [HttpGet("me")]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<PaymentResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<PaymentResponse>>), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetMyPayments(
+        [FromQuery] PaginationQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        var (succeeded, errors, data) = await _paymentService.GetMyPaymentsAsync(
+            query.PageNumber,
+            query.PageSize,
+            cancellationToken);
+
+        if (!succeeded || data is null)
+        {
+            return Unauthorized(new ApiResponse<PagedResponse<PaymentResponse>>
+            {
+                Success = false,
+                Message = "Unauthorized",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse<PagedResponse<PaymentResponse>>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data,
+        });
+    }
+
+    [Authorize]
+    [HttpGet("me/{id:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<PaymentResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PaymentResponse>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<PaymentResponse>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<PaymentResponse>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetMyPaymentById(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        if (id == Guid.Empty)
+        {
+            return BadRequest(new ApiResponse<PaymentResponse>
+            {
+                Success = false,
+                Message = "Invalid payment id.",
+            });
+        }
+
+        var (succeeded, notFound, errors, data) = await _paymentService.GetMyPaymentByIdAsync(
+            id,
+            cancellationToken);
+
+        if (notFound)
+        {
+            return NotFound(new ApiResponse<PaymentResponse>
+            {
+                Success = false,
+                Message = "Payment not found.",
+            });
+        }
+
+        if (!succeeded || data is null)
+        {
+            return Unauthorized(new ApiResponse<PaymentResponse>
+            {
+                Success = false,
+                Message = "Unauthorized",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse<PaymentResponse>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data,
+        });
+    }
+
+    [Authorize(Roles = "Admin")]
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ApiResponse<PaymentResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<PaymentResponse>), StatusCodes.Status400BadRequest)]

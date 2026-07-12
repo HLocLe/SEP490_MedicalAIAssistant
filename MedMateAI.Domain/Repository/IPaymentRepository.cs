@@ -19,4 +19,9 @@ public interface IPaymentRepository : IGenericRepository<Payment>
     Task<Payment?> GetByIdWithSubscriptionAsync(
         Guid id,
         CancellationToken cancellationToken = default);
+
+    Task<Payment?> GetByIdAndUserIdWithSubscriptionAsync(
+        Guid id,
+        Guid userId,
+        CancellationToken cancellationToken = default);
 }
