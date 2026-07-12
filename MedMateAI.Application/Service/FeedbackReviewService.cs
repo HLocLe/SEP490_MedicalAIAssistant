@@ -308,6 +308,10 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
         string? CommentFromRequest,
         Dictionary<string, string>? ImageUrlsFromRequest);
 
+    private sealed record ImageUrlPatchEntry(
+        string Key,
+        string? Url);
+
     public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, FeedbackReviewResponse? Data)> UpdateFeedbackReviewStatusAsync(
         Guid id,
         UpdateFeedbackReviewStatusRequest request,
@@ -536,61 +540,89 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             return result;
         }
 
-        var seenKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var pair in patchImageUrls)
         {
-            var key = NormalizeText(pair.Key);
-            var url = NormalizeText(pair.Value);
+            var patch = NormalizePatchImageUrlEntry(pair, seenKeys, errors);
 
-            if (key is null)
+            if (patch is null)
             {
-                errors.Add("ImageUrls contains an invalid empty key.");
                 continue;
             }
 
-            if (key.Length > MaxImageKeyLength)
-            {
-                errors.Add($"ImageUrls key must be {MaxImageKeyLength} characters or fewer.");
-                continue;
-            }
-
-            if (seenKeys.ContainsKey(key))
-            {
-                errors.Add("ImageUrls contains duplicate keys.");
-                continue;
-            }
-
-            seenKeys.Add(key, key);
-
-            if (url is null)
-            {
-                if (result.ContainsKey(key))
-                {
-                    result.Remove(key);
-                }
-
-                continue;
-            }
-
-            ValidateImageUrl(url, errors);
-
-            if (result.ContainsKey(key))
-            {
-                result[key] = url;
-            }
-            else
-            {
-                result.Add(key, url);
-            }
+            ApplyImageUrlPatch(result, patch, errors);
         }
 
-        if (result.Count > MaxFeedbackReviewImages)
+        ValidateImageUrlsCount(result, errors);
+
+        return result;
+    }
+
+    private static ImageUrlPatchEntry? NormalizePatchImageUrlEntry(
+        KeyValuePair<string, string?> pair,
+        ISet<string> seenKeys,
+        ICollection<string> errors)
+    {
+        var key = NormalizeText(pair.Key);
+        var url = NormalizeText(pair.Value);
+
+        if (key is null)
+        {
+            errors.Add("ImageUrls contains an invalid empty key.");
+            return null;
+        }
+
+        if (key.Length > MaxImageKeyLength)
+        {
+            errors.Add($"ImageUrls key must be {MaxImageKeyLength} characters or fewer.");
+            return null;
+        }
+
+        if (!seenKeys.Add(key))
+        {
+            errors.Add("ImageUrls contains duplicate keys.");
+            return null;
+        }
+
+        return new ImageUrlPatchEntry(key, url);
+    }
+
+    private static void ApplyImageUrlPatch(
+        Dictionary<string, string> imageUrls,
+        ImageUrlPatchEntry patch,
+        ICollection<string> errors)
+    {
+        if (patch.Url is null)
+        {
+            if (imageUrls.ContainsKey(patch.Key))
+            {
+                imageUrls.Remove(patch.Key);
+            }
+
+            return;
+        }
+
+        ValidateImageUrl(patch.Url, errors);
+
+        if (imageUrls.ContainsKey(patch.Key))
+        {
+            imageUrls[patch.Key] = patch.Url;
+        }
+        else
+        {
+            imageUrls.Add(patch.Key, patch.Url);
+        }
+    }
+
+    private static void ValidateImageUrlsCount(
+        IReadOnlyDictionary<string, string> imageUrls,
+        ICollection<string> errors)
+    {
+        if (imageUrls.Count > MaxFeedbackReviewImages)
         {
             errors.Add("ImageUrls cannot contain more than 5 images.");
         }
-
-        return result;
     }
 
     private static bool IsValidHttpUrl(string value)
