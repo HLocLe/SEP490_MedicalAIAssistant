@@ -10,7 +10,7 @@ public sealed class FeedbackReview : BaseEntity
 
     public string? Comment { get; set; }
 
-    public string? ImageUrl { get; set; }
+    public Dictionary<string, string> ImageUrls { get; set; } = new();
 
     public string? Status { get; set; }
 

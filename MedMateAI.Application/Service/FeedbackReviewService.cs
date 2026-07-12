@@ -21,6 +21,8 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
     private const string PendingStatus = "Pending";
     private const int MaxCommentLength = 1000;
     private const int ImageUrlMaxLength = 2048;
+    private const int MaxImageKeyLength = 100;
+    private const int MaxFeedbackReviewImages = 5;
 
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
     private static readonly DistributedCacheEntryOptions CacheOptions = new()
@@ -137,8 +139,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             errors.Add($"Comment must be less than or equal to {MaxCommentLength} characters.");
         }
 
-        var imageUrl = NormalizeText(request.ImageUrl);
-        ValidateImageUrl(imageUrl, errors);
+        var imageUrls = NormalizeCreateImageUrls(request.ImageUrls, errors);
 
         var userId = GetCurrentUserId();
         if (!userId.HasValue)
@@ -183,7 +184,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             FacilityId = request.FacilityId,
             Rating = request.Rating,
             Comment = comment,
-            ImageUrl = imageUrl,
+            ImageUrls = imageUrls,
             Status = ApprovedStatus,
             CreatedAt = DateTime.UtcNow,
         };
@@ -219,7 +220,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             return (false, true, new[] { "Feedback review not found." }, null);
         }
 
-        var validation = ValidateUpdateFeedbackReviewRequest(request);
+        var validation = ValidateUpdateFeedbackReviewRequest(request, entity.ImageUrls);
         if (validation.Errors.Count > 0)
         {
             return (false, false, validation.Errors, null);
@@ -229,7 +230,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             entity,
             request,
             validation.CommentFromRequest,
-            validation.ImageUrlFromRequest);
+            validation.ImageUrlsFromRequest);
 
         _unitOfWork.FeedbackReviews.Update(entity);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -246,11 +247,12 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
     }
 
     private static FeedbackReviewUpdateValidationResult ValidateUpdateFeedbackReviewRequest(
-        UpdateFeedbackReviewRequest request)
+        UpdateFeedbackReviewRequest request,
+        Dictionary<string, string>? currentImageUrls)
     {
         var errors = new List<string>();
         string? commentFromRequest = null;
-        string? imageUrlFromRequest = null;
+        Dictionary<string, string>? imageUrlsFromRequest = null;
 
         if (request.Rating.HasValue && !IsRatingValid(request.Rating.Value))
         {
@@ -266,23 +268,22 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             }
         }
 
-        if (request.ImageUrl is not null)
+        if (request.ImageUrls is not null)
         {
-            imageUrlFromRequest = NormalizeText(request.ImageUrl);
-            ValidateImageUrl(imageUrlFromRequest, errors);
+            imageUrlsFromRequest = PatchImageUrls(currentImageUrls, request.ImageUrls, errors);
         }
 
         return new FeedbackReviewUpdateValidationResult(
             errors,
             commentFromRequest,
-            imageUrlFromRequest);
+            imageUrlsFromRequest);
     }
 
     private static void ApplyFeedbackReviewUpdates(
         FeedbackReview entity,
         UpdateFeedbackReviewRequest request,
         string? commentFromRequest,
-        string? imageUrlFromRequest)
+        Dictionary<string, string>? imageUrlsFromRequest)
     {
         if (request.Rating.HasValue)
         {
@@ -294,9 +295,9 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             entity.Comment = commentFromRequest;
         }
 
-        if (request.ImageUrl is not null)
+        if (request.ImageUrls is not null)
         {
-            entity.ImageUrl = imageUrlFromRequest;
+            entity.ImageUrls = imageUrlsFromRequest ?? new Dictionary<string, string>();
         }
 
         entity.UpdatedAt = DateTime.UtcNow;
@@ -305,7 +306,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
     private sealed record FeedbackReviewUpdateValidationResult(
         List<string> Errors,
         string? CommentFromRequest,
-        string? ImageUrlFromRequest);
+        Dictionary<string, string>? ImageUrlsFromRequest);
 
     public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, FeedbackReviewResponse? Data)> UpdateFeedbackReviewStatusAsync(
         Guid id,
@@ -401,7 +402,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             FacilityAddress = entity.Facility?.Address,
             Rating = entity.Rating,
             Comment = entity.Comment,
-            ImageUrl = entity.ImageUrl,
+            ImageUrls = entity.ImageUrls ?? new Dictionary<string, string>(),
             Status = entity.Status,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
@@ -465,19 +466,141 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             : value.Trim();
     }
 
+    private static Dictionary<string, string> NormalizeCreateImageUrls(
+        Dictionary<string, string>? imageUrls,
+        ICollection<string> errors)
+    {
+        var normalized = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        if (imageUrls is null || imageUrls.Count == 0)
+        {
+            return normalized;
+        }
+
+        var seenKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pair in imageUrls)
+        {
+            var key = NormalizeText(pair.Key);
+            var url = NormalizeText(pair.Value);
+
+            if (key is null)
+            {
+                errors.Add("ImageUrls contains an invalid empty key.");
+                continue;
+            }
+
+            if (key.Length > MaxImageKeyLength)
+            {
+                errors.Add($"ImageUrls key must be {MaxImageKeyLength} characters or fewer.");
+                continue;
+            }
+
+            if (seenKeys.ContainsKey(key))
+            {
+                errors.Add("ImageUrls contains duplicate keys.");
+                continue;
+            }
+
+            seenKeys.Add(key, key);
+
+            if (url is null)
+            {
+                errors.Add("ImageUrls contains an invalid empty URL.");
+                continue;
+            }
+
+            ValidateImageUrl(url, errors);
+            normalized.Add(key, url);
+        }
+
+        if (normalized.Count > MaxFeedbackReviewImages)
+        {
+            errors.Add("ImageUrls cannot contain more than 5 images.");
+        }
+
+        return normalized;
+    }
+
+    private static Dictionary<string, string> PatchImageUrls(
+        Dictionary<string, string>? currentImageUrls,
+        Dictionary<string, string?>? patchImageUrls,
+        ICollection<string> errors)
+    {
+        var result = new Dictionary<string, string>(
+            currentImageUrls ?? new Dictionary<string, string>(),
+            StringComparer.OrdinalIgnoreCase);
+
+        if (patchImageUrls is null || patchImageUrls.Count == 0)
+        {
+            return result;
+        }
+
+        var seenKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pair in patchImageUrls)
+        {
+            var key = NormalizeText(pair.Key);
+            var url = NormalizeText(pair.Value);
+
+            if (key is null)
+            {
+                errors.Add("ImageUrls contains an invalid empty key.");
+                continue;
+            }
+
+            if (key.Length > MaxImageKeyLength)
+            {
+                errors.Add($"ImageUrls key must be {MaxImageKeyLength} characters or fewer.");
+                continue;
+            }
+
+            if (seenKeys.ContainsKey(key))
+            {
+                errors.Add("ImageUrls contains duplicate keys.");
+                continue;
+            }
+
+            seenKeys.Add(key, key);
+
+            if (url is null)
+            {
+                if (result.ContainsKey(key))
+                {
+                    result.Remove(key);
+                }
+
+                continue;
+            }
+
+            ValidateImageUrl(url, errors);
+
+            if (result.ContainsKey(key))
+            {
+                result[key] = url;
+            }
+            else
+            {
+                result.Add(key, url);
+            }
+        }
+
+        if (result.Count > MaxFeedbackReviewImages)
+        {
+            errors.Add("ImageUrls cannot contain more than 5 images.");
+        }
+
+        return result;
+    }
+
     private static bool IsValidHttpUrl(string value)
     {
         return Uri.TryCreate(value, UriKind.Absolute, out var uri)
             && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
     }
 
-    private static void ValidateImageUrl(string? imageUrl, ICollection<string> errors)
+    private static void ValidateImageUrl(string imageUrl, ICollection<string> errors)
     {
-        if (imageUrl is null)
-        {
-            return;
-        }
-
         if (imageUrl.Length > ImageUrlMaxLength)
         {
             errors.Add("ImageUrl must be 2048 characters or fewer.");
