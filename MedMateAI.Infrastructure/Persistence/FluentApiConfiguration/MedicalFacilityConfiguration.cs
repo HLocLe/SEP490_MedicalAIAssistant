@@ -1,4 +1,5 @@
 using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -16,5 +17,11 @@ public sealed class MedicalFacilityConfiguration : IEntityTypeConfiguration<Medi
         builder.Property(x => x.ImageUrl)
             .HasMaxLength(2048)
             .IsRequired(false);
+
+        builder.Property(x => x.FacilityType)
+            .HasConversion<string>()
+            .HasMaxLength(50)
+            .HasDefaultValue(MedicalFacilityType.Hospital)
+            .IsRequired();
     }
 }

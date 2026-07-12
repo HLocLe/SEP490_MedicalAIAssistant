@@ -5,6 +5,7 @@ using MedMateAI.Application.DTOs.MedicalFacilities.Requests;
 using MedMateAI.Application.DTOs.MedicalFacilities.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Persistence;
 using Microsoft.Extensions.Caching.Distributed;
 
@@ -175,7 +176,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             Website = validation.Website,
             ImageUrl = validation.ImageUrl,
             OpeningHours = NormalizeText(request.OpeningHours),
-            FacilityType = NormalizeText(request.FacilityType),
+            FacilityType = request.FacilityType,
             IsActive = request.IsActive,
             CreatedAt = utcNow,
         };
@@ -299,6 +300,11 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             }
         }
 
+        if (request.FacilityType.HasValue && !IsValidFacilityType(request.FacilityType.Value))
+        {
+            errors.Add("FacilityType is invalid.");
+        }
+
         if (errors.Count > 0)
         {
             return (false, false, errors, null);
@@ -359,9 +365,9 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             entity.OpeningHours = NormalizeText(request.OpeningHours);
         }
 
-        if (request.FacilityType is not null)
+        if (request.FacilityType.HasValue)
         {
-            entity.FacilityType = NormalizeText(request.FacilityType);
+            entity.FacilityType = request.FacilityType.Value;
         }
 
         if (request.IsActive.HasValue)
@@ -582,6 +588,11 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         var departmentIds = request.DepartmentIds?.ToList() ?? new List<Guid>();
         ValidateDepartmentIds(departmentIds, errors);
 
+        if (!IsValidFacilityType(request.FacilityType))
+        {
+            errors.Add("FacilityType is invalid.");
+        }
+
         return (errors, facilityName, website, imageUrl, departmentIds);
     }
 
@@ -656,6 +667,11 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
     {
         return Uri.TryCreate(value, UriKind.Absolute, out var uri)
             && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+    }
+
+    private static bool IsValidFacilityType(MedicalFacilityType facilityType)
+    {
+        return Enum.IsDefined(typeof(MedicalFacilityType), facilityType);
     }
 
     private static string? NormalizeText(string? value)

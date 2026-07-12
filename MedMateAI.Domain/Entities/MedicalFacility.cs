@@ -1,3 +1,5 @@
+using MedMateAI.Domain.Enums;
+
 namespace MedMateAI.Domain.Entities;
 
 public sealed class MedicalFacility : BaseEntity
@@ -18,7 +20,7 @@ public sealed class MedicalFacility : BaseEntity
 
     public string? OpeningHours { get; set; }
 
-    public string? FacilityType { get; set; }
+    public MedicalFacilityType FacilityType { get; set; } = MedicalFacilityType.Hospital;
 
     public bool IsActive { get; set; }
 

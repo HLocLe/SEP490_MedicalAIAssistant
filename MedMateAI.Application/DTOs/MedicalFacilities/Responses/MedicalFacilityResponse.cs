@@ -1,3 +1,5 @@
+using MedMateAI.Domain.Enums;
+
 namespace MedMateAI.Application.DTOs.MedicalFacilities.Responses;
 
 public sealed class MedicalFacilityResponse
@@ -20,7 +22,7 @@ public sealed class MedicalFacilityResponse
 
     public string? OpeningHours { get; set; }
 
-    public string? FacilityType { get; set; }
+    public MedicalFacilityType FacilityType { get; set; }
 
     public bool IsActive { get; set; }
 
