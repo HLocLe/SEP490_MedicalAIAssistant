@@ -14,6 +14,10 @@ public sealed class FeedbackReviewConfiguration : IEntityTypeConfiguration<Feedb
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("FeedbackId").ValueGeneratedOnAdd();
 
+        builder.Property(x => x.ImageUrl)
+            .HasMaxLength(2048)
+            .IsRequired(false);
+
         builder.HasOne<ApplicationUser>()
             .WithMany(x => x.FeedbackReviews)
             .HasForeignKey(x => x.UserId)

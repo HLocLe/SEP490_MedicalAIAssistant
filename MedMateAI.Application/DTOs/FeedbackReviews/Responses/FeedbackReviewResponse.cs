@@ -16,6 +16,8 @@ public sealed class FeedbackReviewResponse
 
     public string? Comment { get; set; }
 
+    public string? ImageUrl { get; set; }
+
     public string? Status { get; set; }
 
     public DateTime CreatedAt { get; set; }
