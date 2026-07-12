@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Claims;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Payments.PayOS;
 using MedMateAI.Application.DTOs.Payments.Responses;
@@ -7,6 +8,7 @@ using MedMateAI.Application.IService;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Persistence;
+using Microsoft.AspNetCore.Http;
 
 namespace MedMateAI.Application.Service;
 
@@ -17,13 +19,16 @@ public sealed class PaymentService : IPaymentService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPayOSService _payOsService;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public PaymentService(
         IUnitOfWork unitOfWork,
-        IPayOSService payOsService)
+        IPayOSService payOsService,
+        IHttpContextAccessor httpContextAccessor)
     {
         _unitOfWork = unitOfWork;
         _payOsService = payOsService;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<PayOSReturnResponse> ProcessPayOSReturnAsync(
@@ -147,6 +152,56 @@ public sealed class PaymentService : IPaymentService
             cancellationToken);
 
         return MapToPagedResponse(paged);
+    }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors, PagedResponse<PaymentResponse>? Data)> GetMyPaymentsAsync(
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return (false, new[] { "User is not authenticated." }, null);
+        }
+
+        var paged = await _unitOfWork.Payments.GetPagedByUserIdWithSubscriptionAsync(
+            userId.Value,
+            pageNumber,
+            pageSize,
+            cancellationToken);
+
+        return (true, Array.Empty<string>(), MapToPagedResponse(paged));
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, PaymentResponse? Data)> GetMyPaymentByIdAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        if (id == Guid.Empty)
+        {
+            return (false, false, new[] { "Invalid payment id." }, null);
+        }
+
+        var userId = GetCurrentUserId();
+
+        if (!userId.HasValue)
+        {
+            return (false, false, new[] { "User is not authenticated." }, null);
+        }
+
+        var payment = await _unitOfWork.Payments.GetByIdAndUserIdWithSubscriptionAsync(
+            id,
+            userId.Value,
+            cancellationToken);
+
+        if (payment is null || payment.IsDeleted)
+        {
+            return (false, true, Array.Empty<string>(), null);
+        }
+
+        return (true, false, Array.Empty<string>(), MapToResponse(payment));
     }
 
     public async Task<PaymentResponse?> GetPaymentByIdAsync(
@@ -367,6 +422,10 @@ public sealed class PaymentService : IPaymentService
 
     private static PaymentResponse MapToResponse(Payment payment)
     {
+        var latestTransaction = payment.Transactions
+            .OrderByDescending(x => x.CreatedAt)
+            .FirstOrDefault();
+
         return new PaymentResponse
         {
             Id = payment.Id,
@@ -379,6 +438,10 @@ public sealed class PaymentService : IPaymentService
             PaidAt = payment.PaidAt,
             CreatedAt = payment.CreatedAt,
             UpdatedAt = payment.UpdatedAt,
+            PlanId = payment.UserSubscription?.PlanId,
+            PlanName = payment.UserSubscription?.Plan?.PlanName,
+            PaymentProvider = latestTransaction?.PaymentProvider,
+            TransactionReference = latestTransaction?.TransactionReference,
         };
     }
 
@@ -398,6 +461,25 @@ public sealed class PaymentService : IPaymentService
             TotalPages = 0,
             Items = Array.Empty<PaymentResponse>(),
         };
+    }
+
+    private Guid? GetCurrentUserId()
+    {
+        var user = _httpContextAccessor.HttpContext?.User;
+
+        if (user?.Identity?.IsAuthenticated != true)
+        {
+            return null;
+        }
+
+        var userIdValue =
+            user.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? user.FindFirstValue("sub")
+            ?? user.FindFirstValue("userId");
+
+        return Guid.TryParse(userIdValue, out var userId)
+            ? userId
+            : null;
     }
 
     private static string BuildPaymentStatusMessage(

@@ -76,6 +76,22 @@ public sealed class PaymentRepository
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
 
+    public async Task<Payment?> GetByIdAndUserIdWithSubscriptionAsync(
+        Guid id,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (id == Guid.Empty || userId == Guid.Empty)
+        {
+            return null;
+        }
+
+        return await BuildDetailsQuery()
+            .FirstOrDefaultAsync(
+                x => x.Id == id && x.UserId == userId && !x.IsDeleted,
+                cancellationToken);
+    }
+
     private IQueryable<Payment> BuildDetailsQuery()
     {
         return _context.Payments
