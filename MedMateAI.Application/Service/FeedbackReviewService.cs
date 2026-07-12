@@ -4,6 +4,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.FeedbackReviews.Requests;
 using MedMateAI.Application.DTOs.FeedbackReviews.Responses;
 using MedMateAI.Application.IService;
+using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Persistence;
 using Microsoft.AspNetCore.Http;
@@ -59,14 +60,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             rating,
             cancellationToken);
 
-        return new PagedResponse<FeedbackReviewResponse>
-        {
-            PageNumber = paged.PageNumber,
-            PageSize = paged.PageSize,
-            TotalCount = paged.TotalCount,
-            TotalPages = paged.TotalPages,
-            Items = paged.Items.Select(MapToResponse).ToList(),
-        };
+        return MapToPagedResponse(paged);
     }
 
     public async Task<PagedResponse<FeedbackReviewResponse>> ListApprovedFacilityReviewsAsync(
@@ -81,14 +75,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             pageSize,
             cancellationToken);
 
-        return new PagedResponse<FeedbackReviewResponse>
-        {
-            PageNumber = paged.PageNumber,
-            PageSize = paged.PageSize,
-            TotalCount = paged.TotalCount,
-            TotalPages = paged.TotalPages,
-            Items = paged.Items.Select(MapToResponse).ToList(),
-        };
+        return MapToPagedResponse(paged);
     }
 
     public async Task<FeedbackReviewResponse?> GetFeedbackReviewByIdAsync(
@@ -118,11 +105,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
         }
 
         var response = MapToResponse(entity);
-        await _cache.SetStringAsync(
-            cacheKey,
-            JsonSerializer.Serialize(response),
-            CacheOptions,
-            cancellationToken);
+        await CacheFeedbackReviewResponseAsync(response, cancellationToken);
 
         return response;
     }
@@ -210,11 +193,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
 
         var created = await _unitOfWork.FeedbackReviews.GetByIdWithDetailsAsync(entity.Id, cancellationToken);
         var response = MapToResponse(created ?? entity);
-        await _cache.SetStringAsync(
-            GetFeedbackReviewCacheKey(response.Id),
-            JsonSerializer.Serialize(response),
-            CacheOptions,
-            cancellationToken);
+        await CacheFeedbackReviewResponseAsync(response, cancellationToken);
 
         return (true, Array.Empty<string>(), response);
     }
@@ -240,6 +219,35 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             return (false, true, new[] { "Feedback review not found." }, null);
         }
 
+        var validation = ValidateUpdateFeedbackReviewRequest(request);
+        if (validation.Errors.Count > 0)
+        {
+            return (false, false, validation.Errors, null);
+        }
+
+        ApplyFeedbackReviewUpdates(
+            entity,
+            request,
+            validation.CommentFromRequest,
+            validation.ImageUrlFromRequest);
+
+        _unitOfWork.FeedbackReviews.Update(entity);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        await _cache.RemoveAsync(GetFeedbackReviewCacheKey(id), cancellationToken);
+
+        var response = await ReloadMapAndCacheFeedbackReviewAsync(id, cancellationToken);
+        if (response is null)
+        {
+            return (false, true, new[] { "Feedback review not found." }, null);
+        }
+
+        return (true, false, Array.Empty<string>(), response);
+    }
+
+    private static FeedbackReviewUpdateValidationResult ValidateUpdateFeedbackReviewRequest(
+        UpdateFeedbackReviewRequest request)
+    {
         var errors = new List<string>();
         string? commentFromRequest = null;
         string? imageUrlFromRequest = null;
@@ -264,11 +272,18 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             ValidateImageUrl(imageUrlFromRequest, errors);
         }
 
-        if (errors.Count > 0)
-        {
-            return (false, false, errors, null);
-        }
+        return new FeedbackReviewUpdateValidationResult(
+            errors,
+            commentFromRequest,
+            imageUrlFromRequest);
+    }
 
+    private static void ApplyFeedbackReviewUpdates(
+        FeedbackReview entity,
+        UpdateFeedbackReviewRequest request,
+        string? commentFromRequest,
+        string? imageUrlFromRequest)
+    {
         if (request.Rating.HasValue)
         {
             entity.Rating = request.Rating.Value;
@@ -285,27 +300,12 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
         }
 
         entity.UpdatedAt = DateTime.UtcNow;
-
-        _unitOfWork.FeedbackReviews.Update(entity);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        await _cache.RemoveAsync(GetFeedbackReviewCacheKey(id), cancellationToken);
-
-        var updated = await _unitOfWork.FeedbackReviews.GetByIdWithDetailsAsync(id, cancellationToken);
-        if (updated is null)
-        {
-            return (false, true, new[] { "Feedback review not found." }, null);
-        }
-
-        var response = MapToResponse(updated);
-        await _cache.SetStringAsync(
-            GetFeedbackReviewCacheKey(id),
-            JsonSerializer.Serialize(response),
-            CacheOptions,
-            cancellationToken);
-
-        return (true, false, Array.Empty<string>(), response);
     }
+
+    private sealed record FeedbackReviewUpdateValidationResult(
+        List<string> Errors,
+        string? CommentFromRequest,
+        string? ImageUrlFromRequest);
 
     public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, FeedbackReviewResponse? Data)> UpdateFeedbackReviewStatusAsync(
         Guid id,
@@ -341,18 +341,11 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
 
         await _cache.RemoveAsync(GetFeedbackReviewCacheKey(id), cancellationToken);
 
-        var updated = await _unitOfWork.FeedbackReviews.GetByIdWithDetailsAsync(id, cancellationToken);
-        if (updated is null)
+        var response = await ReloadMapAndCacheFeedbackReviewAsync(id, cancellationToken);
+        if (response is null)
         {
             return (false, true, new[] { "Feedback review not found." }, null);
         }
-
-        var response = MapToResponse(updated);
-        await _cache.SetStringAsync(
-            GetFeedbackReviewCacheKey(id),
-            JsonSerializer.Serialize(response),
-            CacheOptions,
-            cancellationToken);
 
         return (true, false, Array.Empty<string>(), response);
     }
@@ -384,6 +377,19 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
         return (true, false, Array.Empty<string>());
     }
 
+    private static PagedResponse<FeedbackReviewResponse> MapToPagedResponse(
+        PagedResult<FeedbackReview> paged)
+    {
+        return new PagedResponse<FeedbackReviewResponse>
+        {
+            PageNumber = paged.PageNumber,
+            PageSize = paged.PageSize,
+            TotalCount = paged.TotalCount,
+            TotalPages = paged.TotalPages,
+            Items = paged.Items.Select(MapToResponse).ToList(),
+        };
+    }
+
     private static FeedbackReviewResponse MapToResponse(FeedbackReview entity)
     {
         return new FeedbackReviewResponse
@@ -400,6 +406,33 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
         };
+    }
+
+    private async Task<FeedbackReviewResponse?> ReloadMapAndCacheFeedbackReviewAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var entity = await _unitOfWork.FeedbackReviews.GetByIdWithDetailsAsync(id, cancellationToken);
+        if (entity is null)
+        {
+            return null;
+        }
+
+        var response = MapToResponse(entity);
+        await CacheFeedbackReviewResponseAsync(response, cancellationToken);
+
+        return response;
+    }
+
+    private async Task CacheFeedbackReviewResponseAsync(
+        FeedbackReviewResponse response,
+        CancellationToken cancellationToken)
+    {
+        await _cache.SetStringAsync(
+            GetFeedbackReviewCacheKey(response.Id),
+            JsonSerializer.Serialize(response),
+            CacheOptions,
+            cancellationToken);
     }
 
     private Guid? GetCurrentUserId()
