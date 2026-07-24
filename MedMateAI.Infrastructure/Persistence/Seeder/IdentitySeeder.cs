@@ -14,7 +14,7 @@ public static class IdentitySeeder
         using var scope = services.CreateScope();
         var sp = scope.ServiceProvider;
 
-        // Migrate via direct PostgreSQL (bypass PgBouncer transaction pooling).
+      
         await MigrateDatabaseAsync(sp, cancellationToken);
 
         var roleManager = sp.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
