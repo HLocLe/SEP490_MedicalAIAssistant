@@ -1,0 +1,11 @@
+services:
+  pgbouncer:
+    image: edoburu/pgbouncer:1.22.1-p0
+    container_name: medmate-pgbouncer
+    ports:
+      - "6432:6432"
+    volumes:
+      - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

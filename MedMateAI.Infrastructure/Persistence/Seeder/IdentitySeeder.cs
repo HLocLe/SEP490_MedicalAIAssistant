@@ -2,6 +2,7 @@ using MedMateAI.Infrastructure.Identity;
 using MedMateAI.Domain.Enums;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace MedMateAI.Infrastructure.Persistence.Seeder;
@@ -13,13 +14,11 @@ public static class IdentitySeeder
         using var scope = services.CreateScope();
         var sp = scope.ServiceProvider;
 
-        var db = sp.GetRequiredService<ApplicationDbContext>();
-        
-        await db.Database.MigrateAsync(cancellationToken);
+        // Migrate via direct PostgreSQL (bypass PgBouncer transaction pooling).
+        await MigrateDatabaseAsync(sp, cancellationToken);
 
         var roleManager = sp.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
         var userManager = sp.GetRequiredService<UserManager<ApplicationUser>>();
-      
 
         var roles = new[] { "Admin", "Doctor", "User" };
         foreach (var role in roles)
@@ -75,6 +74,23 @@ public static class IdentitySeeder
                 await userManager.AddToRoleAsync(doctorUser, "Doctor");
             }
         }
+    }
+
+    private static async Task MigrateDatabaseAsync(
+        IServiceProvider sp,
+        CancellationToken cancellationToken)
+    {
+        var configuration = sp.GetRequiredService<IConfiguration>();
+        var migrationConnectionString = configuration.GetConnectionString("MigrationConnection")
+            ?? configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException(
+                "Connection string 'MigrationConnection' or 'DefaultConnection' not found.");
+
+        var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
+        optionsBuilder.UseNpgsql(migrationConnectionString);
+
+        await using var migrationContext = new ApplicationDbContext(optionsBuilder.Options);
+        await migrationContext.Database.MigrateAsync(cancellationToken);
     }
 }
 
