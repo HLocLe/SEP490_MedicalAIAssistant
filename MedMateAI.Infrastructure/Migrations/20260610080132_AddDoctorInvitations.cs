@@ -12,28 +12,23 @@ namespace MedMateAI.Infrastructure.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
 
-            migrationBuilder.DropForeignKey(
-                name: "FK_Doctor_AspNetUsers_UserId",
-                table: "Doctor");
-
-             migrationBuilder.AlterColumn<Guid>(
-                name: "UserId",
+            migrationBuilder.AddColumn<Guid>(
+         name: "UserId",
+         table: "Doctor",
+         type: "uuid",
+         nullable: true);
+            migrationBuilder.CreateIndex(
+                name: "IX_Doctor_UserId",
                 table: "Doctor",
-                type: "uuid",
-                nullable: true,
-                oldClrType: typeof(Guid),
-                oldType: "uuid",
-                oldNullable: false);
-
+                column: "UserId",
+                unique: true);
             migrationBuilder.AddForeignKey(
-        name: "FK_Doctor_AspNetUsers_UserId",
-        table: "Doctor",
-        column: "UserId",
-        principalTable: "AspNetUsers",
-        principalColumn: "Id",
-        onDelete: ReferentialAction.SetNull);
-
-
+                name: "FK_Doctor_AspNetUsers_UserId",
+                table: "Doctor",
+                column: "UserId",
+                principalTable: "AspNetUsers",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.SetNull);
             migrationBuilder.CreateTable(
                 name: "DoctorInvitation",
                 columns: table => new
@@ -55,48 +50,32 @@ namespace MedMateAI.Infrastructure.Migrations
                 {
                     table.PrimaryKey("PK_DoctorInvitation", x => x.DoctorInvitationId);
                 });
-
             migrationBuilder.CreateIndex(
                 name: "IX_DoctorInvitation_Email",
                 table: "DoctorInvitation",
                 column: "Email");
-
             migrationBuilder.CreateIndex(
                 name: "IX_DoctorInvitation_TokenHash",
                 table: "DoctorInvitation",
                 column: "TokenHash",
                 unique: true);
 
-          
+
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-            name: "DoctorInvitation");
-
+            migrationBuilder.DropTable(name: "DoctorInvitation");
             migrationBuilder.DropForeignKey(
-            name: "FK_Doctor_AspNetUsers_UserId",
-            table: "Doctor");
-
-            migrationBuilder.AlterColumn<Guid>(
-            name: "UserId",
-            table: "Doctor",
-            type: "uuid",
-            nullable: false,
-            defaultValue: new Guid("00000000-0000-0000-0000-000000000000"),
-            oldClrType: typeof(Guid),
-            oldType: "uuid",
-            oldNullable: true);
-
-            migrationBuilder.AddForeignKey(
-            name: "FK_Doctor_AspNetUsers_UserId",
-            table: "Doctor",
-            column: "UserId",
-            principalTable: "AspNetUsers",
-            principalColumn: "Id",
-            onDelete: ReferentialAction.SetNull);
+                name: "FK_Doctor_AspNetUsers_UserId",
+                table: "Doctor");
+            migrationBuilder.DropIndex(
+                name: "IX_Doctor_UserId",
+                table: "Doctor");
+            migrationBuilder.DropColumn(
+                name: "UserId",
+                table: "Doctor");
         }
     }
 }
