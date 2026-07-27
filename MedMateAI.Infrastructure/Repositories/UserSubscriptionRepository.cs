@@ -70,4 +70,20 @@ public sealed class UserSubscriptionRepository
             .ThenByDescending(x => x.Id)
             .ToListAsync(cancellationToken);
     }
+
+    public Task<UserSubscription?> GetCurrentActiveWithPlanQuotasAsync(
+        Guid userId, DateTime utcNow, CancellationToken cancellationToken = default)
+    {
+        return _context.UserSubscriptions.AsNoTracking()
+            .Include(x => x.Plan)
+                .ThenInclude(x => x.SubscriptionPlanQuotas)
+                .ThenInclude(x => x.Quota)
+            .Where(x => x.UserId == userId && !x.IsDeleted
+                && x.Status == SubscriptionStatus.Active
+                && x.StartDate.HasValue && x.EndDate.HasValue
+                && x.StartDate.Value <= utcNow && x.EndDate.Value > utcNow
+                && !x.Plan.IsDeleted && x.Plan.IsActive)
+            .OrderByDescending(x => x.EndDate)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
 }
