@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using MedMateAI.Application.Common;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.RecoveryPlanRequests;
 using MedMateAI.Application.IService;
@@ -16,14 +17,15 @@ namespace MedMateAI.Application.Service;
 
 public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
 {
-    private const string AggregateType = "RecoveryPlanRequest";
     private readonly IUnitOfWork _uow;
     private readonly IRecoveryPlanQuotaService _quota;
     private readonly RecoveryPlanOptions _options;
 
     public RecoveryPlanRequestService(IUnitOfWork uow, IRecoveryPlanQuotaService quota, IOptions<RecoveryPlanOptions> options)
     {
-        _uow = uow; _quota = quota; _options = options.Value;
+        _uow = uow;
+        _quota = quota;
+        _options = options.Value;
     }
 
     public async Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> CreateAsync(
@@ -54,14 +56,14 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             var usageResult = await _quota.ResolveUsageAsync(userId, now, token);
             if (!usageResult.Success || usageResult.Data is null)
             {
-                await _uow.RollbackTransactionAsync(token);
+                await RollbackAsync();
                 return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(usageResult.Error);
             }
             var usage = usageResult.Data;
             if (!await _quota.ReserveAsync(usage.Id, usage.UserSubscriptionId, usage.QuotaId,
                     requestId, userId, key, now, token))
             {
-                await _uow.RollbackTransactionAsync(token);
+                await RollbackAsync();
                 existing = await ReplayAsync(userId, key, token);
                 return existing is not null
                     ? RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(existing), true)
@@ -78,14 +80,14 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             _uow.RecoveryPlanRequests.Add(request);
             AddEvent(request, RecoveryPlanRequestEventType.Created, null, request.Status, userId, null, null, now);
             AddEvent(request, RecoveryPlanRequestEventType.QuotaReserved, request.Status, request.Status, userId, null, null, now);
-            AddOutbox(request, "RecoveryPlanRequestCreated", now);
+            AddOutbox(request, RecoveryPlanOutboxEventTypes.Created, now);
             await _uow.SaveChangesAsync(token);
             await _uow.CommitTransactionAsync(token);
             return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(request));
         }
         catch
         {
-            await _uow.RollbackTransactionAsync(token);
+            await RollbackAsync();
             throw;
         }
     }
@@ -105,7 +107,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         if (request.UserId != userId && !isAdmin)
         {
             if (!isDoctor) return FailNotFound();
-            var doctor = await GetDoctorAsync(userId, token);
+            var doctor = await _uow.RecoveryPlanRequests.GetDoctorByUserIdAsync(userId, token);
             if (doctor is null || request.AssignedDoctorId != doctor.Id) return FailNotFound();
         }
         return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(request));
@@ -114,19 +116,33 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
     public Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> CancelAsync(Guid userId, Guid id, CancellationToken token) =>
         UserTransitionAsync(userId, id, token, async (request, now) =>
         {
-            if (request.Status == RecoveryPlanRequestStatus.Cancelled) return true;
+            if (request.Status == RecoveryPlanRequestStatus.Cancelled)
+            {
+                return RecoveryPlanErrorCode.None;
+            }
+
             if (request.Status is not (RecoveryPlanRequestStatus.WaitingForDoctor or RecoveryPlanRequestStatus.Assigned
-                or RecoveryPlanRequestStatus.InReview or RecoveryPlanRequestStatus.NeedMoreInformation)) return false;
+                or RecoveryPlanRequestStatus.InReview or RecoveryPlanRequestStatus.NeedMoreInformation))
+            {
+                return RecoveryPlanErrorCode.InvalidRequestState;
+            }
+
             var released = await _quota.ReleaseAsync(request.UserSubscriptionUsageId, request.UserSubscriptionId,
                 await GetQuotaIdAsync(request.UserSubscriptionUsageId, token), request.Id, userId,
                 $"RPR:{request.Id}:RELEASE:CANCEL", now, token);
-            if (!released) return false;
+            if (!released)
+            {
+                return RecoveryPlanErrorCode.QuotaMutationFailed;
+            }
+
             var from = request.Status;
-            request.Status = RecoveryPlanRequestStatus.Cancelled; request.CancelledAt = now;
-            request.AssignmentExpiresAt = null; Touch(request, now);
+            request.Status = RecoveryPlanRequestStatus.Cancelled;
+            request.CancelledAt = now;
+            request.AssignmentExpiresAt = null;
+            Touch(request, now);
             AddEvent(request, RecoveryPlanRequestEventType.Cancelled, from, request.Status, userId, null, null, now);
-            AddOutbox(request, "RecoveryPlanRequestCancelled", now);
-            return true;
+            AddOutbox(request, RecoveryPlanOutboxEventTypes.Cancelled, now);
+            return RecoveryPlanErrorCode.None;
         });
 
     public Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> ProvideInformationAsync(
@@ -137,20 +153,25 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(RecoveryPlanErrorCode.InvalidRequest));
         return UserTransitionAsync(userId, id, token, (request, now) =>
         {
-            if (request.Status != RecoveryPlanRequestStatus.NeedMoreInformation) return Task.FromResult(false);
+            if (request.Status != RecoveryPlanRequestStatus.NeedMoreInformation)
+            {
+                return Task.FromResult(RecoveryPlanErrorCode.InvalidRequestState);
+            }
+
             request.RequestNote = value;
-            request.Status = RecoveryPlanRequestStatus.InReview; Touch(request, now);
+            request.Status = RecoveryPlanRequestStatus.InReview;
+            Touch(request, now);
             AddEvent(request, RecoveryPlanRequestEventType.Reopened, RecoveryPlanRequestStatus.NeedMoreInformation,
                 request.Status, userId, null, "Additional information provided by request owner.", now);
-            AddOutbox(request, "RecoveryPlanRequestInformationProvided", now);
-            return Task.FromResult(true);
+            AddOutbox(request, RecoveryPlanOutboxEventTypes.InformationProvided, now);
+            return Task.FromResult(RecoveryPlanErrorCode.None);
         });
     }
 
     public async Task<RecoveryPlanOperationResult<PagedResponse<OpenRecoveryPlanRequestResponse>>> GetOpenAsync(
         Guid doctorUserId, PaginationQuery page, RecoveryPlanDiseaseGroup? group, CancellationToken token)
     {
-        var doctor = await GetDoctorAsync(doctorUserId, token);
+        var doctor = await _uow.RecoveryPlanRequests.GetDoctorByUserIdAsync(doctorUserId, token);
         var error = ValidateDoctor(doctor);
         if (error != RecoveryPlanErrorCode.None)
             return RecoveryPlanOperationResult<PagedResponse<OpenRecoveryPlanRequestResponse>>.Fail(error);
@@ -161,7 +182,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
     public async Task<RecoveryPlanOperationResult<PagedResponse<RecoveryPlanRequestResponse>>> GetDoctorMineAsync(
         Guid doctorUserId, PaginationQuery page, RecoveryPlanRequestStatus? status, CancellationToken token)
     {
-        var doctor = await GetDoctorAsync(doctorUserId, token);
+        var doctor = await _uow.RecoveryPlanRequests.GetDoctorByUserIdAsync(doctorUserId, token);
         if (doctor is null) return RecoveryPlanOperationResult<PagedResponse<RecoveryPlanRequestResponse>>.Fail(RecoveryPlanErrorCode.DoctorProfileNotFound);
         var result = await _uow.RecoveryPlanRequests.GetAssignedPagedAsync(doctor.Id, page.PageNumber, page.PageSize, status, token);
         return RecoveryPlanOperationResult<PagedResponse<RecoveryPlanRequestResponse>>.Ok(ToPage(result, Map));
@@ -172,38 +193,51 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         await _uow.BeginTransactionAsync(token);
         try
         {
-            var doctor = await _uow.RecoveryPlanRequests.GetDoctorForUpdateAsync(doctorUserId, token);
+            var doctor = await _uow.RecoveryPlanRequests.GetDoctorByUserIdForUpdateAsync(doctorUserId, token);
             var error = ValidateDoctor(doctor);
-            if (error != RecoveryPlanErrorCode.None) return await RollbackFailure(error, token);
-            var existing = await _uow.RecoveryPlanRequests.GetByIdAsync(id, false, token);
-            if (existing?.AssignedDoctorId == doctor!.Id && existing.Status == RecoveryPlanRequestStatus.Assigned)
+            if (error != RecoveryPlanErrorCode.None)
             {
-                await _uow.RollbackTransactionAsync(token);
-                return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(existing), true);
+                return await RollbackFailure(error);
             }
+
+            var existing = await _uow.RecoveryPlanRequests.GetByIdAsync(id, false, token);
+            var existingResult = ClassifyAcceptState(existing, doctor!.Id);
+            if (existingResult is not null)
+            {
+                await RollbackAsync();
+                return existingResult;
+            }
+
             var count = await _uow.RecoveryPlanRequests.CountActiveAssignmentsAsync(doctor!.Id, token);
             if (doctor.MaxConcurrentRecoveryPlanRequests.HasValue && count >= doctor.MaxConcurrentRecoveryPlanRequests.Value)
-                return await RollbackFailure(RecoveryPlanErrorCode.DoctorCapacityReached, token);
+            {
+                return await RollbackFailure(RecoveryPlanErrorCode.DoctorCapacityReached);
+            }
+
             var now = DateTime.UtcNow;
             var request = await _uow.RecoveryPlanRequests.TryAcceptAsync(id, doctor.Id, now,
                 now.AddMinutes(_options.AssignmentTimeoutMinutes), token);
             if (request is null)
             {
                 var current = await _uow.RecoveryPlanRequests.GetByIdAsync(id, false, token);
-                await _uow.RollbackTransactionAsync(token);
-                if (current is null) return FailNotFound();
-                if (current.AssignedDoctorId == doctor.Id && current.Status == RecoveryPlanRequestStatus.Assigned)
-                    return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(current), true);
-                return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(
-                    current.AssignedDoctorId.HasValue ? RecoveryPlanErrorCode.RecoveryPlanRequestAlreadyClaimed : RecoveryPlanErrorCode.InvalidRequestState);
+                await RollbackAsync();
+                return ClassifyAcceptState(current, doctor.Id)
+                    ?? RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(
+                        RecoveryPlanErrorCode.InvalidRequestState);
             }
+
             AddEvent(request, RecoveryPlanRequestEventType.Accepted, RecoveryPlanRequestStatus.WaitingForDoctor,
                 RecoveryPlanRequestStatus.Assigned, null, doctor.Id, null, now);
-            AddOutbox(request, "RecoveryPlanRequestClaimed", now);
-            await _uow.SaveChangesAsync(token); await _uow.CommitTransactionAsync(token);
+            AddOutbox(request, RecoveryPlanOutboxEventTypes.Claimed, now);
+            await _uow.SaveChangesAsync(token);
+            await _uow.CommitTransactionAsync(token);
             return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(request));
         }
-        catch { await _uow.RollbackTransactionAsync(token); throw; }
+        catch
+        {
+            await RollbackAsync();
+            throw;
+        }
     }
 
     public Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> StartReviewAsync(Guid doctorUserId, Guid id, CancellationToken token) =>
@@ -212,11 +246,13 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             if (request.Status == RecoveryPlanRequestStatus.InReview) return RecoveryPlanErrorCode.None;
             if (request.Status != RecoveryPlanRequestStatus.Assigned) return RecoveryPlanErrorCode.InvalidRequestState;
             if (request.AssignmentExpiresAt <= now) return RecoveryPlanErrorCode.AssignmentExpired;
-            request.Status = RecoveryPlanRequestStatus.InReview; request.ReviewStartedAt = now;
-            request.AssignmentExpiresAt = null; Touch(request, now);
+            request.Status = RecoveryPlanRequestStatus.InReview;
+            request.ReviewStartedAt = now;
+            request.AssignmentExpiresAt = null;
+            Touch(request, now);
             AddEvent(request, RecoveryPlanRequestEventType.ReviewStarted, RecoveryPlanRequestStatus.Assigned,
                 request.Status, null, doctor.Id, null, now);
-            AddOutbox(request, "RecoveryPlanRequestReviewStarted", now);
+            AddOutbox(request, RecoveryPlanOutboxEventTypes.ReviewStarted, now);
             return RecoveryPlanErrorCode.None;
         });
 
@@ -230,10 +266,14 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             if (request.Status is not (RecoveryPlanRequestStatus.Assigned or RecoveryPlanRequestStatus.InReview
                 or RecoveryPlanRequestStatus.NeedMoreInformation)) return RecoveryPlanErrorCode.InvalidRequestState;
             var from = request.Status;
-            request.Status = RecoveryPlanRequestStatus.WaitingForDoctor; request.AssignedDoctorId = null;
-            request.AcceptedAt = null; request.ReviewStartedAt = null; request.AssignmentExpiresAt = null; Touch(request, now);
+            request.Status = RecoveryPlanRequestStatus.WaitingForDoctor;
+            request.AssignedDoctorId = null;
+            request.AcceptedAt = null;
+            request.ReviewStartedAt = null;
+            request.AssignmentExpiresAt = null;
+            Touch(request, now);
             AddEvent(request, RecoveryPlanRequestEventType.Released, from, request.Status, null, doctor.Id, value, now);
-            AddOutbox(request, "RecoveryPlanRequestReleased", now);
+            AddOutbox(request, RecoveryPlanOutboxEventTypes.Released, now);
             return RecoveryPlanErrorCode.None;
         });
     }
@@ -247,10 +287,11 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         {
             if (request.Status == RecoveryPlanRequestStatus.NeedMoreInformation) return RecoveryPlanErrorCode.None;
             if (request.Status != RecoveryPlanRequestStatus.InReview) return RecoveryPlanErrorCode.InvalidRequestState;
-            request.Status = RecoveryPlanRequestStatus.NeedMoreInformation; Touch(request, now);
+            request.Status = RecoveryPlanRequestStatus.NeedMoreInformation;
+            Touch(request, now);
             AddEvent(request, RecoveryPlanRequestEventType.MoreInformationRequested, RecoveryPlanRequestStatus.InReview,
                 request.Status, null, doctor.Id, value, now);
-            AddOutbox(request, "RecoveryPlanRequestMoreInformationRequested", now);
+            AddOutbox(request, RecoveryPlanOutboxEventTypes.MoreInformationRequested, now);
             return RecoveryPlanErrorCode.None;
         });
     }
@@ -258,7 +299,8 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
     public async Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> RejectAsync(
         Guid doctorUserId, Guid id, string code, string reason, CancellationToken token)
     {
-        code = code?.Trim() ?? string.Empty; reason = reason?.Trim() ?? string.Empty;
+        code = code?.Trim() ?? string.Empty;
+        reason = reason?.Trim() ?? string.Empty;
         if (code.Length is < 1 or > 100 || reason.Length is < 1 or > 2000) return await InvalidTask();
         return await DoctorTransitionAsync(doctorUserId, id, token, async (request, doctor, now) =>
         {
@@ -269,35 +311,57 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             if (!await _quota.ReleaseAsync(request.UserSubscriptionUsageId, request.UserSubscriptionId, quotaId,
                     request.Id, doctorUserId, $"RPR:{request.Id}:RELEASE:REJECT", now, token))
                 return RecoveryPlanErrorCode.QuotaMutationFailed;
-            var from = request.Status; request.Status = RecoveryPlanRequestStatus.Rejected;
-            request.RejectedAt = now; request.RejectionReasonCode = code; request.RejectionReason = reason;
-            request.AssignmentExpiresAt = null; Touch(request, now);
+            var from = request.Status;
+            request.Status = RecoveryPlanRequestStatus.Rejected;
+            request.RejectedAt = now;
+            request.RejectionReasonCode = code;
+            request.RejectionReason = reason;
+            request.AssignmentExpiresAt = null;
+            Touch(request, now);
             AddEvent(request, RecoveryPlanRequestEventType.Rejected, from, request.Status, null, doctor.Id,
                 "Recovery plan request rejected by assigned doctor.", now);
-            AddOutbox(request, "RecoveryPlanRequestRejected", now);
+            AddOutbox(request, RecoveryPlanOutboxEventTypes.Rejected, now);
             return RecoveryPlanErrorCode.None;
         });
     }
 
     private async Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> UserTransitionAsync(
-        Guid userId, Guid id, CancellationToken token, Func<RecoveryPlanRequest, DateTime, Task<bool>> mutate)
+        Guid userId, Guid id, CancellationToken token,
+        Func<RecoveryPlanRequest, DateTime, Task<RecoveryPlanErrorCode>> mutate)
     {
         await _uow.BeginTransactionAsync(token);
         try
         {
             var request = await _uow.RecoveryPlanRequests.GetByIdForUpdateAsync(id, token);
-            if (request is null || request.UserId != userId) return await RollbackFailure(RecoveryPlanErrorCode.NotFound, token);
+            if (request is null || request.UserId != userId)
+            {
+                return await RollbackFailure(RecoveryPlanErrorCode.NotFound);
+            }
+
             var originalVersion = request.Version;
-            if (!await mutate(request, DateTime.UtcNow))
-                return await RollbackFailure(RecoveryPlanErrorCode.InvalidRequestState, token);
+            var error = await mutate(request, DateTime.UtcNow);
+            if (error != RecoveryPlanErrorCode.None)
+            {
+                return await RollbackFailure(error);
+            }
+
             if (request.Version != originalVersion)
             {
-                await _uow.SaveChangesAsync(token); await _uow.CommitTransactionAsync(token);
+                await _uow.SaveChangesAsync(token);
+                await _uow.CommitTransactionAsync(token);
             }
-            else await _uow.RollbackTransactionAsync(token);
+            else
+            {
+                await RollbackAsync();
+            }
+
             return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(request), request.Version == originalVersion);
         }
-        catch { await _uow.RollbackTransactionAsync(token); throw; }
+        catch
+        {
+            await RollbackAsync();
+            throw;
+        }
     }
 
     private Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> DoctorTransitionAsync(
@@ -309,37 +373,46 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         Guid userId, Guid id, CancellationToken token,
         Func<RecoveryPlanRequest, Doctor, DateTime, Task<RecoveryPlanErrorCode>> mutate)
     {
+        var doctor = await _uow.RecoveryPlanRequests.GetDoctorByUserIdAsync(userId, token);
+        if (doctor is null)
+        {
+            return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(
+                RecoveryPlanErrorCode.DoctorProfileNotFound);
+        }
+
         await _uow.BeginTransactionAsync(token);
         try
         {
-            var doctor = await _uow.RecoveryPlanRequests.GetDoctorForUpdateAsync(userId, token);
-            if (doctor is null) return await RollbackFailure(RecoveryPlanErrorCode.DoctorProfileNotFound, token);
             var request = await _uow.RecoveryPlanRequests.GetByIdForUpdateAsync(id, token);
             if (request is null || request.AssignedDoctorId != doctor.Id)
-                return await RollbackFailure(RecoveryPlanErrorCode.NotFound, token);
+            {
+                return await RollbackFailure(RecoveryPlanErrorCode.NotFound);
+            }
+
             var originalVersion = request.Version;
             var error = await mutate(request, doctor, DateTime.UtcNow);
-            if (error != RecoveryPlanErrorCode.None) return await RollbackFailure(error, token);
+            if (error != RecoveryPlanErrorCode.None)
+            {
+                return await RollbackFailure(error);
+            }
+
             if (request.Version != originalVersion)
             {
-                await _uow.SaveChangesAsync(token); await _uow.CommitTransactionAsync(token);
+                await _uow.SaveChangesAsync(token);
+                await _uow.CommitTransactionAsync(token);
             }
-            else await _uow.RollbackTransactionAsync(token);
+            else
+            {
+                await RollbackAsync();
+            }
+
             return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(request), request.Version == originalVersion);
         }
-        catch { await _uow.RollbackTransactionAsync(token); throw; }
-    }
-
-    private async Task<Doctor?> GetDoctorAsync(Guid userId, CancellationToken token)
-    {
-        await _uow.BeginTransactionAsync(token);
-        try
+        catch
         {
-            var doctor = await _uow.RecoveryPlanRequests.GetDoctorForUpdateAsync(userId, token);
-            await _uow.RollbackTransactionAsync(token);
-            return doctor;
+            await RollbackAsync();
+            throw;
         }
-        catch { await _uow.RollbackTransactionAsync(token); throw; }
     }
 
     private async Task<Guid> GetQuotaIdAsync(Guid usageId, CancellationToken token)
@@ -370,16 +443,24 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
     private void AddOutbox(RecoveryPlanRequest request, string eventType, DateTime now) =>
         _uow.RecoveryPlanRequests.AddOutbox(new OutboxMessage
         {
-            Id = Guid.NewGuid(), EventType = eventType, AggregateType = AggregateType,
+            Id = Guid.NewGuid(), EventType = eventType,
+            AggregateType = RecoveryPlanOutboxEventTypes.AggregateType,
             AggregateId = request.Id, Status = OutboxMessageStatus.Pending, CreatedAt = now,
             PayloadJson = JsonSerializer.Serialize(new
             {
-                RequestId = request.Id, request.UserId, request.DiseaseGroup, request.Status,
+                RequestId = request.Id,
+                request.UserId,
+                DiseaseGroup = request.DiseaseGroup.ToString(),
+                Status = request.Status.ToString(),
                 request.AssignedDoctorId, request.RequestedAt, TransitionedAt = now
             })
         });
 
-    private static void Touch(RecoveryPlanRequest request, DateTime now) { request.Version++; request.UpdatedAt = now; }
+    private static void Touch(RecoveryPlanRequest request, DateTime now)
+    {
+        request.Version++;
+        request.UpdatedAt = now;
+    }
     private static string? EmptyToNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
     private static string CreateScopedKey(Guid userId, string raw) =>
         $"RPR_CREATE:{userId:N}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw)))}";
@@ -388,6 +469,36 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         !doctor.IsActive ? RecoveryPlanErrorCode.DoctorNotActive :
         !doctor.IsAcceptingRecoveryPlanRequests ? RecoveryPlanErrorCode.DoctorNotAcceptingRequests :
         RecoveryPlanErrorCode.None;
+
+    private static RecoveryPlanOperationResult<RecoveryPlanRequestResponse>? ClassifyAcceptState(
+        RecoveryPlanRequest? request, Guid doctorId)
+    {
+        if (request is null)
+        {
+            return FailNotFound();
+        }
+
+        if (request.AssignedDoctorId == doctorId)
+        {
+            return request.Status is RecoveryPlanRequestStatus.Assigned
+                or RecoveryPlanRequestStatus.InReview
+                or RecoveryPlanRequestStatus.NeedMoreInformation
+                ? RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(request), true)
+                : RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(
+                    RecoveryPlanErrorCode.InvalidRequestState);
+        }
+
+        if (request.AssignedDoctorId.HasValue)
+        {
+            return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(
+                RecoveryPlanErrorCode.RecoveryPlanRequestAlreadyClaimed);
+        }
+
+        return request.Status == RecoveryPlanRequestStatus.WaitingForDoctor
+            ? null
+            : RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(
+                RecoveryPlanErrorCode.InvalidRequestState);
+    }
     private static RecoveryPlanRequestResponse Map(RecoveryPlanRequest x) => new()
     {
         Id = x.Id, UserId = x.UserId, AssignedDoctorId = x.AssignedDoctorId, DiseaseGroup = x.DiseaseGroup,
@@ -406,11 +517,15 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
     };
     private static RecoveryPlanOperationResult<RecoveryPlanRequestResponse> FailNotFound() =>
         RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(RecoveryPlanErrorCode.NotFound);
-    private async Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> RollbackFailure(RecoveryPlanErrorCode error, CancellationToken token)
+    private async Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> RollbackFailure(
+        RecoveryPlanErrorCode error)
     {
-        await _uow.RollbackTransactionAsync(token);
+        await RollbackAsync();
         return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(error);
     }
+
+    private Task RollbackAsync() =>
+        _uow.RollbackTransactionAsync(CancellationToken.None);
     private static Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> InvalidTask() =>
         Task.FromResult(RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(RecoveryPlanErrorCode.InvalidRequest));
 }

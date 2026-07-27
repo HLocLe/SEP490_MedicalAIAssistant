@@ -12,7 +12,8 @@ public interface IRecoveryPlanRequestRepository
     Task<PagedResult<RecoveryPlanRequest>> GetByUserPagedAsync(Guid userId, int page, int size, RecoveryPlanRequestStatus? status, CancellationToken cancellationToken = default);
     Task<PagedResult<RecoveryPlanRequest>> GetAssignedPagedAsync(Guid doctorId, int page, int size, RecoveryPlanRequestStatus? status, CancellationToken cancellationToken = default);
     Task<RecoveryPlanRequest?> TryAcceptAsync(Guid requestId, Guid doctorId, DateTime now, DateTime expiresAt, CancellationToken cancellationToken = default);
-    Task<Doctor?> GetDoctorForUpdateAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<Doctor?> GetDoctorByUserIdAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<Doctor?> GetDoctorByUserIdForUpdateAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<int> CountActiveAssignmentsAsync(Guid doctorId, CancellationToken cancellationToken = default);
     Task<bool> IsOwnedTreatmentJourneyAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
     Task<bool> IsOwnedLabSessionAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);

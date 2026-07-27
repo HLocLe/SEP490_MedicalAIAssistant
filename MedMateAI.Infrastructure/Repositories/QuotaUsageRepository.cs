@@ -17,21 +17,18 @@ public sealed class QuotaUsageRepository : IQuotaUsageRepository
         Guid subscriptionId, Guid quotaId, DateTime cycleStart, DateTime cycleEnd,
         int limitValue, DateTime utcNow, CancellationToken cancellationToken = default)
     {
-        const string sql = """
-            WITH inserted AS (
-                INSERT INTO "UserSubscriptionUsage"
-                    ("UserSubscriptionUsageId","UserSubscriptionId","QuotaId","LimitValue",
-                     "UsedCount","ReservedCount","CycleStart","CycleEnd","Version",
-                     "CreatedAt","UpdatedAt","IsDeleted")
-                VALUES (@id,@subscriptionId,@quotaId,@limitValue,0,0,@cycleStart,@cycleEnd,0,@now,NULL,false)
-                ON CONFLICT ("UserSubscriptionId","QuotaId","CycleStart","CycleEnd")
-                    WHERE "IsDeleted" = false DO NOTHING
-                RETURNING *
-            )
-            SELECT "UserSubscriptionUsageId","UserSubscriptionId","QuotaId","LimitValue",
-                   "UsedCount","ReservedCount","CycleStart","CycleEnd","Version","CreatedAt"
-            FROM inserted
-            UNION ALL
+        const string insertSql = """
+            INSERT INTO "UserSubscriptionUsage"
+                ("UserSubscriptionUsageId","UserSubscriptionId","QuotaId","LimitValue",
+                 "UsedCount","ReservedCount","CycleStart","CycleEnd","Version",
+                 "CreatedAt","UpdatedAt","IsDeleted")
+            VALUES (@id,@subscriptionId,@quotaId,@limitValue,0,0,@cycleStart,@cycleEnd,0,@now,NULL,false)
+            ON CONFLICT ("UserSubscriptionId","QuotaId","CycleStart","CycleEnd")
+                WHERE "IsDeleted" = false DO NOTHING
+            RETURNING "UserSubscriptionUsageId","UserSubscriptionId","QuotaId","LimitValue",
+                      "UsedCount","ReservedCount","CycleStart","CycleEnd","Version","CreatedAt";
+            """;
+        const string selectSql = """
             SELECT "UserSubscriptionUsageId","UserSubscriptionId","QuotaId","LimitValue",
                    "UsedCount","ReservedCount","CycleStart","CycleEnd","Version","CreatedAt"
             FROM "UserSubscriptionUsage"
@@ -39,24 +36,31 @@ public sealed class QuotaUsageRepository : IQuotaUsageRepository
               AND "CycleStart"=@cycleStart AND "CycleEnd"=@cycleEnd AND "IsDeleted"=false
             LIMIT 1;
             """;
-        await using var command = CreateTransactionalCommand(sql);
-        Add(command, "id", Guid.NewGuid());
-        Add(command, "subscriptionId", subscriptionId);
-        Add(command, "quotaId", quotaId);
-        Add(command, "limitValue", limitValue);
-        Add(command, "cycleStart", cycleStart);
-        Add(command, "cycleEnd", cycleEnd);
-        Add(command, "now", utcNow);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
-            throw new InvalidOperationException("Unable to create or load subscription usage.");
-        return new UserSubscriptionUsage
+
+        await using (var insertCommand = CreateTransactionalCommand(insertSql))
         {
-            Id = reader.GetGuid(0), UserSubscriptionId = reader.GetGuid(1), QuotaId = reader.GetGuid(2),
-            LimitValue = reader.GetInt32(3), UsedCount = reader.GetInt32(4), ReservedCount = reader.GetInt32(5),
-            CycleStart = reader.GetDateTime(6), CycleEnd = reader.GetDateTime(7), Version = reader.GetInt32(8),
-            CreatedAt = reader.GetDateTime(9)
-        };
+            AddUsageKeyParameters(insertCommand, subscriptionId, quotaId, cycleStart, cycleEnd);
+            Add(insertCommand, "id", Guid.NewGuid());
+            Add(insertCommand, "limitValue", limitValue);
+            Add(insertCommand, "now", utcNow);
+
+            await using var insertReader = await insertCommand.ExecuteReaderAsync(cancellationToken);
+            if (await insertReader.ReadAsync(cancellationToken))
+            {
+                return ReadUsage(insertReader);
+            }
+        }
+
+        await using var selectCommand = CreateTransactionalCommand(selectSql);
+        AddUsageKeyParameters(selectCommand, subscriptionId, quotaId, cycleStart, cycleEnd);
+        await using var selectReader = await selectCommand.ExecuteReaderAsync(cancellationToken);
+        if (await selectReader.ReadAsync(cancellationToken))
+        {
+            return ReadUsage(selectReader);
+        }
+
+        throw new InvalidOperationException(
+            "Subscription usage was not returned by the conflict-safe insert and could not be loaded afterward.");
     }
 
     public Task<QuotaMutationResult?> ReserveAsync(Guid usageId, DateTime now, CancellationToken token = default) =>
@@ -91,14 +95,22 @@ public sealed class QuotaUsageRepository : IQuotaUsageRepository
             ON CONFLICT ("IdempotencyKey") WHERE "IdempotencyKey" IS NOT NULL DO NOTHING;
             """;
         await using var command = CreateTransactionalCommand(sql);
-        Add(command, "id", log.Id); Add(command, "subscriptionId", log.UserSubscriptionId);
-        Add(command, "usageId", log.UserSubscriptionUsageId); Add(command, "quotaId", log.QuotaId);
-        Add(command, "actionType", log.ActionType.ToString()); Add(command, "quantity", log.Quantity);
-        Add(command, "usedBefore", log.UsedCountBefore); Add(command, "usedAfter", log.UsedCountAfter);
-        Add(command, "reservedBefore", log.ReservedCountBefore); Add(command, "reservedAfter", log.ReservedCountAfter);
-        Add(command, "referenceType", log.ReferenceType); Add(command, "referenceId", log.ReferenceId);
-        Add(command, "reason", log.Reason); Add(command, "key", log.IdempotencyKey);
-        Add(command, "actor", log.PerformedByUserId); Add(command, "createdAt", log.CreatedAt);
+        Add(command, "id", log.Id);
+        Add(command, "subscriptionId", log.UserSubscriptionId);
+        Add(command, "usageId", log.UserSubscriptionUsageId);
+        Add(command, "quotaId", log.QuotaId);
+        Add(command, "actionType", log.ActionType.ToString());
+        Add(command, "quantity", log.Quantity);
+        Add(command, "usedBefore", log.UsedCountBefore);
+        Add(command, "usedAfter", log.UsedCountAfter);
+        Add(command, "reservedBefore", log.ReservedCountBefore);
+        Add(command, "reservedAfter", log.ReservedCountAfter);
+        Add(command, "referenceType", log.ReferenceType);
+        Add(command, "referenceId", log.ReferenceId);
+        Add(command, "reason", log.Reason);
+        Add(command, "key", log.IdempotencyKey);
+        Add(command, "actor", log.PerformedByUserId);
+        Add(command, "createdAt", log.CreatedAt);
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
 
@@ -121,7 +133,8 @@ public sealed class QuotaUsageRepository : IQuotaUsageRepository
             RETURNING "UserSubscriptionUsageId","UserSubscriptionId","QuotaId","LimitValue","UsedCount","ReservedCount";
             """;
         await using var command = CreateTransactionalCommand(sql);
-        Add(command, "usageId", usageId); Add(command, "now", now);
+        Add(command, "usageId", usageId);
+        Add(command, "now", now);
         await using var reader = await command.ExecuteReaderAsync(token);
         if (!await reader.ReadAsync(token)) return null;
         var usedAfter = reader.GetInt32(4);
@@ -148,4 +161,27 @@ public sealed class QuotaUsageRepository : IQuotaUsageRepository
         parameter.Value = value ?? DBNull.Value;
         command.Parameters.Add(parameter);
     }
+
+    private static void AddUsageKeyParameters(
+        DbCommand command, Guid subscriptionId, Guid quotaId, DateTime cycleStart, DateTime cycleEnd)
+    {
+        Add(command, "subscriptionId", subscriptionId);
+        Add(command, "quotaId", quotaId);
+        Add(command, "cycleStart", cycleStart);
+        Add(command, "cycleEnd", cycleEnd);
+    }
+
+    private static UserSubscriptionUsage ReadUsage(DbDataReader reader) => new()
+    {
+        Id = reader.GetGuid(0),
+        UserSubscriptionId = reader.GetGuid(1),
+        QuotaId = reader.GetGuid(2),
+        LimitValue = reader.GetInt32(3),
+        UsedCount = reader.GetInt32(4),
+        ReservedCount = reader.GetInt32(5),
+        CycleStart = reader.GetDateTime(6),
+        CycleEnd = reader.GetDateTime(7),
+        Version = reader.GetInt32(8),
+        CreatedAt = reader.GetDateTime(9)
+    };
 }

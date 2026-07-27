@@ -63,7 +63,11 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
         return acceptedId is Guid ? await GetByIdAsync(id, true, token) : null;
     }
 
-    public async Task<Doctor?> GetDoctorForUpdateAsync(Guid userId, CancellationToken token = default)
+    public Task<Doctor?> GetDoctorByUserIdAsync(Guid userId, CancellationToken token = default) =>
+        _context.Doctors.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.UserId == userId && !x.IsDeleted, token);
+
+    public async Task<Doctor?> GetDoctorByUserIdForUpdateAsync(Guid userId, CancellationToken token = default)
     {
         RequireTransaction();
         var rows = await _context.Doctors.FromSqlInterpolated(

@@ -39,25 +39,11 @@ public sealed class DoctorRecoveryPlanRequestsController : ControllerBase
     private async Task<IActionResult> WithUser<T>(Func<Guid, Task<RecoveryPlanOperationResult<T>>> action)
     {
         if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-            return Unauthorized(new ApiResponse { Success = false, Message = "Unauthorized.", Errors = new() { "UNAUTHENTICATED" } });
-        var result = await action(userId);
-        if (result.Success) return Ok(new ApiResponse<T> { Success = true, Message = result.IsReplay ? "Idempotent replay." : "OK", Data = result.Data });
-        return StatusCode(ToStatus(result.Error), new ApiResponse<T>
         {
-            Success = false, Message = result.Message ?? "Request failed.",
-            Errors = new() { ToCode(result.Error) }
-        });
+            return this.UnauthorizedResult();
+        }
+
+        var result = await action(userId);
+        return this.ToActionResult(result);
     }
-    private static int ToStatus(RecoveryPlanErrorCode error) => error switch
-    {
-        RecoveryPlanErrorCode.Unauthenticated => 401,
-        RecoveryPlanErrorCode.Forbidden or RecoveryPlanErrorCode.NoActiveSubscription
-            or RecoveryPlanErrorCode.RecoveryPlanQuotaNotConfigured or RecoveryPlanErrorCode.DoctorNotActive
-            or RecoveryPlanErrorCode.DoctorNotAcceptingRequests => 403,
-        RecoveryPlanErrorCode.NotFound or RecoveryPlanErrorCode.DoctorProfileNotFound => 404,
-        RecoveryPlanErrorCode.InvalidRequest or RecoveryPlanErrorCode.IdempotencyKeyInvalid => 400,
-        _ => 409
-    };
-    private static string ToCode(RecoveryPlanErrorCode error) =>
-        string.Concat(error.ToString().Select((c, i) => i > 0 && char.IsUpper(c) ? $"_{c}" : c.ToString())).ToUpperInvariant();
 }
