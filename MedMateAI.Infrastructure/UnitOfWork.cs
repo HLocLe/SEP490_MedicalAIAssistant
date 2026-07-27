@@ -25,6 +25,8 @@ public sealed class UnitOfWork : IUnitOfWork
     private IClinicalQuestionRepository? _clinicalQuestions;
     private ISessionClinicalQuestionAnswerRepository? _sessionClinicalQuestionAnswers;
     private IIcdChapterRepository? _icdChapters;
+    private IRecoveryPlanRequestRepository? _recoveryPlanRequests;
+    private IQuotaUsageRepository? _quotaUsages;
     private IDbContextTransaction? _transaction;
 
     public UnitOfWork(ApplicationDbContext context)
@@ -79,6 +81,12 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public IIcdChapterRepository IcdChapters =>
         _icdChapters ??= new IcdChapterRepository(_context);
+
+    public IRecoveryPlanRequestRepository RecoveryPlanRequests =>
+        _recoveryPlanRequests ??= new RecoveryPlanRequestRepository(_context);
+
+    public IQuotaUsageRepository QuotaUsages =>
+        _quotaUsages ??= new QuotaUsageRepository(_context);
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

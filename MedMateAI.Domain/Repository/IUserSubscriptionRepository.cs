@@ -16,4 +16,9 @@ public interface IUserSubscriptionRepository : IGenericRepository<UserSubscripti
     Task<IReadOnlyList<UserSubscription>> GetByUserWithPlanAsync(
         Guid userId,
         CancellationToken cancellationToken = default);
+
+    Task<UserSubscription?> GetCurrentActiveWithPlanQuotasAsync(
+        Guid userId,
+        DateTime utcNow,
+        CancellationToken cancellationToken = default);
 }

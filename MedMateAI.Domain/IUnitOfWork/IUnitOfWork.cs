@@ -29,6 +29,8 @@ public interface IUnitOfWork : IAsyncDisposable
     ISessionClinicalQuestionAnswerRepository SessionClinicalQuestionAnswers { get; }
 
     IIcdChapterRepository IcdChapters { get; }
+    IRecoveryPlanRequestRepository RecoveryPlanRequests { get; }
+    IQuotaUsageRepository QuotaUsages { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task BeginTransactionAsync(CancellationToken cancellationToken = default);

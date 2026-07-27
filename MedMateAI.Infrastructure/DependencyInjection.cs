@@ -71,6 +71,8 @@ public static class DependencyInjection
         services.AddScoped<IPayOSService, PayOSService>();
         services.AddScoped<IUserSubscriptionService, UserSubscriptionService>();
         services.AddScoped<IPaymentService, PaymentService>();
+        services.AddScoped<IRecoveryPlanQuotaService, RecoveryPlanQuotaService>();
+        services.AddScoped<IRecoveryPlanRequestService, RecoveryPlanRequestService>();
 
         //
         services.Configure<PayOSOptions>(configuration.GetSection("PayOS"));
@@ -80,6 +82,11 @@ public static class DependencyInjection
 
         services.Configure<BrevoOptions>(configuration.GetSection(BrevoOptions.SectionName));
         services.Configure<FrontendOptions>(configuration.GetSection(FrontendOptions.SectionName));
+        services.AddOptions<RecoveryPlanOptions>()
+            .Bind(configuration.GetSection(RecoveryPlanOptions.SectionName))
+            .Validate(x => x.AssignmentTimeoutMinutes is > 0 and <= 120,
+                "RecoveryPlan AssignmentTimeoutMinutes must be between 1 and 120.")
+            .ValidateOnStart();
       
         
         //
