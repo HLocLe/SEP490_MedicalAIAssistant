@@ -6,6 +6,8 @@ namespace MedMateAI.Infrastructure.Identity;
 
 public class ApplicationUser : IdentityUser<Guid>
 {
+    public string TimeZoneId { get; set; } = "Asia/Ho_Chi_Minh";
+
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
 
     public PatientProfile? PatientProfile { get; set; }

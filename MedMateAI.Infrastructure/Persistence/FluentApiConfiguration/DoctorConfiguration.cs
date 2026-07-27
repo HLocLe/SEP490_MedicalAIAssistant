@@ -34,6 +34,11 @@ public sealed class DoctorConfiguration : IEntityTypeConfiguration<Doctor>
             .HasDefaultValue(DepartmentRole.Doctor)
             .IsRequired();
 
+        builder.Property(x => x.IsAcceptingRecoveryPlanRequests).HasDefaultValue(true);
+        builder.ToTable("Doctor", t => t.HasCheckConstraint(
+            "CK_Doctor_MaxConcurrentRecoveryPlanRequests",
+            "\"MaxConcurrentRecoveryPlanRequests\" IS NULL OR \"MaxConcurrentRecoveryPlanRequests\" > 0"));
+
         builder.HasOne(x => x.FacilityDepartment)
             .WithMany(x => x.Doctors)
             .HasForeignKey(x => x.FacilityDepartmentId)

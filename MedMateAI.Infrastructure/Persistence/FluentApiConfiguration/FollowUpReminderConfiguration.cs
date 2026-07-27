@@ -24,9 +24,5 @@ public sealed class FollowUpReminderConfiguration : IEntityTypeConfiguration<Fol
             .HasForeignKey(x => x.TreatmentLogId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        builder.HasMany(x => x.Notifications)
-            .WithOne(x => x.Reminder)
-            .HasForeignKey(x => x.ReminderId)
-            .OnDelete(DeleteBehavior.Cascade);
     }
 }

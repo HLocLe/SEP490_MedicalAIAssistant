@@ -21,4 +21,10 @@ public sealed class UserSubscription : BaseEntity
     public ICollection<PaymentTransaction> PaymentTransactions { get; set; } = new List<PaymentTransaction>();
 
     public ICollection<Payment> Payments { get; set; } = new List<Payment>();
+
+    public ICollection<UserSubscriptionUsage> Usages { get; set; } = new List<UserSubscriptionUsage>();
+
+    public ICollection<UserSubscriptionLog> QuotaLogs { get; set; } = new List<UserSubscriptionLog>();
+
+    public ICollection<RecoveryPlanRequest> RecoveryPlanRequests { get; set; } = new List<RecoveryPlanRequest>();
 }

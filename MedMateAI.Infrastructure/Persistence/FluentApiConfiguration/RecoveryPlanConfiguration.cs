@@ -1,4 +1,6 @@
 using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
+using MedMateAI.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -12,6 +14,17 @@ public sealed class RecoveryPlanConfiguration : IEntityTypeConfiguration<Recover
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("RecoveryPlanId").ValueGeneratedOnAdd();
+        builder.Property(x => x.Summary).HasMaxLength(2000);
+        builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).HasDefaultValue(RecoveryPlanStatus.Draft).IsRequired();
+        builder.Property(x => x.RecheckInstruction).HasMaxLength(2000);
+        builder.Property(x => x.ClinicalSnapshotJson).HasColumnType("jsonb");
+        builder.Property(x => x.StartDate).HasColumnType("date");
+        builder.Property(x => x.EndDate).HasColumnType("date");
+        builder.HasIndex(x => x.RecoveryPlanRequestId).IsUnique().HasFilter("\"RecoveryPlanRequestId\" IS NOT NULL AND \"IsDeleted\" = false");
+        builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.RecoveryPlanRequest).WithOne(x => x.RecoveryPlan).HasForeignKey<RecoveryPlan>(x => x.RecoveryPlanRequestId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Doctor).WithMany(x => x.RecoveryPlans).HasForeignKey(x => x.DoctorId).OnDelete(DeleteBehavior.SetNull);
+        builder.HasOne(x => x.TreatmentJourney).WithMany(x => x.RecoveryPlans).HasForeignKey(x => x.TreatmentJourneyId).OnDelete(DeleteBehavior.SetNull);
 
         builder.HasOne(x => x.TestSession)
             .WithMany(x => x.RecoveryPlans)

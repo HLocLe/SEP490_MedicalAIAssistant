@@ -13,4 +13,6 @@ public sealed class SubscriptionPlan : BaseEntity
     public bool IsActive { get; set; }
 
     public ICollection<UserSubscription> UserSubscriptions { get; set; } = new List<UserSubscription>();
+
+    public ICollection<SubscriptionPlanQuota> SubscriptionPlanQuotas { get; set; } = new List<SubscriptionPlanQuota>();
 }

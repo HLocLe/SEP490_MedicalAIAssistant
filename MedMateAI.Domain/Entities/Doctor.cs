@@ -22,7 +22,15 @@ public sealed class Doctor : BaseEntity
 
     public bool IsActive { get; set; }
 
+    public bool IsAcceptingRecoveryPlanRequests { get; set; } = true;
+
+    public int? MaxConcurrentRecoveryPlanRequests { get; set; }
+
     public FacilityDepartment FacilityDepartment { get; set; } = null!;
 
     public ICollection<TreatmentJourney> TreatmentJourneys { get; set; } = new List<TreatmentJourney>();
+
+    public ICollection<RecoveryPlanRequest> AssignedRecoveryPlanRequests { get; set; } = new List<RecoveryPlanRequest>();
+
+    public ICollection<RecoveryPlan> RecoveryPlans { get; set; } = new List<RecoveryPlan>();
 }
