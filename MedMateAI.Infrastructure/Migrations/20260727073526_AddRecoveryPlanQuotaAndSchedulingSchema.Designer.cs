@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MedMateAI.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260727065400_AddRecoveryPlanQuotaAndSchedulingSchema")]
+    [Migration("20260727073526_AddRecoveryPlanQuotaAndSchedulingSchema")]
     partial class AddRecoveryPlanQuotaAndSchedulingSchema
     {
         /// <inheritdoc />
@@ -1397,8 +1397,8 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.Property<int>("DurationDays")
                         .HasColumnType("integer");
 
-                    b.Property<DateTime?>("EndDate")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date");
 
                     b.Property<bool>("IsCurrent")
                         .HasColumnType("boolean");
@@ -1419,8 +1419,8 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.Property<Guid?>("RecoveryPlanRequestId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime?>("StartDate")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("date");
 
                     b.Property<string>("Status")
                         .IsRequired()

@@ -42,24 +42,6 @@ namespace MedMateAI.Infrastructure.Migrations
                 oldClrType: typeof(Guid),
                 oldType: "uuid");
 
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "StartDate",
-                table: "RecoveryPlan",
-                type: "timestamp with time zone",
-                nullable: true,
-                oldClrType: typeof(DateOnly),
-                oldType: "date",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "EndDate",
-                table: "RecoveryPlan",
-                type: "timestamp with time zone",
-                nullable: true,
-                oldClrType: typeof(DateOnly),
-                oldType: "date",
-                oldNullable: true);
-
             migrationBuilder.AddColumn<DateTime>(
                 name: "ActivatedAt",
                 table: "RecoveryPlan",
@@ -1113,24 +1095,6 @@ namespace MedMateAI.Infrastructure.Migrations
                 nullable: false,
                 oldClrType: typeof(Guid),
                 oldType: "uuid",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateOnly>(
-                name: "StartDate",
-                table: "RecoveryPlan",
-                type: "date",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "timestamp with time zone",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateOnly>(
-                name: "EndDate",
-                table: "RecoveryPlan",
-                type: "date",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "timestamp with time zone",
                 oldNullable: true);
 
             migrationBuilder.AlterColumn<string>(

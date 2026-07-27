@@ -18,6 +18,8 @@ public sealed class RecoveryPlanConfiguration : IEntityTypeConfiguration<Recover
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).HasDefaultValue(RecoveryPlanStatus.Draft).IsRequired();
         builder.Property(x => x.RecheckInstruction).HasMaxLength(2000);
         builder.Property(x => x.ClinicalSnapshotJson).HasColumnType("jsonb");
+        builder.Property(x => x.StartDate).HasColumnType("date");
+        builder.Property(x => x.EndDate).HasColumnType("date");
         builder.HasIndex(x => x.RecoveryPlanRequestId).IsUnique().HasFilter("\"RecoveryPlanRequestId\" IS NOT NULL AND \"IsDeleted\" = false");
         builder.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.RecoveryPlanRequest).WithOne(x => x.RecoveryPlan).HasForeignKey<RecoveryPlan>(x => x.RecoveryPlanRequestId).OnDelete(DeleteBehavior.Restrict);
