@@ -9,6 +9,10 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
 {
     public void Configure(EntityTypeBuilder<ApplicationUser> builder)
     {
+        builder.Property(x => x.TimeZoneId)
+            .HasMaxLength(100)
+            .HasDefaultValue("Asia/Ho_Chi_Minh")
+            .IsRequired();
         builder.Property(x => x.DisplayName)
             .HasMaxLength(256);
 

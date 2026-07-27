@@ -38,11 +38,6 @@ public sealed class TreatmentJourneyConfiguration : IEntityTypeConfiguration<Tre
 
       
 
-        builder.HasMany(x => x.RecoveryPlans)
-            .WithOne(x => x.TreatmentJourney)
-            .HasForeignKey(x => x.TreatmentJourneyId)
-            .OnDelete(DeleteBehavior.Cascade);
-
         builder.HasMany(x => x.AIAnalyses)
             .WithOne(x => x.TreatmentJourney)
             .HasForeignKey(x => x.TreatmentJourneyId)

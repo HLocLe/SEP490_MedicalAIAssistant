@@ -1,4 +1,5 @@
 using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
 using MedMateAI.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -15,6 +16,8 @@ public sealed class UserMedicationConfiguration : IEntityTypeConfiguration<UserM
         builder.Property(x => x.Id).HasColumnName("UserMedicationId").ValueGeneratedOnAdd();
 
         builder.Property(x => x.MedicineName).HasMaxLength(256).IsRequired();
+        builder.Property(x => x.SourceType).HasConversion<string>().HasMaxLength(32).HasDefaultValue(UserMedicationSourceType.PatientReported).IsRequired();
+        builder.Property(x => x.IsReminderEnabled).HasDefaultValue(false);
 
         builder.HasOne<ApplicationUser>()
             .WithMany(x => x.UserMedications)

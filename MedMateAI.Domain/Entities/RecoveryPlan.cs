@@ -1,8 +1,16 @@
+using MedMateAI.Domain.Enums;
+
 namespace MedMateAI.Domain.Entities;
 
 public sealed class RecoveryPlan : BaseEntity
 {
-    public Guid TreatmentJourneyId { get; set; }
+    public Guid? TreatmentJourneyId { get; set; }
+
+    public Guid? RecoveryPlanRequestId { get; set; }
+
+    public Guid UserId { get; set; }
+
+    public Guid? DoctorId { get; set; }
 
     public Guid? TestSessionId { get; set; }
 
@@ -12,13 +20,31 @@ public sealed class RecoveryPlan : BaseEntity
 
     public int DurationDays { get; set; }
 
-    public DateOnly? StartDate { get; set; }
+    public DateTime? StartDate { get; set; }
 
-    public DateOnly? EndDate { get; set; }
+    public DateTime? EndDate { get; set; }
 
     public bool IsCurrent { get; set; }
 
-    public TreatmentJourney TreatmentJourney { get; set; } = null!;
+    public string? Summary { get; set; }
+
+    public RecoveryPlanStatus Status { get; set; } = RecoveryPlanStatus.Draft;
+
+    public DateTime? PublishedAt { get; set; }
+
+    public DateTime? ActivatedAt { get; set; }
+
+    public DateTime? CompletedAt { get; set; }
+
+    public string? RecheckInstruction { get; set; }
+
+    public string? ClinicalSnapshotJson { get; set; }
+
+    public TreatmentJourney? TreatmentJourney { get; set; }
+
+    public RecoveryPlanRequest? RecoveryPlanRequest { get; set; }
+
+    public Doctor? Doctor { get; set; }
 
     public LabTestSession? TestSession { get; set; }
 
@@ -29,4 +55,6 @@ public sealed class RecoveryPlan : BaseEntity
     public ICollection<AISystemConfig> AISystemConfigs { get; set; } = new List<AISystemConfig>();
 
     public ICollection<AIAnalysis> AIAnalyses { get; set; } = new List<AIAnalysis>();
+
+    public ICollection<RecoveryPlanPhase> Phases { get; set; } = new List<RecoveryPlanPhase>();
 }

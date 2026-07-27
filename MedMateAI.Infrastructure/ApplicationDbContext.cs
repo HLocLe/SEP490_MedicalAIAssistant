@@ -75,6 +75,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<Payment> Payments => Set<Payment>();
 
+    public DbSet<Quota> Quotas => Set<Quota>();
+    public DbSet<SubscriptionPlanQuota> SubscriptionPlanQuotas => Set<SubscriptionPlanQuota>();
+    public DbSet<UserSubscriptionUsage> UserSubscriptionUsages => Set<UserSubscriptionUsage>();
+    public DbSet<UserSubscriptionLog> UserSubscriptionLogs => Set<UserSubscriptionLog>();
+    public DbSet<RecoveryPlanRequest> RecoveryPlanRequests => Set<RecoveryPlanRequest>();
+    public DbSet<RecoveryPlanRequestEvent> RecoveryPlanRequestEvents => Set<RecoveryPlanRequestEvent>();
+    public DbSet<RecoveryPlanPhase> RecoveryPlanPhases => Set<RecoveryPlanPhase>();
+    public DbSet<RecoveryPlanNutrientTarget> RecoveryPlanNutrientTargets => Set<RecoveryPlanNutrientTarget>();
+    public DbSet<RecoveryPlanFoodSource> RecoveryPlanFoodSources => Set<RecoveryPlanFoodSource>();
+    public DbSet<UserMedicationReminderTime> UserMedicationReminderTimes => Set<UserMedicationReminderTime>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
         : base(options)
     {

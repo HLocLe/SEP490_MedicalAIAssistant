@@ -1,3 +1,5 @@
+using MedMateAI.Domain.Enums;
+
 namespace MedMateAI.Domain.Entities;
 
 public sealed class UserMedication : BaseEntity
@@ -16,5 +18,11 @@ public sealed class UserMedication : BaseEntity
 
     public string? Status { get; set; }
 
+    public UserMedicationSourceType SourceType { get; set; } = UserMedicationSourceType.PatientReported;
+
+    public bool IsReminderEnabled { get; set; }
+
     public TreatmentJourney? TreatmentJourney { get; set; }
+
+    public ICollection<UserMedicationReminderTime> ReminderTimes { get; set; } = new List<UserMedicationReminderTime>();
 }
