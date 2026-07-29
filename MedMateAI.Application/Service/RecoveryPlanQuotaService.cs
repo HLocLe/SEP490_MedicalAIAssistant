@@ -97,7 +97,7 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
         return RecoveryPlanOperationResult<IReadOnlyList<SubscriptionUsageResponse>>.Ok(items);
     }
 
-    public Task<bool> ReserveAsync(
+    public Task<QuotaMutationStatus> ReserveAsync(
         Guid usageId,
         Guid userSubscriptionId,
         Guid quotaId,
@@ -110,8 +110,6 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
         return MutateAsync(
             () => _unitOfWork.QuotaUsages.ReserveAsync(usageId, utcNow, cancellationToken),
             SubscriptionQuotaActionType.Reserve,
-            userSubscriptionId,
-            quotaId,
             requestId,
             actorUserId,
             idempotencyKey,
@@ -120,7 +118,7 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
             cancellationToken);
     }
 
-    public Task<bool> ReleaseAsync(
+    public Task<QuotaMutationStatus> ReleaseAsync(
         Guid usageId,
         Guid userSubscriptionId,
         Guid quotaId,
@@ -133,8 +131,6 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
         return MutateAsync(
             () => _unitOfWork.QuotaUsages.ReleaseAsync(usageId, utcNow, cancellationToken),
             SubscriptionQuotaActionType.Release,
-            userSubscriptionId,
-            quotaId,
             requestId,
             actorUserId,
             idempotencyKey,
@@ -143,7 +139,7 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
             cancellationToken);
     }
 
-    public Task<bool> ConsumeAsync(
+    public Task<QuotaMutationStatus> ConsumeAsync(
         Guid usageId,
         Guid userSubscriptionId,
         Guid quotaId,
@@ -156,8 +152,6 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
         return MutateAsync(
             () => _unitOfWork.QuotaUsages.ConsumeAsync(usageId, utcNow, cancellationToken),
             SubscriptionQuotaActionType.Consume,
-            userSubscriptionId,
-            quotaId,
             requestId,
             actorUserId,
             idempotencyKey,
@@ -166,7 +160,7 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
             cancellationToken);
     }
 
-    public Task<bool> RestoreAsync(
+    public Task<QuotaMutationStatus> RestoreAsync(
         Guid usageId,
         Guid userSubscriptionId,
         Guid quotaId,
@@ -179,8 +173,6 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
         return MutateAsync(
             () => _unitOfWork.QuotaUsages.RestoreAsync(usageId, utcNow, cancellationToken),
             SubscriptionQuotaActionType.Restore,
-            userSubscriptionId,
-            quotaId,
             requestId,
             actorUserId,
             idempotencyKey,
@@ -189,11 +181,9 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
             cancellationToken);
     }
 
-    private async Task<bool> MutateAsync(
+    private async Task<QuotaMutationStatus> MutateAsync(
         Func<Task<QuotaMutationResult?>> mutation,
         SubscriptionQuotaActionType actionType,
-        Guid userSubscriptionId,
-        Guid quotaId,
         Guid requestId,
         Guid? actorUserId,
         string idempotencyKey,
@@ -207,34 +197,36 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
 
         if (existingLog is not null)
         {
-            return true;
+            return QuotaMutationStatus.Duplicate;
         }
 
         var mutationResult = await mutation();
         if (mutationResult is null)
         {
-            return false;
+            return QuotaMutationStatus.Rejected;
         }
 
         var log = CreateMutationLog(
             mutationResult,
             actionType,
-            userSubscriptionId,
-            quotaId,
             requestId,
             actorUserId,
             idempotencyKey,
             reason,
             utcNow);
 
-        return await _unitOfWork.QuotaUsages.TryInsertLogAsync(log, cancellationToken);
+        var logInserted = await _unitOfWork.QuotaUsages.TryInsertLogAsync(log, cancellationToken);
+        if (logInserted)
+        {
+            return QuotaMutationStatus.Applied;
+        }
+
+        return QuotaMutationStatus.Duplicate;
     }
 
     private static UserSubscriptionLog CreateMutationLog(
         QuotaMutationResult mutationResult,
         SubscriptionQuotaActionType actionType,
-        Guid userSubscriptionId,
-        Guid quotaId,
         Guid requestId,
         Guid? actorUserId,
         string idempotencyKey,
@@ -244,9 +236,9 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
         return new UserSubscriptionLog
         {
             Id = Guid.NewGuid(),
-            UserSubscriptionId = userSubscriptionId,
+            UserSubscriptionId = mutationResult.UserSubscriptionId,
             UserSubscriptionUsageId = mutationResult.UsageId,
-            QuotaId = quotaId,
+            QuotaId = mutationResult.QuotaId,
             ActionType = actionType,
             Quantity = 1,
             UsedCountBefore = mutationResult.UsedCountBefore,
