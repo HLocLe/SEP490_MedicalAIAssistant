@@ -12,7 +12,9 @@ public interface IQuotaUsageRepository
     Task<QuotaMutationResult?> ReleaseAsync(Guid usageId, DateTime utcNow, CancellationToken cancellationToken = default);
     Task<QuotaMutationResult?> ConsumeAsync(Guid usageId, DateTime utcNow, CancellationToken cancellationToken = default);
     Task<QuotaMutationResult?> RestoreAsync(Guid usageId, DateTime utcNow, CancellationToken cancellationToken = default);
-    Task<UserSubscriptionLog?> GetLogByIdempotencyKeyAsync(string key, CancellationToken cancellationToken = default);
+    Task<UserSubscriptionLog?> GetLogByIdempotencyKeyAsync(
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
     Task<bool> TryInsertLogAsync(UserSubscriptionLog log, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<UserSubscriptionUsage>> GetBySubscriptionAsync(Guid subscriptionId, CancellationToken cancellationToken = default);
     Task<UserSubscriptionUsage?> GetByIdAsync(Guid usageId, CancellationToken cancellationToken = default);
