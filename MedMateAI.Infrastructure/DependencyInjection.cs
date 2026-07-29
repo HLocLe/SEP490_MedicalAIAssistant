@@ -73,6 +73,8 @@ public static class DependencyInjection
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<IRecoveryPlanQuotaService, RecoveryPlanQuotaService>();
         services.AddScoped<IRecoveryPlanRequestService, RecoveryPlanRequestService>();
+        services.AddScoped<IRecoveryPlanClinicalContextService, RecoveryPlanClinicalContextService>();
+        services.AddScoped<IRecoveryPlanService, RecoveryPlanService>();
 
         //
         services.Configure<PayOSOptions>(configuration.GetSection("PayOS"));

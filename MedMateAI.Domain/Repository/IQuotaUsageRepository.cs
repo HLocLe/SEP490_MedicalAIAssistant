@@ -18,4 +18,9 @@ public interface IQuotaUsageRepository
     Task<bool> TryInsertLogAsync(UserSubscriptionLog log, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<UserSubscriptionUsage>> GetBySubscriptionAsync(Guid subscriptionId, CancellationToken cancellationToken = default);
     Task<UserSubscriptionUsage?> GetByIdAsync(Guid usageId, CancellationToken cancellationToken = default);
+    Task<UserSubscriptionUsage?> GetByIdForQuotaAsync(
+        Guid usageId,
+        Guid userSubscriptionId,
+        string quotaCode,
+        CancellationToken cancellationToken = default);
 }

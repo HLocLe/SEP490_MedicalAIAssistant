@@ -276,6 +276,25 @@ public sealed class QuotaUsageRepository : IQuotaUsageRepository
                 cancellationToken);
     }
 
+    public Task<UserSubscriptionUsage?> GetByIdForQuotaAsync(
+        Guid usageId,
+        Guid userSubscriptionId,
+        string quotaCode,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.UserSubscriptionUsages
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                usage =>
+                    usage.Id == usageId
+                    && !usage.IsDeleted
+                    && usage.UserSubscriptionId == userSubscriptionId
+                    && !usage.Quota.IsDeleted
+                    && usage.Quota.IsActive
+                    && usage.Quota.Code == quotaCode,
+                cancellationToken);
+    }
+
     private async Task<QuotaMutationState> GetMutationStateAsync(
         Guid usageId,
         CancellationToken cancellationToken)

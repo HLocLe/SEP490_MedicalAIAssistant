@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using MedMateAI.Application.DTOs.Common;
+using MedMateAI.Application.DTOs.RecoveryPlans;
 using MedMateAI.Application.DTOs.RecoveryPlanRequests;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models;
@@ -14,9 +15,18 @@ namespace MedMateAI.Controllers;
 public sealed class DoctorRecoveryPlanRequestsController : ControllerBase
 {
     private readonly IRecoveryPlanRequestService _service;
+    private readonly IRecoveryPlanService _planService;
+    private readonly IRecoveryPlanClinicalContextService _clinicalContextService;
 
-    public DoctorRecoveryPlanRequestsController(IRecoveryPlanRequestService service) =>
+    public DoctorRecoveryPlanRequestsController(
+        IRecoveryPlanRequestService service,
+        IRecoveryPlanService planService,
+        IRecoveryPlanClinicalContextService clinicalContextService)
+    {
         _service = service;
+        _planService = planService;
+        _clinicalContextService = clinicalContextService;
+    }
 
     [HttpGet("open")]
     public async Task<IActionResult> Open(
@@ -33,6 +43,36 @@ public sealed class DoctorRecoveryPlanRequestsController : ControllerBase
         CancellationToken cancellationToken) =>
         await WithUser(userId =>
             _service.GetDoctorMineAsync(userId, page, status, cancellationToken));
+
+    [HttpGet("{requestId:guid}/clinical-context")]
+    public async Task<IActionResult> ClinicalContext(
+        Guid requestId,
+        CancellationToken cancellationToken) =>
+        await WithUser(userId =>
+            _clinicalContextService.GetForDoctorAsync(
+                userId,
+                requestId,
+                cancellationToken));
+
+    [HttpPost("{requestId:guid}/plan")]
+    public async Task<IActionResult> CreatePlan(
+        Guid requestId,
+        [FromBody] CreateRecoveryPlanDraftRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryUserId(out var userId))
+        {
+            return this.UnauthorizedResult();
+        }
+
+        var result = await _planService.CreateDraftAsync(
+            userId,
+            requestId,
+            request,
+            cancellationToken);
+
+        return this.ToCreatedResult(result, "Recovery plan draft created.");
+    }
 
     [HttpPost("{id:guid}/accept")]
     public async Task<IActionResult> Accept(
@@ -79,7 +119,7 @@ public sealed class DoctorRecoveryPlanRequestsController : ControllerBase
 
     private async Task<IActionResult> WithUser<T>(Func<Guid, Task<RecoveryPlanOperationResult<T>>> action)
     {
-        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+        if (!TryUserId(out var userId))
         {
             return this.UnauthorizedResult();
         }
@@ -87,4 +127,7 @@ public sealed class DoctorRecoveryPlanRequestsController : ControllerBase
         var result = await action(userId);
         return this.ToActionResult(result);
     }
+
+    private bool TryUserId(out Guid userId) =>
+        Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out userId);
 }

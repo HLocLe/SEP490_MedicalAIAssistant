@@ -14,7 +14,9 @@ public enum RecoveryPlanErrorCode
     NoActiveSubscription, RecoveryPlanQuotaNotConfigured, RecoveryPlanQuotaExhausted,
     IdempotencyKeyInvalid, InvalidRequestState, RecoveryPlanRequestAlreadyClaimed,
     DoctorProfileNotFound, DoctorNotActive, DoctorNotAcceptingRequests,
-    DoctorCapacityReached, AssignmentExpired, QuotaMutationFailed, Conflict
+    DoctorCapacityReached, AssignmentExpired, QuotaMutationFailed, Conflict,
+    RecoveryPlanIncomplete, InvalidPlanStructure, RecoveryPlanNotEditable,
+    InvalidUserTimeZone
 }
 
 public sealed record RecoveryPlanOperationResult<T>(
