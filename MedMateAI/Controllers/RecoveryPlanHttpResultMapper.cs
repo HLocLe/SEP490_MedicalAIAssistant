@@ -38,6 +38,24 @@ internal static class RecoveryPlanHttpResultMapper
             Errors = new List<string> { UnauthenticatedCode }
         });
 
+    public static IActionResult ToCreatedResult<T>(
+        this ControllerBase controller,
+        RecoveryPlanOperationResult<T> result,
+        string createdMessage)
+    {
+        if (!result.Success || result.IsReplay)
+        {
+            return controller.ToActionResult(result);
+        }
+
+        return controller.StatusCode(StatusCodes.Status201Created, new ApiResponse<T>
+        {
+            Success = true,
+            Message = createdMessage,
+            Data = result.Data
+        });
+    }
+
     public static int ToStatusCode(RecoveryPlanErrorCode error) => error switch
     {
         RecoveryPlanErrorCode.Unauthenticated => StatusCodes.Status401Unauthorized,
@@ -48,7 +66,9 @@ internal static class RecoveryPlanHttpResultMapper
         RecoveryPlanErrorCode.NotFound
             or RecoveryPlanErrorCode.DoctorProfileNotFound => StatusCodes.Status404NotFound,
         RecoveryPlanErrorCode.InvalidRequest
-            or RecoveryPlanErrorCode.IdempotencyKeyInvalid => StatusCodes.Status400BadRequest,
+            or RecoveryPlanErrorCode.IdempotencyKeyInvalid
+            or RecoveryPlanErrorCode.RecoveryPlanIncomplete
+            or RecoveryPlanErrorCode.InvalidPlanStructure => StatusCodes.Status400BadRequest,
         _ => StatusCodes.Status409Conflict
     };
 
