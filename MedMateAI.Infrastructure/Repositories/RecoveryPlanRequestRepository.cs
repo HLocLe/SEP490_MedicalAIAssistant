@@ -3,115 +3,259 @@ using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Repository;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 
 namespace MedMateAI.Infrastructure.Repositories;
 
 public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestRepository
 {
     private readonly ApplicationDbContext _context;
-    public RecoveryPlanRequestRepository(ApplicationDbContext context) => _context = context;
 
-    public Task<RecoveryPlanRequest?> GetByIdAsync(Guid id, bool tracked, CancellationToken token = default)
+    public RecoveryPlanRequestRepository(ApplicationDbContext context)
     {
-        var query = _context.RecoveryPlanRequests.Where(x => x.Id == id && !x.IsDeleted);
-        return (tracked ? query : query.AsNoTracking()).FirstOrDefaultAsync(token);
+        _context = context;
     }
 
-    public async Task<RecoveryPlanRequest?> GetByIdForUpdateAsync(Guid id, CancellationToken token = default)
+    public async Task<RecoveryPlanRequest?> GetByIdAsync(
+        Guid requestId,
+        CancellationToken cancellationToken = default)
     {
-        RequireTransaction();
-        var rows = await _context.RecoveryPlanRequests
-            .FromSqlInterpolated($"""SELECT * FROM "RecoveryPlanRequest" WHERE "RecoveryPlanRequestId"={id} AND "IsDeleted"=false FOR UPDATE""")
-            .AsTracking().ToListAsync(token);
-        return rows.FirstOrDefault();
+        return await _context.RecoveryPlanRequests
+            .AsNoTracking()
+            .Where(request => !request.IsDeleted && request.Id == requestId)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public Task<PagedResult<RecoveryPlanRequest>> GetOpenPagedAsync(int page, int size, RecoveryPlanDiseaseGroup? group, CancellationToken token = default) =>
-        PageAsync(_context.RecoveryPlanRequests.AsNoTracking().Where(x => !x.IsDeleted
-            && x.Status == RecoveryPlanRequestStatus.WaitingForDoctor && x.AssignedDoctorId == null
-            && (!group.HasValue || x.DiseaseGroup == group)), page, size, token);
-
-    public Task<PagedResult<RecoveryPlanRequest>> GetByUserPagedAsync(Guid userId, int page, int size, RecoveryPlanRequestStatus? status, CancellationToken token = default) =>
-        PageAsync(_context.RecoveryPlanRequests.AsNoTracking().Where(x => !x.IsDeleted && x.UserId == userId
-            && (!status.HasValue || x.Status == status)), page, size, token);
-
-    public Task<PagedResult<RecoveryPlanRequest>> GetAssignedPagedAsync(Guid doctorId, int page, int size, RecoveryPlanRequestStatus? status, CancellationToken token = default) =>
-        PageAsync(_context.RecoveryPlanRequests.AsNoTracking().Where(x => !x.IsDeleted && x.AssignedDoctorId == doctorId
-            && (!status.HasValue || x.Status == status)), page, size, token);
-
-    public async Task<RecoveryPlanRequest?> TryAcceptAsync(Guid id, Guid doctorId, DateTime now, DateTime expiresAt, CancellationToken token = default)
+    public async Task<RecoveryPlanRequest?> GetByIdForUpdateAsync(
+        Guid requestId,
+        CancellationToken cancellationToken = default)
     {
-        RequireTransaction();
-        const string sql = """
-            UPDATE "RecoveryPlanRequest"
-            SET "AssignedDoctorId"=@doctorId, "Status"='Assigned', "AcceptedAt"=@now,
-                "AssignmentExpiresAt"=@expiresAt, "UpdatedAt"=@now, "Version"="Version"+1
-            WHERE "RecoveryPlanRequestId"=@requestId AND "IsDeleted"=false
-              AND "Status"='WaitingForDoctor' AND "AssignedDoctorId" IS NULL
-            RETURNING "RecoveryPlanRequestId";
-            """;
-        var transaction = _context.Database.CurrentTransaction!;
-        await using var command = _context.Database.GetDbConnection().CreateCommand();
-        command.CommandText = sql;
-        command.Transaction = transaction.GetDbTransaction();
-        AddParameter(command, "requestId", id);
-        AddParameter(command, "doctorId", doctorId);
-        AddParameter(command, "now", now);
-        AddParameter(command, "expiresAt", expiresAt);
-        var acceptedId = await command.ExecuteScalarAsync(token);
-        return acceptedId is Guid ? await GetByIdAsync(id, true, token) : null;
+        EnsureActiveTransaction();
+
+        // A row lock is required so state validation and the following transition stay atomic.
+        var requests = await _context.RecoveryPlanRequests
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM "RecoveryPlanRequest"
+                WHERE "RecoveryPlanRequestId" = {requestId}
+                  AND "IsDeleted" = FALSE
+                FOR UPDATE
+                """)
+            .AsTracking()
+            .ToListAsync(cancellationToken);
+
+        return requests.SingleOrDefault();
     }
 
-    public Task<Doctor?> GetDoctorByUserIdAsync(Guid userId, CancellationToken token = default) =>
-        _context.Doctors.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.UserId == userId && !x.IsDeleted, token);
-
-    public async Task<Doctor?> GetDoctorByUserIdForUpdateAsync(Guid userId, CancellationToken token = default)
+    public async Task<PagedResult<RecoveryPlanRequest>> GetOpenPagedAsync(
+        int pageNumber,
+        int pageSize,
+        RecoveryPlanDiseaseGroup? diseaseGroup,
+        CancellationToken cancellationToken = default)
     {
-        RequireTransaction();
-        var rows = await _context.Doctors.FromSqlInterpolated(
-            $"""SELECT * FROM "Doctor" WHERE "UserId"={userId} AND "IsDeleted"=false FOR UPDATE""")
-            .AsTracking().ToListAsync(token);
-        return rows.FirstOrDefault();
+        var query = _context.RecoveryPlanRequests
+            .AsNoTracking()
+            .Where(request =>
+                !request.IsDeleted
+                && request.Status == RecoveryPlanRequestStatus.WaitingForDoctor
+                && request.AssignedDoctorId == null);
+
+        if (diseaseGroup.HasValue)
+        {
+            query = query.Where(request => request.DiseaseGroup == diseaseGroup.Value);
+        }
+
+        return await ToPagedResultAsync(query, pageNumber, pageSize, cancellationToken);
     }
 
-    public Task<int> CountActiveAssignmentsAsync(Guid doctorId, CancellationToken token = default) =>
-        _context.RecoveryPlanRequests.CountAsync(x => !x.IsDeleted && x.AssignedDoctorId == doctorId
-            && (x.Status == RecoveryPlanRequestStatus.Assigned || x.Status == RecoveryPlanRequestStatus.InReview
-                || x.Status == RecoveryPlanRequestStatus.NeedMoreInformation), token);
+    public async Task<PagedResult<RecoveryPlanRequest>> GetByUserPagedAsync(
+        Guid userId,
+        int pageNumber,
+        int pageSize,
+        RecoveryPlanRequestStatus? status,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _context.RecoveryPlanRequests
+            .AsNoTracking()
+            .Where(request => !request.IsDeleted && request.UserId == userId);
 
-    public Task<bool> IsOwnedTreatmentJourneyAsync(Guid id, Guid userId, CancellationToken token = default) =>
-        _context.TreatmentJourneys.AnyAsync(x => x.Id == id && x.UserId == userId && !x.IsDeleted, token);
-    public Task<bool> IsOwnedLabSessionAsync(Guid id, Guid userId, CancellationToken token = default) =>
-        _context.LabTestSessions.AnyAsync(x => x.Id == id && x.UserId == userId && !x.IsDeleted, token);
-    public void Add(RecoveryPlanRequest request) => _context.RecoveryPlanRequests.Add(request);
-    public void AddEvent(RecoveryPlanRequestEvent requestEvent) => _context.RecoveryPlanRequestEvents.Add(requestEvent);
-    public void AddOutbox(OutboxMessage message) => _context.OutboxMessages.Add(message);
+        if (status.HasValue)
+        {
+            query = query.Where(request => request.Status == status.Value);
+        }
 
-    private void RequireTransaction()
+        return await ToPagedResultAsync(query, pageNumber, pageSize, cancellationToken);
+    }
+
+    public async Task<PagedResult<RecoveryPlanRequest>> GetAssignedToDoctorPagedAsync(
+        Guid doctorId,
+        int pageNumber,
+        int pageSize,
+        RecoveryPlanRequestStatus? status,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _context.RecoveryPlanRequests
+            .AsNoTracking()
+            .Where(request =>
+                !request.IsDeleted
+                && request.AssignedDoctorId == doctorId);
+
+        if (status.HasValue)
+        {
+            query = query.Where(request => request.Status == status.Value);
+        }
+
+        return await ToPagedResultAsync(query, pageNumber, pageSize, cancellationToken);
+    }
+
+    public async Task<RecoveryPlanRequest?> TryAcceptAsync(
+        Guid requestId,
+        Guid doctorId,
+        DateTime acceptedAt,
+        DateTime assignmentExpiresAt,
+        DateTime utcNow,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureActiveTransaction();
+
+        var affectedRows = await _context.RecoveryPlanRequests
+            .Where(request =>
+                request.Id == requestId
+                && !request.IsDeleted
+                && request.Status == RecoveryPlanRequestStatus.WaitingForDoctor
+                && request.AssignedDoctorId == null)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(request => request.AssignedDoctorId, doctorId)
+                    .SetProperty(request => request.Status, RecoveryPlanRequestStatus.Assigned)
+                    .SetProperty(request => request.AcceptedAt, acceptedAt)
+                    .SetProperty(request => request.AssignmentExpiresAt, assignmentExpiresAt)
+                    .SetProperty(request => request.UpdatedAt, utcNow)
+                    .SetProperty(request => request.Version, request => request.Version + 1),
+                cancellationToken);
+
+        if (affectedRows != 1)
+        {
+            return null;
+        }
+
+        return await GetByIdAsync(requestId, cancellationToken);
+    }
+
+    public async Task<Doctor?> GetDoctorByUserIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.Doctors
+            .AsNoTracking()
+            .Where(doctor => !doctor.IsDeleted && doctor.UserId == userId)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<Doctor?> GetDoctorByUserIdForUpdateAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureActiveTransaction();
+
+        // Capacity is checked while this doctor row lock is held by the current transaction.
+        var doctors = await _context.Doctors
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM "Doctor"
+                WHERE "UserId" = {userId}
+                  AND "IsDeleted" = FALSE
+                FOR UPDATE
+                """)
+            .AsTracking()
+            .ToListAsync(cancellationToken);
+
+        return doctors.SingleOrDefault();
+    }
+
+    public Task<int> CountActiveAssignmentsAsync(
+        Guid doctorId,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.RecoveryPlanRequests.CountAsync(
+            request =>
+                !request.IsDeleted
+                && request.AssignedDoctorId == doctorId
+                && (request.Status == RecoveryPlanRequestStatus.Assigned
+                    || request.Status == RecoveryPlanRequestStatus.InReview
+                    || request.Status == RecoveryPlanRequestStatus.NeedMoreInformation),
+            cancellationToken);
+    }
+
+    public Task<bool> IsOwnedTreatmentJourneyAsync(
+        Guid treatmentJourneyId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.TreatmentJourneys.AnyAsync(
+            journey =>
+                journey.Id == treatmentJourneyId
+                && journey.UserId == userId
+                && !journey.IsDeleted,
+            cancellationToken);
+    }
+
+    public Task<bool> IsOwnedLabSessionAsync(
+        Guid labTestSessionId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.LabTestSessions.AnyAsync(
+            session =>
+                session.Id == labTestSessionId
+                && session.UserId == userId
+                && !session.IsDeleted,
+            cancellationToken);
+    }
+
+    public void Add(RecoveryPlanRequest request)
+    {
+        _context.RecoveryPlanRequests.Add(request);
+    }
+
+    public void AddEvent(RecoveryPlanRequestEvent requestEvent)
+    {
+        _context.RecoveryPlanRequestEvents.Add(requestEvent);
+    }
+
+    public void AddOutbox(OutboxMessage message)
+    {
+        _context.OutboxMessages.Add(message);
+    }
+
+    private void EnsureActiveTransaction()
     {
         if (_context.Database.CurrentTransaction is null)
-            throw new InvalidOperationException("Request row locking requires an active database transaction.");
+        {
+            throw new InvalidOperationException(
+                "Recovery plan request locking and mutations require an active database transaction.");
+        }
     }
 
-    private static void AddParameter(System.Data.Common.DbCommand command, string name, object value)
+    private static async Task<PagedResult<RecoveryPlanRequest>> ToPagedResultAsync(
+        IQueryable<RecoveryPlanRequest> query,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken)
     {
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = name;
-        parameter.Value = value;
-        command.Parameters.Add(parameter);
-    }
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderBy(request => request.RequestedAt)
+            .ThenBy(request => request.Id)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
 
-    private static async Task<PagedResult<RecoveryPlanRequest>> PageAsync(
-        IQueryable<RecoveryPlanRequest> query, int page, int size, CancellationToken token)
-    {
-        var count = await query.CountAsync(token);
-        var items = await query.OrderBy(x => x.RequestedAt).ThenBy(x => x.Id)
-            .Skip((page - 1) * size).Take(size).ToListAsync(token);
         return new PagedResult<RecoveryPlanRequest>
         {
-            Items = items, TotalCount = count, PageNumber = page, PageSize = size
+            Items = items,
+            TotalCount = totalCount,
+            PageNumber = pageNumber,
+            PageSize = pageSize,
         };
     }
 }
