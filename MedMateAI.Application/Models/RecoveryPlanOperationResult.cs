@@ -1,5 +1,13 @@
 namespace MedMateAI.Application.Models;
 
+public enum QuotaMutationStatus
+{
+    Applied,
+    // A concurrent log conflict can occur after mutation; callers must roll back before replaying.
+    Duplicate,
+    Rejected
+}
+
 public enum RecoveryPlanErrorCode
 {
     None, Unauthenticated, Forbidden, InvalidRequest, NotFound,

@@ -90,7 +90,7 @@ public interface IRecoveryPlanQuotaService
         DateTime utcNow,
         CancellationToken cancellationToken);
 
-    Task<bool> ReserveAsync(
+    Task<QuotaMutationStatus> ReserveAsync(
         Guid usageId,
         Guid userSubscriptionId,
         Guid quotaId,
@@ -100,7 +100,7 @@ public interface IRecoveryPlanQuotaService
         DateTime utcNow,
         CancellationToken cancellationToken);
 
-    Task<bool> ReleaseAsync(
+    Task<QuotaMutationStatus> ReleaseAsync(
         Guid usageId,
         Guid userSubscriptionId,
         Guid quotaId,
@@ -110,7 +110,7 @@ public interface IRecoveryPlanQuotaService
         DateTime utcNow,
         CancellationToken cancellationToken);
 
-    Task<bool> ConsumeAsync(
+    Task<QuotaMutationStatus> ConsumeAsync(
         Guid usageId,
         Guid userSubscriptionId,
         Guid quotaId,
@@ -120,7 +120,7 @@ public interface IRecoveryPlanQuotaService
         DateTime utcNow,
         CancellationToken cancellationToken);
 
-    Task<bool> RestoreAsync(
+    Task<QuotaMutationStatus> RestoreAsync(
         Guid usageId,
         Guid userSubscriptionId,
         Guid quotaId,

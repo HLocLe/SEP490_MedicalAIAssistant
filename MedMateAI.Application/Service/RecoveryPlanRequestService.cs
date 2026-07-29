@@ -92,7 +92,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             }
 
             var usage = usageResult.Data;
-            var quotaReserved = await _quota.ReserveAsync(
+            var quotaMutationStatus = await _quota.ReserveAsync(
                 usage.Id,
                 usage.UserSubscriptionId,
                 usage.QuotaId,
@@ -102,17 +102,24 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
                 utcNow,
                 cancellationToken);
 
-            if (!quotaReserved)
+            switch (quotaMutationStatus)
             {
-                await RollbackAsync();
-                replay = await LoadIdempotentReplayAsync(userId, scopedIdempotencyKey, cancellationToken);
-                if (replay is not null)
-                {
-                    return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(replay), true);
-                }
-
-                return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(
-                    RecoveryPlanErrorCode.RecoveryPlanQuotaExhausted);
+                case QuotaMutationStatus.Applied:
+                    break;
+                case QuotaMutationStatus.Duplicate:
+                    return await RollbackAndLoadCreateReplayAsync(
+                        userId,
+                        scopedIdempotencyKey,
+                        RecoveryPlanErrorCode.Conflict,
+                        cancellationToken);
+                case QuotaMutationStatus.Rejected:
+                    return await RollbackAndLoadCreateReplayAsync(
+                        userId,
+                        scopedIdempotencyKey,
+                        RecoveryPlanErrorCode.RecoveryPlanQuotaExhausted,
+                        cancellationToken);
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(quotaMutationStatus));
             }
 
             var recoveryPlanRequest = new RecoveryPlanRequest
@@ -464,7 +471,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         }
 
         var quotaId = await GetQuotaIdAsync(request.UserSubscriptionUsageId, cancellationToken);
-        var quotaReleased = await _quota.ReleaseAsync(
+        var quotaReleaseStatus = await _quota.ReleaseAsync(
             request.UserSubscriptionUsageId,
             request.UserSubscriptionId,
             quotaId,
@@ -473,9 +480,16 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             BuildCancelQuotaReleaseKey(request.Id),
             utcNow,
             cancellationToken);
-        if (!quotaReleased)
+
+        switch (quotaReleaseStatus)
         {
-            return RecoveryPlanErrorCode.QuotaMutationFailed;
+            case QuotaMutationStatus.Applied:
+                break;
+            case QuotaMutationStatus.Duplicate:
+            case QuotaMutationStatus.Rejected:
+                return RecoveryPlanErrorCode.QuotaMutationFailed;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(quotaReleaseStatus));
         }
 
         var previousStatus = request.Status;
@@ -652,7 +666,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         }
 
         var quotaId = await GetQuotaIdAsync(request.UserSubscriptionUsageId, cancellationToken);
-        var quotaReleased = await _quota.ReleaseAsync(
+        var quotaReleaseStatus = await _quota.ReleaseAsync(
             request.UserSubscriptionUsageId,
             request.UserSubscriptionId,
             quotaId,
@@ -661,9 +675,16 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             BuildRejectQuotaReleaseKey(request.Id),
             utcNow,
             cancellationToken);
-        if (!quotaReleased)
+
+        switch (quotaReleaseStatus)
         {
-            return RecoveryPlanErrorCode.QuotaMutationFailed;
+            case QuotaMutationStatus.Applied:
+                break;
+            case QuotaMutationStatus.Duplicate:
+            case QuotaMutationStatus.Rejected:
+                return RecoveryPlanErrorCode.QuotaMutationFailed;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(quotaReleaseStatus));
         }
 
         var previousStatus = request.Status;
@@ -831,6 +852,24 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         }
 
         return request;
+    }
+
+    private async Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>>
+        RollbackAndLoadCreateReplayAsync(
+            Guid userId,
+            string idempotencyKey,
+            RecoveryPlanErrorCode fallbackError,
+            CancellationToken cancellationToken)
+    {
+        await RollbackAsync();
+
+        var replay = await LoadIdempotentReplayAsync(userId, idempotencyKey, cancellationToken);
+        if (replay is not null)
+        {
+            return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(replay), true);
+        }
+
+        return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(fallbackError);
     }
 
     private void AddRequestEvent(
