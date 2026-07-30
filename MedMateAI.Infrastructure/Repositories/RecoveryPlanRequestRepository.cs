@@ -46,6 +46,26 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
         return requests.SingleOrDefault();
     }
 
+    public async Task<IReadOnlyList<Guid>> GetExpiredAssignmentIdsAsync(
+        DateTime utcNow,
+        int batchSize,
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.RecoveryPlanRequests
+            .AsNoTracking()
+            .Where(request =>
+                !request.IsDeleted
+                && request.Status == RecoveryPlanRequestStatus.Assigned
+                && request.AssignedDoctorId.HasValue
+                && request.AssignmentExpiresAt.HasValue
+                && request.AssignmentExpiresAt.Value <= utcNow)
+            .OrderBy(request => request.AssignmentExpiresAt)
+            .ThenBy(request => request.Id)
+            .Select(request => request.Id)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<PagedResult<RecoveryPlanRequest>> GetOpenPagedAsync(
         int pageNumber,
         int pageSize,

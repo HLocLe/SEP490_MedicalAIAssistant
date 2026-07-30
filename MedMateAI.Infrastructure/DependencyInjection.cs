@@ -83,6 +83,12 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageProcessor, RecoveryPlanOutboxProcessor>();
         services.AddScoped<INotificationEmailProcessor, NotificationEmailProcessor>();
         services.AddScoped<INotificationEmailRenderer, NotificationEmailRenderer>();
+        services.AddScoped<
+            IRecoveryPlanAssignmentTimeoutProcessor,
+            RecoveryPlanAssignmentTimeoutProcessor>();
+        services.AddScoped<
+            IRecoveryPlanCompletionProcessor,
+            RecoveryPlanCompletionProcessor>();
 
         //
         services.Configure<PayOSOptions>(configuration.GetSection("PayOS"));
@@ -123,6 +129,12 @@ public static class DependencyInjection
                 options =>
                     options.MedicationReminderMaxLatenessMinutes is >= 1 and <= 1440,
                 "RecoveryPlanJobs MedicationReminderMaxLatenessMinutes must be between 1 and 1440.")
+            .Validate(
+                options => options.LifecyclePollingSeconds is >= 5 and <= 300,
+                "RecoveryPlanJobs LifecyclePollingSeconds must be between 5 and 300.")
+            .Validate(
+                options => options.LifecycleBatchSize is >= 1 and <= 200,
+                "RecoveryPlanJobs LifecycleBatchSize must be between 1 and 200.")
             .ValidateOnStart();
       
         
@@ -196,6 +208,7 @@ public static class DependencyInjection
         services.AddHostedService<IdentitySeedHostedService>();
         services.AddHostedService<OutboxBackgroundService>();
         services.AddHostedService<NotificationBackgroundService>();
+        services.AddHostedService<RecoveryPlanLifecycleBackgroundService>();
         
         //
         services.AddOptions<JwtOptions>()

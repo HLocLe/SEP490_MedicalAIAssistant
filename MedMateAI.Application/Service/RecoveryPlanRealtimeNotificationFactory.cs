@@ -99,6 +99,10 @@ internal static class RecoveryPlanRealtimeTransitions
         RecoveryPlanOutboxEventTypes.Released,
         RecoveryPlanQueueChangeRule.Added);
 
+    public static readonly RecoveryPlanRealtimeTransitionDescriptor Reopened = new(
+        RecoveryPlanOutboxEventTypes.Reopened,
+        RecoveryPlanQueueChangeRule.Added);
+
     public static readonly RecoveryPlanRealtimeTransitionDescriptor MoreInformationRequested =
         new(
             RecoveryPlanOutboxEventTypes.MoreInformationRequested,

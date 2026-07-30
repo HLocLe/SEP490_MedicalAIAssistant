@@ -185,6 +185,7 @@ public sealed class RecoveryPlanOutboxProcessor : IOutboxMessageProcessor
             case RecoveryPlanOutboxEventTypes.Claimed:
             case RecoveryPlanOutboxEventTypes.ReviewStarted:
             case RecoveryPlanOutboxEventTypes.Released:
+            case RecoveryPlanOutboxEventTypes.Reopened:
             case RecoveryPlanOutboxEventTypes.MoreInformationRequested:
             case RecoveryPlanOutboxEventTypes.InformationProvided:
             case RecoveryPlanOutboxEventTypes.Rejected:
