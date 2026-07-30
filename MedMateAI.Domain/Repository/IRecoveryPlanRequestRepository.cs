@@ -46,6 +46,10 @@ public interface IRecoveryPlanRequestRepository
         Guid userId,
         CancellationToken cancellationToken = default);
 
+    Task<RecoveryPlanRealtimeDoctorAccessData?> GetRealtimeDoctorAccessAsync(
+        Guid doctorUserId,
+        CancellationToken cancellationToken = default);
+
     Task<Doctor?> GetDoctorByUserIdForUpdateAsync(
         Guid userId,
         CancellationToken cancellationToken = default);

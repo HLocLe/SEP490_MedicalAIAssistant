@@ -1,5 +1,9 @@
+using MedMateAI.Application.Common;
+using MedMateAI.Application.IService;
 using MedMateAI.Infrastructure;
+using MedMateAI.Realtime.RecoveryPlans;
 using Microsoft.OpenApi.Models;
+using StackExchange.Redis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -32,6 +36,43 @@ public class Program
             new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)
         );
     });
+
+        var signalR = builder.Services
+            .AddSignalR()
+            .AddJsonProtocol(options =>
+            {
+                options.PayloadSerializerOptions.PropertyNamingPolicy =
+                    JsonNamingPolicy.CamelCase;
+                options.PayloadSerializerOptions.Converters.Add(
+                    new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+            });
+
+        var useRedisBackplane = builder.Configuration.GetValue<bool>(
+            $"{RecoveryPlanRealtimeConstants.ConfigurationSectionName}:"
+            + RecoveryPlanRealtimeConstants.UseRedisBackplaneKey);
+        if (useRedisBackplane)
+        {
+            var redisConnectionString = builder.Configuration[
+                RecoveryPlanRealtimeConstants.RedisConnectionStringKey];
+            if (string.IsNullOrWhiteSpace(redisConnectionString))
+            {
+                throw new InvalidOperationException(
+                    "Recovery Plan SignalR Redis backplane is enabled, but Redis:ConnectionString is missing.");
+            }
+
+            signalR.AddStackExchangeRedis(
+                redisConnectionString,
+                options =>
+                {
+                    options.Configuration.ChannelPrefix =
+                        RedisChannel.Literal(
+                            RecoveryPlanRealtimeConstants.RedisChannelPrefix);
+                });
+        }
+
+        builder.Services.AddSingleton<
+            IRecoveryPlanRealtimeNotifier,
+            RecoveryPlanSignalRNotifier>();
 
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen(options =>
@@ -84,6 +125,10 @@ public class Program
         app.UseAuthorization();
 
         app.MapControllers();
+        app.MapHub<RecoveryPlanHub>(
+                RecoveryPlanRealtimeConstants.HubPath,
+                options => options.CloseOnAuthenticationExpiration = true)
+            .RequireAuthorization();
 
         await app.RunAsync();
     }

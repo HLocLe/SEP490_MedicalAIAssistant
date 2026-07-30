@@ -151,6 +151,26 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
             .FirstOrDefaultAsync(cancellationToken);
     }
 
+    public Task<RecoveryPlanRealtimeDoctorAccessData?> GetRealtimeDoctorAccessAsync(
+        Guid doctorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.Doctors
+            .AsNoTracking()
+            .Where(doctor =>
+                !doctor.IsDeleted
+                && doctor.UserId == doctorUserId)
+            .Select(doctor => new RecoveryPlanRealtimeDoctorAccessData(
+                doctor.Id,
+                doctor.IsActive,
+                doctor.IsAcceptingRecoveryPlanRequests,
+                _context.Users.Any(user =>
+                    user.Id == doctorUserId
+                    && !user.IsDeleted
+                    && user.Status == UserStatus.Confirmed)))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     public async Task<Doctor?> GetDoctorByUserIdForUpdateAsync(
         Guid userId,
         CancellationToken cancellationToken = default)

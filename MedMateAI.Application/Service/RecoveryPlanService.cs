@@ -15,15 +15,18 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IRecoveryPlanQuotaService _quotaService;
     private readonly IRecoveryPlanClinicalContextService _clinicalContextService;
+    private readonly IRecoveryPlanRealtimeNotifier _realtimeNotifier;
 
     public RecoveryPlanService(
         IUnitOfWork unitOfWork,
         IRecoveryPlanQuotaService quotaService,
-        IRecoveryPlanClinicalContextService clinicalContextService)
+        IRecoveryPlanClinicalContextService clinicalContextService,
+        IRecoveryPlanRealtimeNotifier realtimeNotifier)
     {
         _unitOfWork = unitOfWork;
         _quotaService = quotaService;
         _clinicalContextService = clinicalContextService;
+        _realtimeNotifier = realtimeNotifier;
     }
 
     public async Task<RecoveryPlanOperationResult<RecoveryPlanDetailResponse>> CreateDraftAsync(
@@ -523,6 +526,13 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
+            await _realtimeNotifier.TryNotifyPlanChangedAsync(
+                RecoveryPlanRealtimeNotificationFactory.CreatePlanNotification(
+                    plan,
+                    RecoveryPlanLifecycleOutboxEventTypes.Ready,
+                    utcNow),
+                CancellationToken.None);
+
             return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Ok(
                 RecoveryPlanMapping.ToDetail(plan));
         }
@@ -670,6 +680,13 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            await _realtimeNotifier.TryNotifyPlanChangedAsync(
+                RecoveryPlanRealtimeNotificationFactory.CreatePlanNotification(
+                    plan,
+                    RecoveryPlanLifecycleOutboxEventTypes.Activated,
+                    utcNow),
+                CancellationToken.None);
 
             return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Ok(
                 RecoveryPlanMapping.ToDetail(plan));
