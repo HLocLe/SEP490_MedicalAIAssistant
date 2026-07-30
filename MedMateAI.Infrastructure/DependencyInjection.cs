@@ -23,6 +23,7 @@ using MedMateAI.Infrastructure.NationalInstitutesofHealth;
 using MedMateAI.Infrastructure.NationalInstitutesofHealth.Options;
 using MedMateAI.Infrastructure.Translation;
 using MedMateAI.Infrastructure.Translation.Options;
+using MedMateAI.Infrastructure.BackgroundJobs.RecoveryPlans;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -77,6 +78,11 @@ public static class DependencyInjection
         services.AddScoped<IRecoveryPlanClinicalContextService, RecoveryPlanClinicalContextService>();
         services.AddScoped<IRecoveryPlanService, RecoveryPlanService>();
         services.AddScoped<IRecoveryPlanRealtimeAccessService, RecoveryPlanRealtimeAccessService>();
+        services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<IOutboxMessageProcessor, RecoveryPlanOutboxProcessor>();
+        services.AddScoped<INotificationEmailProcessor, NotificationEmailProcessor>();
+        services.AddScoped<INotificationEmailRenderer, NotificationEmailRenderer>();
 
         //
         services.Configure<PayOSOptions>(configuration.GetSection("PayOS"));
@@ -90,6 +96,33 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(RecoveryPlanOptions.SectionName))
             .Validate(x => x.AssignmentTimeoutMinutes is > 0 and <= 120,
                 "RecoveryPlan AssignmentTimeoutMinutes must be between 1 and 120.")
+            .ValidateOnStart();
+        services.AddOptions<RecoveryPlanJobOptions>()
+            .Bind(configuration.GetSection(RecoveryPlanJobOptions.SectionName))
+            .Validate(
+                options =>
+                    options.OutboxPollingSeconds is >= 1 and <= 300
+                    && options.NotificationPollingSeconds is >= 1 and <= 300,
+                "RecoveryPlanJobs polling intervals must be between 1 and 300 seconds.")
+            .Validate(
+                options => options.BatchSize is >= 1 and <= 200,
+                "RecoveryPlanJobs BatchSize must be between 1 and 200.")
+            .Validate(
+                options => options.MaxAttempts is >= 1 and <= 20,
+                "RecoveryPlanJobs MaxAttempts must be between 1 and 20.")
+            .Validate(
+                options => options.ProcessingLeaseSeconds is >= 15 and <= 1800,
+                "RecoveryPlanJobs ProcessingLeaseSeconds must be between 15 and 1800.")
+            .Validate(
+                options =>
+                    options.RetryBaseSeconds is >= 1 and <= 3600
+                    && options.RetryMaxSeconds >= options.RetryBaseSeconds
+                    && options.RetryMaxSeconds <= 86400,
+                "RecoveryPlanJobs retry settings are invalid.")
+            .Validate(
+                options =>
+                    options.MedicationReminderMaxLatenessMinutes is >= 1 and <= 1440,
+                "RecoveryPlanJobs MedicationReminderMaxLatenessMinutes must be between 1 and 1440.")
             .ValidateOnStart();
       
         
@@ -161,6 +194,8 @@ public static class DependencyInjection
         
         //
         services.AddHostedService<IdentitySeedHostedService>();
+        services.AddHostedService<OutboxBackgroundService>();
+        services.AddHostedService<NotificationBackgroundService>();
         
         //
         services.AddOptions<JwtOptions>()
