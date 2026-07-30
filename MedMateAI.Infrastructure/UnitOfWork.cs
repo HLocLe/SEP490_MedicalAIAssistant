@@ -28,6 +28,7 @@ public sealed class UnitOfWork : IUnitOfWork
     private IRecoveryPlanRequestRepository? _recoveryPlanRequests;
     private IRecoveryPlanRepository? _recoveryPlans;
     private IQuotaUsageRepository? _quotaUsages;
+    private IUserMedicationRepository? _userMedications;
     private IDbContextTransaction? _transaction;
 
     public UnitOfWork(ApplicationDbContext context)
@@ -91,6 +92,9 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public IQuotaUsageRepository QuotaUsages =>
         _quotaUsages ??= new QuotaUsageRepository(_context);
+
+    public IUserMedicationRepository UserMedications =>
+        _userMedications ??= new UserMedicationRepository(_context);
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

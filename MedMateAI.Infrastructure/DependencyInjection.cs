@@ -77,9 +77,11 @@ public static class DependencyInjection
         services.AddScoped<IRecoveryPlanRequestService, RecoveryPlanRequestService>();
         services.AddScoped<IRecoveryPlanClinicalContextService, RecoveryPlanClinicalContextService>();
         services.AddScoped<IRecoveryPlanService, RecoveryPlanService>();
+        services.AddScoped<IUserMedicationService, UserMedicationService>();
         services.AddScoped<IRecoveryPlanRealtimeAccessService, RecoveryPlanRealtimeAccessService>();
         services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<IUserMedicationRepository, UserMedicationRepository>();
         services.AddScoped<IOutboxMessageProcessor, RecoveryPlanOutboxProcessor>();
         services.AddScoped<INotificationEmailProcessor, NotificationEmailProcessor>();
         services.AddScoped<INotificationEmailRenderer, NotificationEmailRenderer>();
@@ -89,6 +91,7 @@ public static class DependencyInjection
         services.AddScoped<
             IRecoveryPlanCompletionProcessor,
             RecoveryPlanCompletionProcessor>();
+        services.AddScoped<IMedicationReminderScheduler, MedicationReminderScheduler>();
 
         //
         services.Configure<PayOSOptions>(configuration.GetSection("PayOS"));
@@ -127,14 +130,30 @@ public static class DependencyInjection
                 "RecoveryPlanJobs retry settings are invalid.")
             .Validate(
                 options =>
-                    options.MedicationReminderMaxLatenessMinutes is >= 1 and <= 1440,
-                "RecoveryPlanJobs MedicationReminderMaxLatenessMinutes must be between 1 and 1440.")
+                    options.MedicationMaxLatenessMinutes is >= 1 and <= 1440,
+                "RecoveryPlanJobs MedicationMaxLatenessMinutes must be between 1 and 1440.")
             .Validate(
                 options => options.LifecyclePollingSeconds is >= 5 and <= 300,
                 "RecoveryPlanJobs LifecyclePollingSeconds must be between 5 and 300.")
             .Validate(
                 options => options.LifecycleBatchSize is >= 1 and <= 200,
                 "RecoveryPlanJobs LifecycleBatchSize must be between 1 and 200.")
+            .Validate(
+                options =>
+                    options.MedicationSchedulerPollingSeconds is >= 5 and <= 3600,
+                "RecoveryPlanJobs MedicationSchedulerPollingSeconds must be between 5 and 3600.")
+            .Validate(
+                options =>
+                    options.MedicationScheduleHorizonHours is >= 1 and <= 168,
+                "RecoveryPlanJobs MedicationScheduleHorizonHours must be between 1 and 168.")
+            .Validate(
+                options =>
+                    options.MedicationScheduleLookbackMinutes is >= 0 and <= 1440,
+                "RecoveryPlanJobs MedicationScheduleLookbackMinutes must be between 0 and 1440.")
+            .Validate(
+                options =>
+                    options.MedicationSchedulerBatchSize is >= 1 and <= 1000,
+                "RecoveryPlanJobs MedicationSchedulerBatchSize must be between 1 and 1000.")
             .ValidateOnStart();
       
         
@@ -209,6 +228,7 @@ public static class DependencyInjection
         services.AddHostedService<OutboxBackgroundService>();
         services.AddHostedService<NotificationBackgroundService>();
         services.AddHostedService<RecoveryPlanLifecycleBackgroundService>();
+        services.AddHostedService<MedicationReminderBackgroundService>();
         
         //
         services.AddOptions<JwtOptions>()

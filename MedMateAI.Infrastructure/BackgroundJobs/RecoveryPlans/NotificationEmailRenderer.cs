@@ -9,10 +9,6 @@ namespace MedMateAI.Infrastructure.BackgroundJobs.RecoveryPlans;
 
 public sealed class NotificationEmailRenderer : INotificationEmailRenderer
 {
-    private const string MedicationReminderSubject = "Nhắc lịch dùng thuốc";
-    private const string MedicationDisclaimer =
-        "Đây là lịch nhắc dựa trên thông tin bạn đã cung cấp. Hệ thống không kê đơn hoặc xác minh chỉ định dùng thuốc.";
-
     private readonly string? _loginUrl;
 
     public NotificationEmailRenderer(IOptions<FrontendOptions> frontendOptions)
@@ -51,18 +47,21 @@ public sealed class NotificationEmailRenderer : INotificationEmailRenderer
             dosageParagraph = $"<p>Hướng dẫn bạn đã lưu: {encodedDosage}</p>";
         }
 
-        var encodedDisclaimer = HtmlEncoder.Default.Encode(MedicationDisclaimer);
+        var encodedDisclaimer = HtmlEncoder.Default.Encode(
+            MedicationReminderNotificationContent.Disclaimer);
         var html =
             $"""
             <div style="font-family:Arial,sans-serif;line-height:1.6">
-              <h2>{MedicationReminderSubject}</h2>
+              <h2>{MedicationReminderNotificationContent.Title}</h2>
               <p>Đã đến thời gian nhắc dùng: <strong>{encodedMedicineName}</strong>.</p>
               {dosageParagraph}
               <p>{encodedDisclaimer}</p>
             </div>
             """;
 
-        return new NotificationEmailContent(MedicationReminderSubject, html);
+        return new NotificationEmailContent(
+            MedicationReminderNotificationContent.Title,
+            html);
     }
 
     private string BuildRecoveryPlanHtml(string heading, string message)

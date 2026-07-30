@@ -32,6 +32,7 @@ public interface IUnitOfWork : IAsyncDisposable
     IRecoveryPlanRequestRepository RecoveryPlanRequests { get; }
     IRecoveryPlanRepository RecoveryPlans { get; }
     IQuotaUsageRepository QuotaUsages { get; }
+    IUserMedicationRepository UserMedications { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task BeginTransactionAsync(CancellationToken cancellationToken = default);

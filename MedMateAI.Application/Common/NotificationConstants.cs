@@ -36,3 +36,12 @@ public static class RecoveryPlanNotificationContent
     public const string CompletedMessage =
         "Kế hoạch hồi phục của bạn đã kết thúc. Vui lòng đăng nhập để xem hướng dẫn tái kiểm tra sức khỏe.";
 }
+
+public static class MedicationReminderNotificationContent
+{
+    public const string Title = "Nhắc lịch dùng thuốc";
+    public const string Message =
+        "Bạn có một lịch nhắc dùng thuốc dựa trên thông tin đã cung cấp.";
+    public const string Disclaimer =
+        "Đây là lịch nhắc dựa trên thông tin bạn đã cung cấp. Hệ thống không kê đơn hoặc xác minh chỉ định dùng thuốc.";
+}

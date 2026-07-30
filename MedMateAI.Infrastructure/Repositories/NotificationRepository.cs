@@ -172,6 +172,8 @@ public sealed class NotificationRepository : INotificationRepository
             where reminderTime.Id == reminderTimeId
                   && !reminderTime.IsDeleted
                   && !medication.IsDeleted
+                  && medication.SourceType == UserMedicationSourceType.PatientReported
+                  && medication.TreatmentJourneyId == null
             select new MedicationReminderNotificationData(
                 reminderTime.Id,
                 medication.UserId,
