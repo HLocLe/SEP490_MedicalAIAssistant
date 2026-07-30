@@ -26,6 +26,13 @@ public interface IRecoveryPlanRepository
         Guid planId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<RecoveryPlanCompletionCandidate>>
+        GetActiveCompletionCandidatesAsync(
+            DateOnly maximumEndDate,
+            int pageNumber,
+            int pageSize,
+            CancellationToken cancellationToken = default);
+
     Task<RecoveryPlan?> GetTrackedDetailAsync(
         Guid planId,
         CancellationToken cancellationToken = default);

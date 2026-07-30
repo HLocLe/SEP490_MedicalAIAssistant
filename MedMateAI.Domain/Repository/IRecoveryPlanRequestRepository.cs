@@ -14,6 +14,11 @@ public interface IRecoveryPlanRequestRepository
         Guid requestId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<Guid>> GetExpiredAssignmentIdsAsync(
+        DateTime utcNow,
+        int batchSize,
+        CancellationToken cancellationToken = default);
+
     Task<PagedResult<RecoveryPlanRequest>> GetOpenPagedAsync(
         int pageNumber,
         int pageSize,

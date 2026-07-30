@@ -7,6 +7,7 @@ public static class RecoveryPlanOutboxEventTypes
     public const string Claimed = "RecoveryPlanRequestClaimed";
     public const string ReviewStarted = "RecoveryPlanRequestReviewStarted";
     public const string Released = "RecoveryPlanRequestReleased";
+    public const string Reopened = "RecoveryPlanRequestReopened";
     public const string MoreInformationRequested = "RecoveryPlanRequestMoreInformationRequested";
     public const string InformationProvided = "RecoveryPlanRequestInformationProvided";
     public const string Rejected = "RecoveryPlanRequestRejected";

@@ -144,6 +144,11 @@ public sealed class UnitOfWork : IUnitOfWork
         }
     }
 
+    public void ClearTrackedChanges()
+    {
+        _context.ChangeTracker.Clear();
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_transaction is not null)

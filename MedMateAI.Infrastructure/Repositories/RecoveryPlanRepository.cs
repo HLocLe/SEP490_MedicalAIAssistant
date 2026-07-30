@@ -92,6 +92,38 @@ public sealed class RecoveryPlanRepository : IRecoveryPlanRepository
         return plans.SingleOrDefault();
     }
 
+    public async Task<IReadOnlyList<RecoveryPlanCompletionCandidate>>
+        GetActiveCompletionCandidatesAsync(
+            DateOnly maximumEndDate,
+            int pageNumber,
+            int pageSize,
+            CancellationToken cancellationToken = default)
+    {
+        return await _context.RecoveryPlans
+            .AsNoTracking()
+            .Where(plan =>
+                !plan.IsDeleted
+                && plan.Status == RecoveryPlanStatus.Active
+                && plan.EndDate.HasValue
+                && plan.EndDate.Value <= maximumEndDate
+                && plan.RecoveryPlanRequestId.HasValue)
+            .OrderBy(plan => plan.EndDate)
+            .ThenBy(plan => plan.Id)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .Select(plan => new RecoveryPlanCompletionCandidate(
+                plan.Id,
+                plan.UserId,
+                plan.EndDate!.Value,
+                _context.Users
+                    .Where(user =>
+                        user.Id == plan.UserId
+                        && !user.IsDeleted)
+                    .Select(user => user.TimeZoneId)
+                    .SingleOrDefault()))
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<RecoveryPlan?> GetTrackedDetailAsync(
         Guid planId,
         CancellationToken cancellationToken = default)
