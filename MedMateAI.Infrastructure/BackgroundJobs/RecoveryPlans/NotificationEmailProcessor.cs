@@ -14,6 +14,7 @@ public sealed class NotificationEmailProcessor : INotificationEmailProcessor
 {
     private const int DefaultDeliveryTimeoutSeconds = 30;
     private const int LeaseSafetyMarginSeconds = 5;
+    private const string DefaultTimeZoneId = "Asia/Ho_Chi_Minh";
     private const string RecipientIneligibleError = "Recipient is no longer eligible.";
     private const string ReferenceIneligibleError =
         "Notification reference is no longer eligible.";
@@ -264,17 +265,15 @@ public sealed class NotificationEmailProcessor : INotificationEmailProcessor
 
         var scheduledAtUtc = AsUtc(notification.ScheduledAt.Value);
         var maximumLateness =
-            TimeSpan.FromMinutes(_options.MedicationReminderMaxLatenessMinutes);
+            TimeSpan.FromMinutes(_options.MedicationMaxLatenessMinutes);
         if (utcNow - scheduledAtUtc > maximumLateness)
         {
             return DeliveryPreparation.Cancelled(ReferenceIneligibleError);
         }
 
-        var timeZone = ResolveTimeZone(recipient.TimeZoneId);
-        if (timeZone is null)
-        {
-            return DeliveryPreparation.Cancelled(ReferenceIneligibleError);
-        }
+        var timeZone = ResolveTimeZone(
+            recipient.TimeZoneId,
+            notification.Id);
 
         var localScheduledAt = TimeZoneInfo.ConvertTimeFromUtc(
             scheduledAtUtc,
@@ -413,25 +412,38 @@ public sealed class NotificationEmailProcessor : INotificationEmailProcessor
         return value.ToUniversalTime();
     }
 
-    private static TimeZoneInfo? ResolveTimeZone(string? timeZoneId)
+    private TimeZoneInfo ResolveTimeZone(
+        string? timeZoneId,
+        Guid notificationId)
     {
-        if (string.IsNullOrWhiteSpace(timeZoneId))
+        if (!string.IsNullOrWhiteSpace(timeZoneId))
         {
-            return null;
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                LogTimeZoneFallback(notificationId);
+            }
+            catch (InvalidTimeZoneException)
+            {
+                LogTimeZoneFallback(notificationId);
+            }
+        }
+        else
+        {
+            LogTimeZoneFallback(notificationId);
         }
 
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            return null;
-        }
-        catch (InvalidTimeZoneException)
-        {
-            return null;
-        }
+        return TimeZoneInfo.FindSystemTimeZoneById(DefaultTimeZoneId);
+    }
+
+    private void LogTimeZoneFallback(Guid notificationId)
+    {
+        _logger.LogWarning(
+            "Medication notification {NotificationId} has no valid user timezone; using the default timezone.",
+            notificationId);
     }
 
     private enum DeliveryPreparationStatus

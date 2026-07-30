@@ -362,7 +362,9 @@ public sealed class RecoveryPlanRepository : IRecoveryPlanRepository
             .AsNoTracking()
             .Where(medication =>
                 medication.UserId == userId
-                && !medication.IsDeleted)
+                && !medication.IsDeleted
+                && medication.SourceType == UserMedicationSourceType.PatientReported
+                && medication.TreatmentJourneyId == null)
             .OrderBy(medication => medication.MedicineName)
             .ThenBy(medication => medication.Id)
             .Select(medication => new RecoveryPlanUserMedicationData(
