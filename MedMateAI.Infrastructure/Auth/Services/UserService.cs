@@ -21,19 +21,22 @@ public sealed class UserService : IUserService
     private readonly IGenericRepository<ApplicationUser> _userRepository;
     private readonly IMapper _mapper;
     private readonly ApplicationDbContext _db;
+    private readonly IRecoveryPlanRealtimeNotifier _realtimeNotifier;
 
     public UserService(
         IHttpContextAccessor httpContextAccessor,
         UserManager<ApplicationUser> userManager,
         IGenericRepository<ApplicationUser> userRepository,
         IMapper mapper,
-        ApplicationDbContext db)
+        ApplicationDbContext db,
+        IRecoveryPlanRealtimeNotifier realtimeNotifier)
     {
         _httpContextAccessor = httpContextAccessor;
         _userManager = userManager;
         _userRepository = userRepository;
         _mapper = mapper;
         _db = db;
+        _realtimeNotifier = realtimeNotifier;
     }
 
     public async Task<ApplicationUserResponse?> GetCurrentUserAsync(CancellationToken cancellationToken = default)
@@ -221,13 +224,25 @@ public sealed class UserService : IUserService
             return (false, new[] { "User is already deleted." });
         }
 
+        var hasLinkedDoctor = await HasLinkedDoctorAsync(user.Id, cancellationToken);
         user.IsDeleted = true;
         user.DeletedAt = DateTime.UtcNow;
 
         var updateResult = await _userManager.UpdateAsync(user);
-        return updateResult.Succeeded
-            ? (true, Array.Empty<string>())
-            : (false, updateResult.Errors.Select(e => e.Description));
+        if (!updateResult.Succeeded)
+        {
+            return (false, updateResult.Errors.Select(e => e.Description));
+        }
+
+        if (hasLinkedDoctor)
+        {
+            await _realtimeNotifier.TryNotifyDoctorRealtimeAccessChangedAsync(
+                user.Id,
+                user.DeletedAt.Value,
+                CancellationToken.None);
+        }
+
+        return (true, Array.Empty<string>());
     }
 
     public async Task<(bool Succeeded, IEnumerable<string> Errors, ApproveUserResponse? DataData)> ApproveUserAsync(
@@ -255,11 +270,27 @@ public sealed class UserService : IUserService
             return (false, new[] { "Only pending accounts can be approved." }, null);
         }
 
+        var hasLinkedDoctor = await HasLinkedDoctorAsync(user.Id, cancellationToken);
+        var utcNow = DateTime.UtcNow;
         user.Status = UserStatus.Confirmed;
         var updateResult = await _userManager.UpdateAsync(user);
-        return updateResult.Succeeded
-            ? (true, Array.Empty<string>(), new ApproveUserResponse { UserId = user.Id, Status = user.Status })
-            : (false, updateResult.Errors.Select(e => e.Description), null);
+        if (!updateResult.Succeeded)
+        {
+            return (false, updateResult.Errors.Select(e => e.Description), null);
+        }
+
+        if (hasLinkedDoctor)
+        {
+            await _realtimeNotifier.TryNotifyDoctorRealtimeAccessChangedAsync(
+                user.Id,
+                utcNow,
+                CancellationToken.None);
+        }
+
+        return (
+            true,
+            Array.Empty<string>(),
+            new ApproveUserResponse { UserId = user.Id, Status = user.Status });
     }
 
     public async Task<(bool Succeeded, IEnumerable<string> Errors)> MarkPatientProfileCompletedAsync(
@@ -317,5 +348,16 @@ public sealed class UserService : IUserService
                     .Where(n => !string.IsNullOrEmpty(n))
                     .Distinct(StringComparer.Ordinal)
                     .ToArray());
+    }
+
+    private Task<bool> HasLinkedDoctorAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        return _db.Doctors
+            .AsNoTracking()
+            .AnyAsync(
+                doctor => doctor.UserId == userId && !doctor.IsDeleted,
+                cancellationToken);
     }
 }

@@ -23,13 +23,16 @@ public sealed class DoctorService : IDoctorService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDistributedCache _cache;
+    private readonly IRecoveryPlanRealtimeNotifier _realtimeNotifier;
 
     public DoctorService(
         IUnitOfWork unitOfWork,
-        IDistributedCache cache)
+        IDistributedCache cache,
+        IRecoveryPlanRealtimeNotifier realtimeNotifier)
     {
         _unitOfWork = unitOfWork;
         _cache = cache;
+        _realtimeNotifier = realtimeNotifier;
     }
 
     public async Task<PagedResponse<DoctorResponse>> ListDoctorsAsync(
@@ -393,15 +396,24 @@ public sealed class DoctorService : IDoctorService
             entity.YearsOfExperience = request.YearsOfExperience.Value;
         }
 
+        var realtimeAccessChanged = request.IsActive.HasValue
+            && entity.IsActive != request.IsActive.Value;
+
         if (request.IsActive.HasValue)
         {
             entity.IsActive = request.IsActive.Value;
         }
 
-        entity.UpdatedAt = DateTime.UtcNow;
+        var utcNow = DateTime.UtcNow;
+        entity.UpdatedAt = utcNow;
 
         _unitOfWork.Doctors.Update(entity);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+        if (realtimeAccessChanged)
+        {
+            await NotifyRealtimeAccessChangedAsync(entity.UserId, utcNow);
+        }
+
         await InvalidateDoctorCachesAsync(id, cancellationToken);
 
         var updated = await _unitOfWork.Doctors.GetByIdWithDetailsAsync(id, cancellationToken);
@@ -429,11 +441,18 @@ public sealed class DoctorService : IDoctorService
             return (false, true, new[] { "Doctor not found." }, null);
         }
 
+        var realtimeAccessChanged = entity.IsActive != request.IsActive;
+        var utcNow = DateTime.UtcNow;
         entity.IsActive = request.IsActive;
-        entity.UpdatedAt = DateTime.UtcNow;
+        entity.UpdatedAt = utcNow;
 
         _unitOfWork.Doctors.Update(entity);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+        if (realtimeAccessChanged)
+        {
+            await NotifyRealtimeAccessChangedAsync(entity.UserId, utcNow);
+        }
+
         await InvalidateDoctorCachesAsync(id, cancellationToken);
 
         var updated = await _unitOfWork.Doctors.GetByIdWithDetailsAsync(id, cancellationToken);
@@ -462,6 +481,7 @@ public sealed class DoctorService : IDoctorService
 
         _unitOfWork.Doctors.Update(entity);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await NotifyRealtimeAccessChangedAsync(entity.UserId, utcNow);
         await InvalidateDoctorCachesAsync(id, cancellationToken);
 
         return (true, false, Array.Empty<string>());
@@ -541,6 +561,21 @@ public sealed class DoctorService : IDoctorService
     private Task InvalidateDoctorCachesAsync(Guid id, CancellationToken cancellationToken)
     {
         return _cache.RemoveAsync(GetDoctorCacheKey(id), cancellationToken);
+    }
+
+    private Task NotifyRealtimeAccessChangedAsync(
+        Guid? doctorUserId,
+        DateTime occurredAtUtc)
+    {
+        if (!doctorUserId.HasValue)
+        {
+            return Task.CompletedTask;
+        }
+
+        return _realtimeNotifier.TryNotifyDoctorRealtimeAccessChangedAsync(
+            doctorUserId.Value,
+            occurredAtUtc,
+            CancellationToken.None);
     }
 
     private static string? NormalizeText(string? value)

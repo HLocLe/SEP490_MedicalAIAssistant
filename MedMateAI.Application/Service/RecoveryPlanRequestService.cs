@@ -6,6 +6,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.RecoveryPlanRequests;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models;
+using MedMateAI.Application.Models.RecoveryPlans;
 using MedMateAI.Application.Options;
 using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
@@ -27,12 +28,18 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
 
     private readonly IUnitOfWork _uow;
     private readonly IRecoveryPlanQuotaService _quota;
+    private readonly IRecoveryPlanRealtimeNotifier _realtimeNotifier;
     private readonly RecoveryPlanOptions _options;
 
-    public RecoveryPlanRequestService(IUnitOfWork uow, IRecoveryPlanQuotaService quota, IOptions<RecoveryPlanOptions> options)
+    public RecoveryPlanRequestService(
+        IUnitOfWork uow,
+        IRecoveryPlanQuotaService quota,
+        IRecoveryPlanRealtimeNotifier realtimeNotifier,
+        IOptions<RecoveryPlanOptions> options)
     {
         _uow = uow;
         _quota = quota;
+        _realtimeNotifier = realtimeNotifier;
         _options = options.Value;
     }
 
@@ -162,6 +169,15 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             await _uow.SaveChangesAsync(cancellationToken);
             await _uow.CommitTransactionAsync(cancellationToken);
 
+            await _realtimeNotifier.TryNotifyRequestChangedAsync(
+                RecoveryPlanRealtimeNotificationFactory.CreateRequestNotification(
+                    recoveryPlanRequest,
+                    RecoveryPlanOutboxEventTypes.Created,
+                    RecoveryPlanQueueChangeType.Added,
+                    null,
+                    utcNow),
+                CancellationToken.None);
+
             return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(recoveryPlanRequest));
         }
         catch
@@ -227,6 +243,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             userId,
             requestId,
             cancellationToken,
+            RecoveryPlanRealtimeTransitions.Cancelled,
             CancelRequestAsync);
 
     public Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> ProvideInformationAsync(
@@ -245,6 +262,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             userId,
             requestId,
             cancellationToken,
+            RecoveryPlanRealtimeTransitions.InformationProvided,
             (request, actorUserId, utcNow) =>
                 ProvideMoreInformation(request, actorUserId, normalizedInformation, utcNow));
     }
@@ -366,6 +384,15 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             await _uow.SaveChangesAsync(cancellationToken);
             await _uow.CommitTransactionAsync(cancellationToken);
 
+            await _realtimeNotifier.TryNotifyRequestChangedAsync(
+                RecoveryPlanRealtimeNotificationFactory.CreateRequestNotification(
+                    acceptedRequest,
+                    RecoveryPlanOutboxEventTypes.Claimed,
+                    RecoveryPlanQueueChangeType.Removed,
+                    doctor.Id,
+                    utcNow),
+                CancellationToken.None);
+
             return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(acceptedRequest));
         }
         catch
@@ -383,6 +410,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             doctorUserId,
             requestId,
             cancellationToken,
+            RecoveryPlanRealtimeTransitions.ReviewStarted,
             StartReview);
 
     public Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> ReleaseAsync(
@@ -401,6 +429,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             doctorUserId,
             requestId,
             cancellationToken,
+            RecoveryPlanRealtimeTransitions.Released,
             (request, doctor, utcNow) => ReleaseRequest(request, doctor, normalizedReason, utcNow));
     }
 
@@ -420,6 +449,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             doctorUserId,
             requestId,
             cancellationToken,
+            RecoveryPlanRealtimeTransitions.MoreInformationRequested,
             (request, doctor, utcNow) =>
                 RequestMoreInformation(request, doctor, normalizedReason, utcNow));
     }
@@ -443,6 +473,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             doctorUserId,
             requestId,
             cancellationToken,
+            RecoveryPlanRealtimeTransitions.Rejected,
             (request, doctor, utcNow, transitionCancellationToken) =>
                 RejectRequestAsync(
                     request,
@@ -713,11 +744,13 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         Guid userId,
         Guid requestId,
         CancellationToken cancellationToken,
+        RecoveryPlanRealtimeTransitionDescriptor realtimeTransition,
         Func<RecoveryPlanRequest, Guid, DateTime, RecoveryPlanErrorCode> transition) =>
         UserTransitionAsync(
             userId,
             requestId,
             cancellationToken,
+            realtimeTransition,
             (request, actorUserId, utcNow, _) =>
                 Task.FromResult(transition(request, actorUserId, utcNow)));
 
@@ -725,6 +758,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         Guid userId,
         Guid requestId,
         CancellationToken cancellationToken,
+        RecoveryPlanRealtimeTransitionDescriptor realtimeTransition,
         Func<RecoveryPlanRequest, Guid, DateTime, CancellationToken, Task<RecoveryPlanErrorCode>> transition)
     {
         await _uow.BeginTransactionAsync(cancellationToken);
@@ -737,7 +771,10 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             }
 
             var originalVersion = request.Version;
-            var error = await transition(request, userId, DateTime.UtcNow, cancellationToken);
+            var previousStatus = request.Status;
+            var previousDoctorId = request.AssignedDoctorId;
+            var utcNow = DateTime.UtcNow;
+            var error = await transition(request, userId, utcNow, cancellationToken);
             if (error != RecoveryPlanErrorCode.None)
             {
                 return await RollbackFailureAsync(error);
@@ -752,6 +789,15 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             {
                 await _uow.SaveChangesAsync(cancellationToken);
                 await _uow.CommitTransactionAsync(cancellationToken);
+
+                await _realtimeNotifier.TryNotifyRequestChangedAsync(
+                    RecoveryPlanRealtimeNotificationFactory.CreateRequestNotification(
+                        request,
+                        realtimeTransition.EventType,
+                        realtimeTransition.ResolveQueueChange(previousStatus),
+                        previousDoctorId,
+                        utcNow),
+                    CancellationToken.None);
             }
 
             return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(request), isReplay);
@@ -767,17 +813,20 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         Guid doctorUserId,
         Guid requestId,
         CancellationToken cancellationToken,
+        RecoveryPlanRealtimeTransitionDescriptor realtimeTransition,
         Func<RecoveryPlanRequest, Doctor, DateTime, RecoveryPlanErrorCode> transition) =>
         DoctorTransitionAsync(
             doctorUserId,
             requestId,
             cancellationToken,
+            realtimeTransition,
             (request, doctor, utcNow, _) => Task.FromResult(transition(request, doctor, utcNow)));
 
     private async Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> DoctorTransitionAsync(
         Guid doctorUserId,
         Guid requestId,
         CancellationToken cancellationToken,
+        RecoveryPlanRealtimeTransitionDescriptor realtimeTransition,
         Func<RecoveryPlanRequest, Doctor, DateTime, CancellationToken, Task<RecoveryPlanErrorCode>> transition)
     {
         var doctor = await _uow.RecoveryPlanRequests.GetDoctorByUserIdAsync(doctorUserId, cancellationToken);
@@ -797,7 +846,10 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             }
 
             var originalVersion = request.Version;
-            var error = await transition(request, doctor, DateTime.UtcNow, cancellationToken);
+            var previousStatus = request.Status;
+            var previousDoctorId = request.AssignedDoctorId;
+            var utcNow = DateTime.UtcNow;
+            var error = await transition(request, doctor, utcNow, cancellationToken);
             if (error != RecoveryPlanErrorCode.None)
             {
                 return await RollbackFailureAsync(error);
@@ -812,6 +864,15 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             {
                 await _uow.SaveChangesAsync(cancellationToken);
                 await _uow.CommitTransactionAsync(cancellationToken);
+
+                await _realtimeNotifier.TryNotifyRequestChangedAsync(
+                    RecoveryPlanRealtimeNotificationFactory.CreateRequestNotification(
+                        request,
+                        realtimeTransition.EventType,
+                        realtimeTransition.ResolveQueueChange(previousStatus),
+                        previousDoctorId,
+                        utcNow),
+                    CancellationToken.None);
             }
 
             return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(request), isReplay);

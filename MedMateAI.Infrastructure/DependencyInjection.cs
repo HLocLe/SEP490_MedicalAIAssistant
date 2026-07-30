@@ -10,6 +10,7 @@ using MedMateAI.Infrastructure.Auth.Options;
 using MedMateAI.Infrastructure.Auth.Providers;
 using MedMateAI.Infrastructure.Auth.Services;
 using MedMateAI.Application.Mapping;
+using MedMateAI.Application.Common;
 using MedMateAI.Infrastructure.Mapping;
 using MedMateAI.Infrastructure.Persistence.Seeder;
 using MedMateAI.Infrastructure.Repositories;
@@ -75,6 +76,7 @@ public static class DependencyInjection
         services.AddScoped<IRecoveryPlanRequestService, RecoveryPlanRequestService>();
         services.AddScoped<IRecoveryPlanClinicalContextService, RecoveryPlanClinicalContextService>();
         services.AddScoped<IRecoveryPlanService, RecoveryPlanService>();
+        services.AddScoped<IRecoveryPlanRealtimeAccessService, RecoveryPlanRealtimeAccessService>();
 
         //
         services.Configure<PayOSOptions>(configuration.GetSection("PayOS"));
@@ -188,6 +190,21 @@ public static class DependencyInjection
                     ValidAudience = jwt.Audience,
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Secret)),
                     ClockSkew = TimeSpan.FromMinutes(1),
+                };
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        if (!string.IsNullOrWhiteSpace(accessToken)
+                            && context.HttpContext.Request.Path.StartsWithSegments(
+                                RecoveryPlanRealtimeConstants.HubPath))
+                        {
+                            context.Token = accessToken;
+                        }
+
+                        return Task.CompletedTask;
+                    }
                 };
             });
 
