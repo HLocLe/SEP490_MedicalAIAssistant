@@ -64,6 +64,39 @@ public sealed class LabTestsController : ControllerBase
         });
     }
 
+    [HttpGet("my-sessions")]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<LabTestSessionSummaryResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<LabTestSessionSummaryResponse>>), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetMySessions(
+        [FromQuery] PaginationQuery query,
+        [FromQuery] LabTestSessionStatus? status,
+        CancellationToken cancellationToken = default)
+    {
+        var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return Unauthorized(new ApiResponse<PagedResponse<LabTestSessionSummaryResponse>>
+            {
+                Success = false,
+                Message = "Unauthorized.",
+            });
+        }
+
+        var data = await _labTestService.GetSessionsByUserIdAsync(
+            currentUser.Id,
+            status,
+            query.PageNumber,
+            query.PageSize,
+            cancellationToken);
+
+        return Ok(new ApiResponse<PagedResponse<LabTestSessionSummaryResponse>>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data,
+        });
+    }
+
     [HttpGet("{sessionId:guid}")]
     [ProducesResponseType(typeof(ApiResponse<LabTestUploadResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<LabTestUploadResponse>), StatusCodes.Status404NotFound)]

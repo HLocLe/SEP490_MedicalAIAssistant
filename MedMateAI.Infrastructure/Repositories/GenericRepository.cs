@@ -27,6 +27,21 @@ public class GenericRepository<TEntity> : IGenericRepository<TEntity>
         return await _set.AsNoTracking().ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<TEntity>> GetAllAsync(
+        Expression<Func<TEntity, bool>> predicate,
+        Func<IQueryable<TEntity>, IOrderedQueryable<TEntity>>? orderBy = null,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<TEntity> query = _set.AsNoTracking().Where(predicate);
+
+        if (orderBy is not null)
+        {
+            query = orderBy(query);
+        }
+
+        return await query.ToListAsync(cancellationToken);
+    }
+
     public async Task<PagedResult<TEntity>> GetPagedAsync(
         int pageNumber,
         int pageSize,

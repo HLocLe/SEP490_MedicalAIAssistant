@@ -215,6 +215,63 @@ public sealed class LabIndicatorsController : ControllerBase
         });
     }
 
+    [HttpGet("{id:guid}/aliases")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabIndicatorAliasResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabIndicatorAliasResponse>>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabIndicatorAliasResponse>>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAliases(Guid id, CancellationToken cancellationToken)
+    {
+        if (id == Guid.Empty)
+        {
+            return BadRequest(new ApiResponse<IReadOnlyList<LabIndicatorAliasResponse>>
+            {
+                Success = false,
+                Message = "Invalid lab indicator id.",
+            });
+        }
+
+        var (ok, notFound, errors, data) = await _labIndicatorService.GetAliasesByIndicatorIdAsync(id, cancellationToken);
+        return ToChildMutationResult(ok, notFound, errors, data, "OK", "Get aliases failed.", "Lab indicator not found.");
+    }
+
+    [HttpGet("{id:guid}/reference-ranges")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabIndicatorReferenceRangeResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabIndicatorReferenceRangeResponse>>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabIndicatorReferenceRangeResponse>>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetReferenceRanges(Guid id, CancellationToken cancellationToken)
+    {
+        if (id == Guid.Empty)
+        {
+            return BadRequest(new ApiResponse<IReadOnlyList<LabIndicatorReferenceRangeResponse>>
+            {
+                Success = false,
+                Message = "Invalid lab indicator id.",
+            });
+        }
+
+        var (ok, notFound, errors, data) = await _labIndicatorService.GetReferenceRangesByIndicatorIdAsync(id, cancellationToken);
+        return ToChildMutationResult(ok, notFound, errors, data, "OK", "Get reference ranges failed.", "Lab indicator not found.");
+    }
+
+    [HttpGet("{id:guid}/advice")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabIndicatorAdviceCacheResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabIndicatorAdviceCacheResponse>>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabIndicatorAdviceCacheResponse>>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAdviceCaches(Guid id, CancellationToken cancellationToken)
+    {
+        if (id == Guid.Empty)
+        {
+            return BadRequest(new ApiResponse<IReadOnlyList<LabIndicatorAdviceCacheResponse>>
+            {
+                Success = false,
+                Message = "Invalid lab indicator id.",
+            });
+        }
+
+        var (ok, notFound, errors, data) = await _labIndicatorService.GetAdviceCachesByIndicatorIdAsync(id, cancellationToken);
+        return ToChildMutationResult(ok, notFound, errors, data, "OK", "Get advice caches failed.", "Lab indicator not found.");
+    }
+
     [HttpPost("{id:guid}/aliases/bulk")]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabIndicatorAliasResponse>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabIndicatorAliasResponse>>), StatusCodes.Status400BadRequest)]

@@ -33,6 +33,18 @@ public interface ILabIndicatorService
         Guid id,
         CancellationToken cancellationToken = default);
 
+    Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorAliasResponse>? Data)> GetAliasesByIndicatorIdAsync(
+        Guid indicatorId,
+        CancellationToken cancellationToken = default);
+
+    Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorReferenceRangeResponse>? Data)> GetReferenceRangesByIndicatorIdAsync(
+        Guid indicatorId,
+        CancellationToken cancellationToken = default);
+
+    Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorAdviceCacheResponse>? Data)> GetAdviceCachesByIndicatorIdAsync(
+        Guid indicatorId,
+        CancellationToken cancellationToken = default);
+
     Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorAliasResponse>? Data)> BulkCreateAliasesAsync(
         Guid indicatorId,
         BulkCreateLabIndicatorAliasesRequest request,

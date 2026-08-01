@@ -275,6 +275,60 @@ public sealed class LabIndicatorService : ILabIndicatorService
         return (true, false, Array.Empty<string>());
     }
 
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorAliasResponse>? Data)> GetAliasesByIndicatorIdAsync(
+        Guid indicatorId,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors, null);
+        }
+
+        var aliases = await _unitOfWork.LabIndicatorAliases.GetAllAsync(
+            x => !x.IsDeleted && x.IndicatorId == indicatorId,
+            query => query.OrderByDescending(x => x.IsPrimary).ThenBy(x => x.AliasText),
+            cancellationToken);
+
+        return (true, false, Array.Empty<string>(), aliases.Select(a => _mapper.Map<LabIndicatorAliasResponse>(a)).ToList());
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorReferenceRangeResponse>? Data)> GetReferenceRangesByIndicatorIdAsync(
+        Guid indicatorId,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors, null);
+        }
+
+        var ranges = await _unitOfWork.LabIndicatorReferenceRanges.GetAllAsync(
+            x => !x.IsDeleted && x.IndicatorId == indicatorId,
+            query => query.OrderByDescending(x => x.Priority).ThenBy(x => x.CreatedAt),
+            cancellationToken);
+
+        return (true, false, Array.Empty<string>(), ranges.Select(r => _mapper.Map<LabIndicatorReferenceRangeResponse>(r)).ToList());
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorAdviceCacheResponse>? Data)> GetAdviceCachesByIndicatorIdAsync(
+        Guid indicatorId,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors, null);
+        }
+
+        var adviceCaches = await _unitOfWork.LabIndicatorAdviceCaches.GetAllAsync(
+            x => !x.IsDeleted && x.IndicatorId == indicatorId,
+            query => query.OrderBy(x => x.Status),
+            cancellationToken);
+
+        return (true, false, Array.Empty<string>(), adviceCaches.Select(a => _mapper.Map<LabIndicatorAdviceCacheResponse>(a)).ToList());
+    }
+
     public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorAliasResponse>? Data)> BulkCreateAliasesAsync(
         Guid indicatorId,
         BulkCreateLabIndicatorAliasesRequest request,

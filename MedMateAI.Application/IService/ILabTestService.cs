@@ -1,5 +1,7 @@
+using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.LabTests.Requests;
 using MedMateAI.Application.DTOs.LabTests.Responses;
+using MedMateAI.Domain.Enums;
 
 namespace MedMateAI.Application.IService;
 
@@ -13,5 +15,12 @@ public interface ILabTestService
     Task<LabTestUploadResponse?> GetSessionAsync(
         Guid userId,
         Guid sessionId,
+        CancellationToken cancellationToken = default);
+
+    Task<PagedResponse<LabTestSessionSummaryResponse>> GetSessionsByUserIdAsync(
+        Guid userId,
+        LabTestSessionStatus? status,
+        int pageNumber,
+        int pageSize,
         CancellationToken cancellationToken = default);
 }
