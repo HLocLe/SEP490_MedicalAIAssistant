@@ -34,6 +34,22 @@ public interface IUnitOfWork : IAsyncDisposable
     IQuotaUsageRepository QuotaUsages { get; }
     IUserMedicationRepository UserMedications { get; }
 
+    ILabIndicatorRepository LabIndicators { get; }
+
+    IGenericRepository<LabIndicatorAlias> LabIndicatorAliases { get; }
+
+    IGenericRepository<LabIndicatorReferenceRange> LabIndicatorReferenceRanges { get; }
+
+    IGenericRepository<LabIndicatorAdviceCache> LabIndicatorAdviceCaches { get; }
+
+    IGenericRepository<LabTestSession> LabTestSessions { get; }
+
+    ILabTestSessionRepository LabTestSessionDetails { get; }
+
+    IGenericRepository<LabTestResultDetail> LabTestResultDetails { get; }
+
+    IGenericRepository<LabTestOcrExtract> LabTestOcrExtracts { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task BeginTransactionAsync(CancellationToken cancellationToken = default);
     Task CommitTransactionAsync(CancellationToken cancellationToken = default);

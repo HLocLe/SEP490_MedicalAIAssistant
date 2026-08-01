@@ -1,3 +1,4 @@
+using MedMateAI.Application.DTOs.MedicalFacilities.Responses;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
 using MedMateAI.Domain.Enums;
 
@@ -20,4 +21,7 @@ public sealed class SymptomAnalysisResponse
 
     public IReadOnlyList<RecommendedDepartmentResponse> RecommendedDepartments { get; set; } =
         Array.Empty<RecommendedDepartmentResponse>();
+
+    public IReadOnlyList<MedicalFacilityResponse> RecommendedFacilities { get; set; } =
+        Array.Empty<MedicalFacilityResponse>();
 }

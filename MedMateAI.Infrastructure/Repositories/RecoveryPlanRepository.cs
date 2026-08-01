@@ -333,16 +333,17 @@ public sealed class RecoveryPlanRepository : IRecoveryPlanRepository
             .Where(result =>
                 result.TestSessionId == session.Id
                 && !result.IsDeleted
-                && !result.Indicator.IsDeleted)
-            .OrderBy(result => result.Indicator.Symbol)
+                && result.IndicatorId != null
+                && !result.Indicator!.IsDeleted)
+            .OrderBy(result => result.Indicator!.Symbol)
             .ThenBy(result => result.IndicatorId)
             .Select(result => new RecoveryPlanLabResultData(
-                result.IndicatorId,
-                result.Indicator.Symbol,
+                result.IndicatorId!.Value,
+                result.Indicator!.Symbol,
                 result.Indicator.FullName,
                 result.Indicator.Unit,
                 result.UserValue,
-                result.Status,
+                result.Status.ToString(),
                 result.Indicator.MinReference,
                 result.Indicator.MaxReference))
             .ToListAsync(cancellationToken);

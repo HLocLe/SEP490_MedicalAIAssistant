@@ -1,0 +1,1012 @@
+using AutoMapper;
+using MedMateAI.Application.DTOs.Common;
+using MedMateAI.Application.DTOs.LabIndicators.Requests;
+using MedMateAI.Application.DTOs.LabIndicators.Responses;
+using MedMateAI.Application.IService;
+using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
+using MedMateAI.Domain.Persistence;
+
+namespace MedMateAI.Application.Service;
+
+public sealed class LabIndicatorService : ILabIndicatorService
+{
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IMapper _mapper;
+
+    public LabIndicatorService(IUnitOfWork unitOfWork, IMapper mapper)
+    {
+        _unitOfWork = unitOfWork;
+        _mapper = mapper;
+    }
+
+    public async Task<PagedResponse<LabIndicatorResponse>> ListLabIndicatorsAsync(
+        int pageNumber,
+        int pageSize,
+        string? search = null,
+        CancellationToken cancellationToken = default)
+    {
+        var searchTerm = string.IsNullOrWhiteSpace(search) ? null : search.Trim().ToLowerInvariant();
+
+        var paged = await _unitOfWork.LabIndicators.GetPagedAsync(
+            pageNumber,
+            pageSize,
+            indicator => !indicator.IsDeleted
+                && (searchTerm == null
+                    || indicator.Symbol.ToLower().Contains(searchTerm)
+                    || (indicator.FullName != null && indicator.FullName.ToLower().Contains(searchTerm))
+                    || (indicator.Category != null && indicator.Category.ToLower().Contains(searchTerm))),
+            query => query.OrderBy(indicator => indicator.Symbol),
+            cancellationToken: cancellationToken);
+
+        return new PagedResponse<LabIndicatorResponse>
+        {
+            PageNumber = paged.PageNumber,
+            PageSize = paged.PageSize,
+            TotalCount = paged.TotalCount,
+            TotalPages = paged.TotalPages,
+            Items = paged.Items.Select(indicator => _mapper.Map<LabIndicatorResponse>(indicator)).ToList(),
+        };
+    }
+
+    public async Task<LabIndicatorDetailResponse?> GetLabIndicatorByIdAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        if (id == Guid.Empty)
+        {
+            return null;
+        }
+
+        var indicator = await _unitOfWork.LabIndicators.GetByIdWithDetailsAsync(id, cancellationToken);
+        return indicator is null ? null : _mapper.Map<LabIndicatorDetailResponse>(indicator);
+    }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors, LabIndicatorResponse? Data)> CreateLabIndicatorAsync(
+        CreateLabIndicatorRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request is null)
+        {
+            return (false, new[] { "Request body is required." }, null);
+        }
+
+        var validationErrors = ValidateIndicatorFields(request.Symbol, request.MinReference, request.MaxReference);
+        if (validationErrors.Count > 0)
+        {
+            return (false, validationErrors, null);
+        }
+
+        var symbol = NormalizeSymbol(request.Symbol)!;
+
+        if (await _unitOfWork.LabIndicators.SymbolExistsAsync(symbol, cancellationToken: cancellationToken))
+        {
+            return (false, new[] { "Indicator symbol already exists." }, null);
+        }
+
+        var entity = MapToMasterEntity(request, symbol);
+        _unitOfWork.LabIndicators.Add(entity);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, Array.Empty<string>(), _mapper.Map<LabIndicatorResponse>(entity));
+    }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorResponse>? Data)> BulkCreateLabIndicatorsAsync(
+        BulkCreateLabIndicatorsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request is null || request.Indicators is null || request.Indicators.Count == 0)
+        {
+            return (false, new[] { "At least one indicator is required." }, null);
+        }
+
+        var errors = new List<string>();
+        var prepared = new List<(CreateLabIndicatorRequest Request, string Symbol)>();
+
+        for (var index = 0; index < request.Indicators.Count; index++)
+        {
+            var item = request.Indicators[index];
+            var fieldErrors = ValidateIndicatorFields(item.Symbol, item.MinReference, item.MaxReference);
+            foreach (var fieldError in fieldErrors)
+            {
+                errors.Add($"Indicators[{index}]: {fieldError}");
+            }
+
+            if (fieldErrors.Count > 0)
+            {
+                continue;
+            }
+
+            prepared.Add((item, NormalizeSymbol(item.Symbol)!));
+        }
+
+        if (errors.Count > 0)
+        {
+            return (false, errors, null);
+        }
+
+        var duplicateSymbols = prepared
+            .GroupBy(x => x.Symbol, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        if (duplicateSymbols.Count > 0)
+        {
+            return (false, duplicateSymbols.Select(symbol => $"Duplicate symbol in request: {symbol}"), null);
+        }
+
+        foreach (var symbol in prepared.Select(x => x.Symbol))
+        {
+            if (await _unitOfWork.LabIndicators.SymbolExistsAsync(symbol, cancellationToken: cancellationToken))
+            {
+                errors.Add($"Indicator symbol already exists: {symbol}");
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            return (false, errors, null);
+        }
+
+        var entities = prepared
+            .Select(x => MapToMasterEntity(x.Request, x.Symbol))
+            .ToList();
+
+        foreach (var entity in entities)
+        {
+            _unitOfWork.LabIndicators.Add(entity);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, Array.Empty<string>(), entities.Select(e => _mapper.Map<LabIndicatorResponse>(e)).ToList());
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, LabIndicatorResponse? Data)> UpdateLabIndicatorAsync(
+        Guid id,
+        UpdateLabIndicatorRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (id == Guid.Empty)
+        {
+            return (false, false, new[] { "Invalid indicator id." }, null);
+        }
+
+        if (request is null)
+        {
+            return (false, false, new[] { "Request body is required." }, null);
+        }
+
+        var indicator = await _unitOfWork.LabIndicators.GetByIdAsync(id, cancellationToken);
+        if (indicator is null || indicator.IsDeleted)
+        {
+            return (false, true, new[] { "Lab indicator not found." }, null);
+        }
+
+        if (request.Symbol is not null)
+        {
+            if (string.IsNullOrWhiteSpace(request.Symbol))
+            {
+                return (false, false, new[] { "Symbol cannot be empty when provided." }, null);
+            }
+
+            var newSymbol = NormalizeSymbol(request.Symbol)!;
+            if (await _unitOfWork.LabIndicators.SymbolExistsAsync(newSymbol, id, cancellationToken))
+            {
+                return (false, false, new[] { "Indicator symbol already exists." }, null);
+            }
+
+            indicator.Symbol = newSymbol;
+        }
+
+        if (request.FullName is not null)
+        {
+            indicator.FullName = string.IsNullOrWhiteSpace(request.FullName) ? null : request.FullName.Trim();
+        }
+
+        if (request.Unit is not null)
+        {
+            indicator.Unit = string.IsNullOrWhiteSpace(request.Unit) ? null : request.Unit.Trim();
+        }
+
+        if (request.Description is not null)
+        {
+            indicator.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+        }
+
+        if (request.Category is not null)
+        {
+            indicator.Category = string.IsNullOrWhiteSpace(request.Category) ? null : request.Category.Trim();
+        }
+
+        if (request.MinReference.HasValue)
+        {
+            indicator.MinReference = request.MinReference;
+        }
+
+        if (request.MaxReference.HasValue)
+        {
+            indicator.MaxReference = request.MaxReference;
+        }
+
+        if (request.IsActive.HasValue)
+        {
+            indicator.IsActive = request.IsActive.Value;
+        }
+
+        var rangeErrors = ValidateFallbackRange(indicator.MinReference, indicator.MaxReference);
+        if (rangeErrors.Count > 0)
+        {
+            return (false, false, rangeErrors, null);
+        }
+
+        indicator.UpdatedAt = DateTime.UtcNow;
+        _unitOfWork.LabIndicators.Update(indicator);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>(), _mapper.Map<LabIndicatorResponse>(indicator));
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors)> SoftDeleteLabIndicatorAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        if (id == Guid.Empty)
+        {
+            return (false, false, new[] { "Invalid indicator id." });
+        }
+
+        var indicator = await _unitOfWork.LabIndicators.GetByIdAsync(id, cancellationToken);
+        if (indicator is null || indicator.IsDeleted)
+        {
+            return (false, true, new[] { "Lab indicator not found." });
+        }
+
+        var utcNow = DateTime.UtcNow;
+        indicator.IsDeleted = true;
+        indicator.DeletedAt = utcNow;
+        indicator.UpdatedAt = utcNow;
+        indicator.IsActive = false;
+
+        _unitOfWork.LabIndicators.Update(indicator);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>());
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorAliasResponse>? Data)> BulkCreateAliasesAsync(
+        Guid indicatorId,
+        BulkCreateLabIndicatorAliasesRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors, null);
+        }
+
+        if (request is null || request.Aliases is null || request.Aliases.Count == 0)
+        {
+            return (false, false, new[] { "At least one alias is required." }, null);
+        }
+
+        var validationErrors = new List<string>();
+        var normalizedAliases = new List<(string AliasText, string? Language, bool IsPrimary)>();
+
+        for (var index = 0; index < request.Aliases.Count; index++)
+        {
+            var alias = request.Aliases[index];
+            if (string.IsNullOrWhiteSpace(alias.AliasText))
+            {
+                validationErrors.Add($"Aliases[{index}]: AliasText is required.");
+                continue;
+            }
+
+            normalizedAliases.Add((
+                alias.AliasText.Trim(),
+                string.IsNullOrWhiteSpace(alias.Language) ? null : alias.Language.Trim(),
+                alias.IsPrimary));
+        }
+
+        if (validationErrors.Count > 0)
+        {
+            return (false, false, validationErrors, null);
+        }
+
+        var duplicateInRequest = normalizedAliases
+            .GroupBy(x => x.AliasText, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        if (duplicateInRequest.Count > 0)
+        {
+            return (false, false, duplicateInRequest.Select(text => $"Duplicate alias in request: {text}"), null);
+        }
+
+        foreach (var aliasText in normalizedAliases.Select(x => x.AliasText))
+        {
+            var exists = await _unitOfWork.LabIndicatorAliases.FirstOrDefaultAsync(
+                x => !x.IsDeleted
+                     && x.IndicatorId == indicatorId
+                     && x.AliasText.ToLower() == aliasText.ToLower(),
+                cancellationToken: cancellationToken);
+
+            if (exists is not null)
+            {
+                validationErrors.Add($"Alias already exists for this indicator: {aliasText}");
+            }
+        }
+
+        if (validationErrors.Count > 0)
+        {
+            return (false, false, validationErrors, null);
+        }
+
+        var utcNow = DateTime.UtcNow;
+        var entities = normalizedAliases.Select(alias => new LabIndicatorAlias
+        {
+            Id = Guid.NewGuid(),
+            IndicatorId = indicatorId,
+            AliasText = alias.AliasText,
+            Language = alias.Language,
+            IsPrimary = alias.IsPrimary,
+            CreatedAt = utcNow,
+        }).ToList();
+
+        foreach (var entity in entities)
+        {
+            _unitOfWork.LabIndicatorAliases.Add(entity);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>(), entities.Select(e => _mapper.Map<LabIndicatorAliasResponse>(e)).ToList());
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, LabIndicatorAliasResponse? Data)> CreateAliasAsync(
+        Guid indicatorId,
+        CreateLabIndicatorAliasRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors, null);
+        }
+
+        if (request is null || string.IsNullOrWhiteSpace(request.AliasText))
+        {
+            return (false, false, new[] { "AliasText is required." }, null);
+        }
+
+        var aliasText = request.AliasText.Trim();
+        var exists = await _unitOfWork.LabIndicatorAliases.FirstOrDefaultAsync(
+            x => !x.IsDeleted
+                 && x.IndicatorId == indicatorId
+                 && x.AliasText.ToLower() == aliasText.ToLower(),
+            cancellationToken: cancellationToken);
+
+        if (exists is not null)
+        {
+            return (false, false, new[] { $"Alias already exists for this indicator: {aliasText}" }, null);
+        }
+
+        var entity = new LabIndicatorAlias
+        {
+            Id = Guid.NewGuid(),
+            IndicatorId = indicatorId,
+            AliasText = aliasText,
+            Language = NormalizeOptionalText(request.Language),
+            IsPrimary = request.IsPrimary,
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        _unitOfWork.LabIndicatorAliases.Add(entity);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>(), _mapper.Map<LabIndicatorAliasResponse>(entity));
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, LabIndicatorAliasResponse? Data)> UpdateAliasAsync(
+        Guid indicatorId,
+        Guid aliasId,
+        UpdateLabIndicatorAliasRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors, null);
+        }
+
+        if (aliasId == Guid.Empty)
+        {
+            return (false, false, new[] { "Invalid alias id." }, null);
+        }
+
+        if (request is null || string.IsNullOrWhiteSpace(request.AliasText))
+        {
+            return (false, false, new[] { "AliasText is required." }, null);
+        }
+
+        var alias = await _unitOfWork.LabIndicatorAliases.GetByIdAsync(aliasId, cancellationToken);
+        if (alias is null || alias.IsDeleted || alias.IndicatorId != indicatorId)
+        {
+            return (false, true, new[] { "Alias not found." }, null);
+        }
+
+        var aliasText = request.AliasText.Trim();
+        var duplicate = await _unitOfWork.LabIndicatorAliases.FirstOrDefaultAsync(
+            x => !x.IsDeleted
+                 && x.IndicatorId == indicatorId
+                 && x.Id != aliasId
+                 && x.AliasText.ToLower() == aliasText.ToLower(),
+            cancellationToken: cancellationToken);
+
+        if (duplicate is not null)
+        {
+            return (false, false, new[] { $"Alias already exists for this indicator: {aliasText}" }, null);
+        }
+
+        alias.AliasText = aliasText;
+        alias.Language = NormalizeOptionalText(request.Language);
+        alias.IsPrimary = request.IsPrimary;
+        alias.UpdatedAt = DateTime.UtcNow;
+
+        _unitOfWork.LabIndicatorAliases.Update(alias);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>(), _mapper.Map<LabIndicatorAliasResponse>(alias));
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors)> SoftDeleteAliasAsync(
+        Guid indicatorId,
+        Guid aliasId,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors);
+        }
+
+        if (aliasId == Guid.Empty)
+        {
+            return (false, false, new[] { "Invalid alias id." });
+        }
+
+        var alias = await _unitOfWork.LabIndicatorAliases.GetByIdAsync(aliasId, cancellationToken);
+        if (alias is null || alias.IsDeleted || alias.IndicatorId != indicatorId)
+        {
+            return (false, true, new[] { "Alias not found." });
+        }
+
+        var utcNow = DateTime.UtcNow;
+        alias.IsDeleted = true;
+        alias.DeletedAt = utcNow;
+        alias.UpdatedAt = utcNow;
+
+        _unitOfWork.LabIndicatorAliases.Update(alias);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>());
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorReferenceRangeResponse>? Data)> BulkCreateReferenceRangesAsync(
+        Guid indicatorId,
+        BulkCreateLabIndicatorReferenceRangesRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors, null);
+        }
+
+        if (request is null || request.ReferenceRanges is null || request.ReferenceRanges.Count == 0)
+        {
+            return (false, false, new[] { "At least one reference range is required." }, null);
+        }
+
+        var validationErrors = new List<string>();
+        var entities = new List<LabIndicatorReferenceRange>();
+        var utcNow = DateTime.UtcNow;
+
+        for (var index = 0; index < request.ReferenceRanges.Count; index++)
+        {
+            var range = request.ReferenceRanges[index];
+            var rangeErrors = ValidateReferenceRange(range);
+            foreach (var rangeError in rangeErrors)
+            {
+                validationErrors.Add($"ReferenceRanges[{index}]: {rangeError}");
+            }
+
+            if (rangeErrors.Count > 0)
+            {
+                continue;
+            }
+
+            entities.Add(new LabIndicatorReferenceRange
+            {
+                Id = Guid.NewGuid(),
+                IndicatorId = indicatorId,
+                Gender = range.Gender,
+                AgeGroup = range.AgeGroup,
+                ComparisonType = range.ComparisonType,
+                MinValue = range.MinValue,
+                MaxValue = range.MaxValue,
+                Unit = string.IsNullOrWhiteSpace(range.Unit) ? null : range.Unit.Trim(),
+                Priority = range.Priority,
+                CreatedAt = utcNow,
+            });
+        }
+
+        if (validationErrors.Count > 0)
+        {
+            return (false, false, validationErrors, null);
+        }
+
+        foreach (var entity in entities)
+        {
+            _unitOfWork.LabIndicatorReferenceRanges.Add(entity);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>(), entities.Select(e => _mapper.Map<LabIndicatorReferenceRangeResponse>(e)).ToList());
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, LabIndicatorReferenceRangeResponse? Data)> CreateReferenceRangeAsync(
+        Guid indicatorId,
+        CreateLabIndicatorReferenceRangeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors, null);
+        }
+
+        if (request is null)
+        {
+            return (false, false, new[] { "Reference range request is required." }, null);
+        }
+
+        var rangeErrors = ValidateReferenceRange(request);
+        if (rangeErrors.Count > 0)
+        {
+            return (false, false, rangeErrors, null);
+        }
+
+        var entity = new LabIndicatorReferenceRange
+        {
+            Id = Guid.NewGuid(),
+            IndicatorId = indicatorId,
+            Gender = request.Gender,
+            AgeGroup = request.AgeGroup,
+            ComparisonType = request.ComparisonType,
+            MinValue = request.MinValue,
+            MaxValue = request.MaxValue,
+            Unit = NormalizeOptionalText(request.Unit),
+            Priority = request.Priority,
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        _unitOfWork.LabIndicatorReferenceRanges.Add(entity);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>(), _mapper.Map<LabIndicatorReferenceRangeResponse>(entity));
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, LabIndicatorReferenceRangeResponse? Data)> UpdateReferenceRangeAsync(
+        Guid indicatorId,
+        Guid referenceRangeId,
+        UpdateLabIndicatorReferenceRangeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors, null);
+        }
+
+        if (referenceRangeId == Guid.Empty)
+        {
+            return (false, false, new[] { "Invalid reference range id." }, null);
+        }
+
+        if (request is null)
+        {
+            return (false, false, new[] { "Reference range request is required." }, null);
+        }
+
+        var range = await _unitOfWork.LabIndicatorReferenceRanges.GetByIdAsync(referenceRangeId, cancellationToken);
+        if (range is null || range.IsDeleted || range.IndicatorId != indicatorId)
+        {
+            return (false, true, new[] { "Reference range not found." }, null);
+        }
+
+        var rangeErrors = ValidateReferenceRange(request);
+        if (rangeErrors.Count > 0)
+        {
+            return (false, false, rangeErrors, null);
+        }
+
+        range.Gender = request.Gender;
+        range.AgeGroup = request.AgeGroup;
+        range.ComparisonType = request.ComparisonType;
+        range.MinValue = request.MinValue;
+        range.MaxValue = request.MaxValue;
+        range.Unit = NormalizeOptionalText(request.Unit);
+        range.Priority = request.Priority;
+        range.UpdatedAt = DateTime.UtcNow;
+
+        _unitOfWork.LabIndicatorReferenceRanges.Update(range);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>(), _mapper.Map<LabIndicatorReferenceRangeResponse>(range));
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors)> SoftDeleteReferenceRangeAsync(
+        Guid indicatorId,
+        Guid referenceRangeId,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors);
+        }
+
+        if (referenceRangeId == Guid.Empty)
+        {
+            return (false, false, new[] { "Invalid reference range id." });
+        }
+
+        var range = await _unitOfWork.LabIndicatorReferenceRanges.GetByIdAsync(referenceRangeId, cancellationToken);
+        if (range is null || range.IsDeleted || range.IndicatorId != indicatorId)
+        {
+            return (false, true, new[] { "Reference range not found." });
+        }
+
+        var utcNow = DateTime.UtcNow;
+        range.IsDeleted = true;
+        range.DeletedAt = utcNow;
+        range.UpdatedAt = utcNow;
+
+        _unitOfWork.LabIndicatorReferenceRanges.Update(range);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>());
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorAdviceCacheResponse>? Data)> BulkCreateAdviceCachesAsync(
+        Guid indicatorId,
+        BulkCreateLabIndicatorAdviceCachesRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors, null);
+        }
+
+        if (request is null || request.AdviceCaches is null || request.AdviceCaches.Count == 0)
+        {
+            return (false, false, new[] { "At least one advice cache entry is required." }, null);
+        }
+
+        var validationErrors = new List<string>();
+        var entities = new List<LabIndicatorAdviceCache>();
+        var utcNow = DateTime.UtcNow;
+
+        for (var index = 0; index < request.AdviceCaches.Count; index++)
+        {
+            var advice = request.AdviceCaches[index];
+            if (advice.Status == LabResultStatus.Unknown)
+            {
+                validationErrors.Add($"AdviceCaches[{index}]: Status cannot be Unknown.");
+                continue;
+            }
+
+            var exists = await _unitOfWork.LabIndicatorAdviceCaches.FirstOrDefaultAsync(
+                x => !x.IsDeleted && x.IndicatorId == indicatorId && x.Status == advice.Status,
+                cancellationToken: cancellationToken);
+
+            if (exists is not null)
+            {
+                validationErrors.Add($"Advice cache already exists for status {advice.Status}.");
+                continue;
+            }
+
+            var duplicateInBatch = entities.Any(x => x.Status == advice.Status);
+            if (duplicateInBatch)
+            {
+                validationErrors.Add($"Duplicate status in request: {advice.Status}.");
+                continue;
+            }
+
+            entities.Add(new LabIndicatorAdviceCache
+            {
+                Id = Guid.NewGuid(),
+                IndicatorId = indicatorId,
+                Status = advice.Status,
+                DisplayTitle = NormalizeOptionalText(advice.DisplayTitle),
+                Summary = NormalizeOptionalText(advice.Summary),
+                PossibleCauses = NormalizeOptionalText(advice.PossibleCauses),
+                LifestyleAdvice = NormalizeOptionalText(advice.LifestyleAdvice),
+                NutritionalAdvice = NormalizeOptionalText(advice.NutritionalAdvice),
+                UrgencyLevel = NormalizeOptionalText(advice.UrgencyLevel),
+                SeverityLevel = advice.SeverityLevel,
+                WarningSigns = NormalizeOptionalText(advice.WarningSigns),
+                FollowUpSuggestion = NormalizeOptionalText(advice.FollowUpSuggestion),
+                DoctorQuestions = NormalizeOptionalText(advice.DoctorQuestions),
+                CreatedAt = utcNow,
+            });
+        }
+
+        if (validationErrors.Count > 0)
+        {
+            return (false, false, validationErrors, null);
+        }
+
+        foreach (var entity in entities)
+        {
+            _unitOfWork.LabIndicatorAdviceCaches.Add(entity);
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>(), entities.Select(e => _mapper.Map<LabIndicatorAdviceCacheResponse>(e)).ToList());
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, LabIndicatorAdviceCacheResponse? Data)> CreateAdviceCacheAsync(
+        Guid indicatorId,
+        CreateLabIndicatorAdviceCacheRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors, null);
+        }
+
+        if (request is null)
+        {
+            return (false, false, new[] { "Advice cache request is required." }, null);
+        }
+
+        if (request.Status == LabResultStatus.Unknown)
+        {
+            return (false, false, new[] { "Status cannot be Unknown." }, null);
+        }
+
+        var exists = await _unitOfWork.LabIndicatorAdviceCaches.FirstOrDefaultAsync(
+            x => !x.IsDeleted && x.IndicatorId == indicatorId && x.Status == request.Status,
+            cancellationToken: cancellationToken);
+
+        if (exists is not null)
+        {
+            return (false, false, new[] { $"Advice cache already exists for status {request.Status}." }, null);
+        }
+
+        var entity = new LabIndicatorAdviceCache
+        {
+            Id = Guid.NewGuid(),
+            IndicatorId = indicatorId,
+            Status = request.Status,
+            DisplayTitle = NormalizeOptionalText(request.DisplayTitle),
+            Summary = NormalizeOptionalText(request.Summary),
+            PossibleCauses = NormalizeOptionalText(request.PossibleCauses),
+            LifestyleAdvice = NormalizeOptionalText(request.LifestyleAdvice),
+            NutritionalAdvice = NormalizeOptionalText(request.NutritionalAdvice),
+            UrgencyLevel = NormalizeOptionalText(request.UrgencyLevel),
+            SeverityLevel = request.SeverityLevel,
+            WarningSigns = NormalizeOptionalText(request.WarningSigns),
+            FollowUpSuggestion = NormalizeOptionalText(request.FollowUpSuggestion),
+            DoctorQuestions = NormalizeOptionalText(request.DoctorQuestions),
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        _unitOfWork.LabIndicatorAdviceCaches.Add(entity);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>(), _mapper.Map<LabIndicatorAdviceCacheResponse>(entity));
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, LabIndicatorAdviceCacheResponse? Data)> UpdateAdviceCacheAsync(
+        Guid indicatorId,
+        Guid cacheId,
+        UpdateLabIndicatorAdviceCacheRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors, null);
+        }
+
+        if (cacheId == Guid.Empty)
+        {
+            return (false, false, new[] { "Invalid advice cache id." }, null);
+        }
+
+        if (request is null)
+        {
+            return (false, false, new[] { "Advice cache request is required." }, null);
+        }
+
+        if (request.Status == LabResultStatus.Unknown)
+        {
+            return (false, false, new[] { "Status cannot be Unknown." }, null);
+        }
+
+        var advice = await _unitOfWork.LabIndicatorAdviceCaches.GetByIdAsync(cacheId, cancellationToken);
+        if (advice is null || advice.IsDeleted || advice.IndicatorId != indicatorId)
+        {
+            return (false, true, new[] { "Advice cache not found." }, null);
+        }
+
+        var duplicate = await _unitOfWork.LabIndicatorAdviceCaches.FirstOrDefaultAsync(
+            x => !x.IsDeleted
+                 && x.IndicatorId == indicatorId
+                 && x.Id != cacheId
+                 && x.Status == request.Status,
+            cancellationToken: cancellationToken);
+
+        if (duplicate is not null)
+        {
+            return (false, false, new[] { $"Advice cache already exists for status {request.Status}." }, null);
+        }
+
+        advice.Status = request.Status;
+        advice.DisplayTitle = NormalizeOptionalText(request.DisplayTitle);
+        advice.Summary = NormalizeOptionalText(request.Summary);
+        advice.PossibleCauses = NormalizeOptionalText(request.PossibleCauses);
+        advice.LifestyleAdvice = NormalizeOptionalText(request.LifestyleAdvice);
+        advice.NutritionalAdvice = NormalizeOptionalText(request.NutritionalAdvice);
+        advice.UrgencyLevel = NormalizeOptionalText(request.UrgencyLevel);
+        advice.SeverityLevel = request.SeverityLevel;
+        advice.WarningSigns = NormalizeOptionalText(request.WarningSigns);
+        advice.FollowUpSuggestion = NormalizeOptionalText(request.FollowUpSuggestion);
+        advice.DoctorQuestions = NormalizeOptionalText(request.DoctorQuestions);
+        advice.UpdatedAt = DateTime.UtcNow;
+
+        _unitOfWork.LabIndicatorAdviceCaches.Update(advice);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>(), _mapper.Map<LabIndicatorAdviceCacheResponse>(advice));
+    }
+
+    public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors)> SoftDeleteAdviceCacheAsync(
+        Guid indicatorId,
+        Guid cacheId,
+        CancellationToken cancellationToken = default)
+    {
+        var (success, notFound, errors) = await ValidateIndicatorExistsAsync(indicatorId, cancellationToken);
+        if (!success)
+        {
+            return (false, notFound, errors);
+        }
+
+        if (cacheId == Guid.Empty)
+        {
+            return (false, false, new[] { "Invalid advice cache id." });
+        }
+
+        var advice = await _unitOfWork.LabIndicatorAdviceCaches.GetByIdAsync(cacheId, cancellationToken);
+        if (advice is null || advice.IsDeleted || advice.IndicatorId != indicatorId)
+        {
+            return (false, true, new[] { "Advice cache not found." });
+        }
+
+        var utcNow = DateTime.UtcNow;
+        advice.IsDeleted = true;
+        advice.DeletedAt = utcNow;
+        advice.UpdatedAt = utcNow;
+
+        _unitOfWork.LabIndicatorAdviceCaches.Update(advice);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, false, Array.Empty<string>());
+    }
+
+    private async Task<(bool Success, bool NotFound, List<string> Errors)> ValidateIndicatorExistsAsync(
+        Guid indicatorId,
+        CancellationToken cancellationToken)
+    {
+        if (indicatorId == Guid.Empty)
+        {
+            return (false, false, new List<string> { "Invalid indicator id." });
+        }
+
+        var indicator = await _unitOfWork.LabIndicators.GetByIdAsync(indicatorId, cancellationToken);
+        if (indicator is null || indicator.IsDeleted)
+        {
+            return (false, true, new List<string> { "Lab indicator not found." });
+        }
+
+        return (true, false, new List<string>());
+    }
+
+    private static LabIndicatorMaster MapToMasterEntity(CreateLabIndicatorRequest request, string symbol)
+    {
+        return new LabIndicatorMaster
+        {
+            Id = Guid.NewGuid(),
+            Symbol = symbol,
+            FullName = NormalizeOptionalText(request.FullName),
+            Unit = NormalizeOptionalText(request.Unit),
+            MinReference = request.MinReference,
+            MaxReference = request.MaxReference,
+            Description = NormalizeOptionalText(request.Description),
+            Category = NormalizeOptionalText(request.Category),
+            IsActive = request.IsActive,
+            CreatedAt = DateTime.UtcNow,
+        };
+    }
+
+    private static List<string> ValidateIndicatorFields(string symbol, double? minReference, double? maxReference)
+    {
+        var errors = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(symbol))
+        {
+            errors.Add("Symbol is required.");
+        }
+
+        errors.AddRange(ValidateFallbackRange(minReference, maxReference));
+        return errors;
+    }
+
+    private static List<string> ValidateFallbackRange(double? minReference, double? maxReference)
+    {
+        if (minReference.HasValue && maxReference.HasValue && minReference.Value > maxReference.Value)
+        {
+            return new List<string> { "MinReference cannot be greater than MaxReference." };
+        }
+
+        return new List<string>();
+    }
+
+    private static List<string> ValidateReferenceRange(CreateLabIndicatorReferenceRangeRequest range)
+    {
+        return ValidateReferenceRangeValues(range.ComparisonType, range.MinValue, range.MaxValue);
+    }
+
+    private static List<string> ValidateReferenceRange(UpdateLabIndicatorReferenceRangeRequest range)
+    {
+        return ValidateReferenceRangeValues(range.ComparisonType, range.MinValue, range.MaxValue);
+    }
+
+    private static List<string> ValidateReferenceRangeValues(
+        ReferenceComparisonType comparisonType,
+        double? minValue,
+        double? maxValue)
+    {
+        return comparisonType switch
+        {
+            ReferenceComparisonType.Between when !minValue.HasValue || !maxValue.HasValue =>
+                new List<string> { "Between comparison requires MinValue and MaxValue." },
+            ReferenceComparisonType.Between when minValue > maxValue =>
+                new List<string> { "MinValue cannot be greater than MaxValue." },
+            ReferenceComparisonType.LessThanOrEqual when !maxValue.HasValue =>
+                new List<string> { "LessThanOrEqual comparison requires MaxValue." },
+            ReferenceComparisonType.GreaterThanOrEqual when !minValue.HasValue =>
+                new List<string> { "GreaterThanOrEqual comparison requires MinValue." },
+            _ => new List<string>(),
+        };
+    }
+
+    private static string? NormalizeSymbol(string symbol)
+    {
+        return string.IsNullOrWhiteSpace(symbol) ? null : symbol.Trim().ToUpperInvariant();
+    }
+
+    private static string? NormalizeOptionalText(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+}

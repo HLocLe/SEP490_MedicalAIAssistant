@@ -18,6 +18,18 @@ public sealed class LabIndicatorMasterConfiguration : IEntityTypeConfiguration<L
 
         builder.Property(x => x.FullName).HasMaxLength(255);
         builder.Property(x => x.Unit).HasMaxLength(50);
+        builder.Property(x => x.Category).HasMaxLength(100);
+        builder.Property(x => x.IsActive).HasDefaultValue(true);
+
+        builder.HasMany(x => x.LabIndicatorAliases)
+            .WithOne(x => x.Indicator)
+            .HasForeignKey(x => x.IndicatorId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(x => x.LabIndicatorReferenceRanges)
+            .WithOne(x => x.Indicator)
+            .HasForeignKey(x => x.IndicatorId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasMany(x => x.LabTestResultDetails)
             .WithOne(x => x.Indicator)

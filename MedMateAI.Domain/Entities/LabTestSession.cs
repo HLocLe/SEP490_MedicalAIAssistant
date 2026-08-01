@@ -1,10 +1,28 @@
+using MedMateAI.Domain.Enums;
+
 namespace MedMateAI.Domain.Entities;
 
 public sealed class LabTestSession : BaseEntity
 {
     public Guid UserId { get; set; }
 
+    public string? DocumentUrl { get; set; }
+
     public string? RawOcrText { get; set; }
+
+    public LabTestSessionStatus Status { get; set; } = LabTestSessionStatus.Processing;
+
+    public DateOnly? TestDate { get; set; }
+
+    public Gender? PatientGenderAtTest { get; set; }
+
+    public int? PatientAgeAtTest { get; set; }
+
+    public string? FacilityName { get; set; }
+
+    public DateTime? ProcessedAt { get; set; }
+
+    public ICollection<LabTestOcrExtract> LabTestOcrExtracts { get; set; } = new List<LabTestOcrExtract>();
 
     public ICollection<LabTestResultDetail> LabTestResultDetails { get; set; } = new List<LabTestResultDetail>();
 
