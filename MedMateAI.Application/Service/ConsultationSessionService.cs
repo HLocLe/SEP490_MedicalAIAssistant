@@ -1,12 +1,14 @@
 using System.Text.Json;
 
-using MedMateAI.Application.DTOs.CloudFlareAI.Responses;
-
 using MedMateAI.Application.DTOs.Common;
 
 using MedMateAI.Application.DTOs.ConsultationSessions.Responses;
 
 using MedMateAI.Application.DTOs.PatientProfiles.Responses;
+
+using MedMateAI.Application.DTOs.WebChatbot.Requests;
+
+using MedMateAI.Application.DTOs.WebChatbot.Responses;
 
 using MedMateAI.Application.IService;
 
@@ -46,7 +48,7 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
     private readonly IAIConfigService _aiConfigService;
 
-    private readonly ICloudFlareAIChatService _cloudFlareAIChatService;
+    private readonly IAIChatProvider _aiChatProvider;
 
     private readonly IPatientProfileService _patientProfileService;
 
@@ -64,7 +66,7 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
         IAIConfigService aiConfigService,
 
-        ICloudFlareAIChatService cloudFlareAIChatService,
+        IAIChatProvider aiChatProvider,
 
         IPatientProfileService patientProfileService,
 
@@ -80,7 +82,7 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
         _aiConfigService = aiConfigService;
 
-        _cloudFlareAIChatService = cloudFlareAIChatService;
+        _aiChatProvider = aiChatProvider;
 
         _patientProfileService = patientProfileService;
 
@@ -222,21 +224,29 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
 
 
-        CloudFlareAIChatResult aiResult;
+        AIProviderChatResult aiResult;
 
         try
 
         {
 
-            aiResult = await _cloudFlareAIChatService.GenerateAsync(
+            aiResult = await _aiChatProvider.GenerateAsync(
 
-                aiConfig.SystemPrompt.Trim(),
+                new AIProviderChatRequest
 
-                userPrompt,
+                {
 
-                aiConfig.MaxTokens,
+                    SystemPrompt = aiConfig.SystemPrompt.Trim(),
 
-                aiConfig.Temperature,
+                    UserMessage = userPrompt,
+
+                    Model = aiConfig.Model ?? string.Empty,
+
+                    Temperature = aiConfig.Temperature,
+
+                    MaxTokens = aiConfig.MaxTokens,
+
+                },
 
                 cancellationToken);
 
