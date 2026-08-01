@@ -24,6 +24,7 @@ public sealed class LabIndicatorRepository
             .Include(x => x.LabIndicatorAliases.Where(a => !a.IsDeleted))
             .Include(x => x.LabIndicatorReferenceRanges.Where(r => !r.IsDeleted))
             .Include(x => x.LabIndicatorAdviceCaches.Where(c => !c.IsDeleted))
+            .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
     }
 
@@ -50,6 +51,7 @@ public sealed class LabIndicatorRepository
             .Include(x => x.LabIndicatorAliases.Where(a => !a.IsDeleted))
             .Include(x => x.LabIndicatorReferenceRanges.Where(r => !r.IsDeleted))
             .Include(x => x.LabIndicatorAdviceCaches.Where(c => !c.IsDeleted))
+            .AsSplitQuery()
             .ToListAsync(cancellationToken);
     }
 }
