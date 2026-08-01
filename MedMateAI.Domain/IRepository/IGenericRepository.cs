@@ -10,6 +10,11 @@ public interface IGenericRepository<TEntity>
 
     Task<IReadOnlyList<TEntity>> GetAllAsync(CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<TEntity>> GetAllAsync(
+        Expression<Func<TEntity, bool>> predicate,
+        Func<IQueryable<TEntity>, IOrderedQueryable<TEntity>>? orderBy = null,
+        CancellationToken cancellationToken = default);
+
     Task<PagedResult<TEntity>> GetPagedAsync(
         int pageNumber,
         int pageSize,

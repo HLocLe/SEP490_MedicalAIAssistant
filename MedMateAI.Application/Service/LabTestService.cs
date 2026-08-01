@@ -1,3 +1,4 @@
+using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.LabIndicators.Responses;
 using MedMateAI.Application.DTOs.LabTests.Requests;
 using MedMateAI.Application.DTOs.LabTests.Responses;
@@ -108,6 +109,48 @@ public sealed class LabTestService : ILabTestService
         }
 
         return MapToResponse(session);
+    }
+
+    public async Task<PagedResponse<LabTestSessionSummaryResponse>> GetSessionsByUserIdAsync(
+        Guid userId,
+        LabTestSessionStatus? status,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return new PagedResponse<LabTestSessionSummaryResponse>();
+        }
+
+        var paged = await _unitOfWork.LabTestSessionDetails.GetPagedByUserIdAsync(
+            userId,
+            status,
+            pageNumber,
+            pageSize,
+            cancellationToken);
+
+        return new PagedResponse<LabTestSessionSummaryResponse>
+        {
+            PageNumber = paged.PageNumber,
+            PageSize = paged.PageSize,
+            TotalCount = paged.TotalCount,
+            TotalPages = paged.TotalPages,
+            Items = paged.Items
+                .Select(session => new LabTestSessionSummaryResponse
+                {
+                    SessionId = session.Id,
+                    DocumentUrl = session.DocumentUrl,
+                    Status = session.Status,
+                    TestDate = session.TestDate,
+                    PatientGenderAtTest = session.PatientGenderAtTest,
+                    PatientAgeAtTest = session.PatientAgeAtTest,
+                    FacilityName = session.FacilityName,
+                    ProcessedAt = session.ProcessedAt,
+                    CreatedAt = session.CreatedAt,
+                })
+                .ToList(),
+        };
     }
 
     private static LabTestUploadResponse MapToResponse(LabTestSession session)
