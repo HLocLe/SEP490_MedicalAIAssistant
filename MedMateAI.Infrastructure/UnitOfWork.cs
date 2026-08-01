@@ -29,6 +29,14 @@ public sealed class UnitOfWork : IUnitOfWork
     private IRecoveryPlanRepository? _recoveryPlans;
     private IQuotaUsageRepository? _quotaUsages;
     private IUserMedicationRepository? _userMedications;
+    private ILabIndicatorRepository? _labIndicators;
+    private IGenericRepository<LabIndicatorAlias>? _labIndicatorAliases;
+    private IGenericRepository<LabIndicatorReferenceRange>? _labIndicatorReferenceRanges;
+    private IGenericRepository<LabIndicatorAdviceCache>? _labIndicatorAdviceCaches;
+    private IGenericRepository<LabTestSession>? _labTestSessions;
+    private ILabTestSessionRepository? _labTestSessionDetails;
+    private IGenericRepository<LabTestResultDetail>? _labTestResultDetails;
+    private IGenericRepository<LabTestOcrExtract>? _labTestOcrExtracts;
     private IDbContextTransaction? _transaction;
 
     public UnitOfWork(ApplicationDbContext context)
@@ -95,6 +103,30 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public IUserMedicationRepository UserMedications =>
         _userMedications ??= new UserMedicationRepository(_context);
+
+    public ILabIndicatorRepository LabIndicators =>
+        _labIndicators ??= new LabIndicatorRepository(_context);
+
+    public IGenericRepository<LabIndicatorAlias> LabIndicatorAliases =>
+        _labIndicatorAliases ??= new GenericRepository<LabIndicatorAlias>(_context);
+
+    public IGenericRepository<LabIndicatorReferenceRange> LabIndicatorReferenceRanges =>
+        _labIndicatorReferenceRanges ??= new GenericRepository<LabIndicatorReferenceRange>(_context);
+
+    public IGenericRepository<LabIndicatorAdviceCache> LabIndicatorAdviceCaches =>
+        _labIndicatorAdviceCaches ??= new GenericRepository<LabIndicatorAdviceCache>(_context);
+
+    public IGenericRepository<LabTestSession> LabTestSessions =>
+        _labTestSessions ??= new GenericRepository<LabTestSession>(_context);
+
+    public ILabTestSessionRepository LabTestSessionDetails =>
+        _labTestSessionDetails ??= new LabTestSessionRepository(_context);
+
+    public IGenericRepository<LabTestResultDetail> LabTestResultDetails =>
+        _labTestResultDetails ??= new GenericRepository<LabTestResultDetail>(_context);
+
+    public IGenericRepository<LabTestOcrExtract> LabTestOcrExtracts =>
+        _labTestOcrExtracts ??= new GenericRepository<LabTestOcrExtract>(_context);
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

@@ -13,6 +13,13 @@ public sealed class LabTestResultDetailConfiguration : IEntityTypeConfiguration<
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("ResultDetailId").ValueGeneratedOnAdd();
 
-        builder.Property(x => x.Status).HasMaxLength(50);
+        builder.Property(x => x.RawExtractedName).HasMaxLength(255);
+        builder.Property(x => x.RawExtractedValue).HasMaxLength(100);
+        builder.Property(x => x.ReferenceUnitUsed).HasMaxLength(50);
+
+        builder.HasOne(x => x.AdviceCache)
+            .WithMany(x => x.LabTestResultDetails)
+            .HasForeignKey(x => x.AdviceCacheId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

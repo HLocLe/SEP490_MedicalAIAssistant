@@ -925,6 +925,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             cancellationToken: cancellationToken);
 
         var departmentRecommendations = recommendationsPaged.Items;
+        var recommendedFacilities = new List<MedicalFacilityResponse>();
 
         if (departmentRecommendations.Count > 0)
         {
@@ -938,6 +939,19 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
                     recommendation.Department = department;
                 }
             }
+
+            var primaryRecommendation = departmentRecommendations.OrderBy(d => d.PriorityRank).FirstOrDefault();
+            if (primaryRecommendation is not null)
+            {
+                var facilities = await _unitOfWork.MedicalFacilities.GetActiveWithDepartmentsAsync(
+                    departmentId: primaryRecommendation.DepartmentId,
+                    search: null,
+                    cancellationToken: cancellationToken);
+
+                recommendedFacilities = facilities
+                    .Select(facility => _mapper.Map<MedicalFacilityResponse>(facility))
+                    .ToList();
+            }
         }
 
         var response = _mapper.Map<SymptomAnalysisResponse>(session);
@@ -945,6 +959,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         response.Answers = _mapper.Map<List<ClinicalQuestionAnswerResult>>(sessionAnswers);
         response.RecommendedDepartments =
             _mapper.Map<List<RecommendedDepartmentResponse>>(departmentRecommendations);
+        response.RecommendedFacilities = recommendedFacilities;
 
         return response;
     }

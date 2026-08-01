@@ -1,6 +1,7 @@
 using MedMateAI.Application.Common;
 using MedMateAI.Application.IService;
 using MedMateAI.Infrastructure;
+using Hangfire;
 using MedMateAI.Realtime.RecoveryPlans;
 using Microsoft.OpenApi.Models;
 using StackExchange.Redis;
@@ -120,6 +121,11 @@ public class Program
 
         app.UseCors("AllowFrontend");
         app.UseHttpsRedirection();
+
+        if (app.Environment.IsDevelopment())
+        {
+            app.UseHangfireDashboard("/hangfire");
+        }
 
         app.UseAuthentication();
         app.UseAuthorization();

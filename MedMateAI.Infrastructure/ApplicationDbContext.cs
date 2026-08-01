@@ -41,7 +41,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<LabIndicatorMaster> LabIndicatorMasters => Set<LabIndicatorMaster>();
 
+    public DbSet<LabIndicatorAlias> LabIndicatorAliases => Set<LabIndicatorAlias>();
+
+    public DbSet<LabIndicatorReferenceRange> LabIndicatorReferenceRanges => Set<LabIndicatorReferenceRange>();
+
     public DbSet<LabTestResultDetail> LabTestResultDetails => Set<LabTestResultDetail>();
+
+    public DbSet<LabTestOcrExtract> LabTestOcrExtracts => Set<LabTestOcrExtract>();
 
     public DbSet<LabIndicatorAdviceCache> LabIndicatorAdviceCaches => Set<LabIndicatorAdviceCache>();
 

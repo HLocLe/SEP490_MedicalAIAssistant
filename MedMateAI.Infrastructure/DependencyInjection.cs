@@ -18,12 +18,15 @@ using MedMateAI.Infrastructure.Email.Brevo;
 using MedMateAI.Infrastructure.Email.Brevo.Options;
 using MedMateAI.Infrastructure.AI;
 using MedMateAI.Infrastructure.AI.Options;
+using MedMateAI.Infrastructure.BackgroundJobs;
+using MedMateAI.Infrastructure.BackgroundJobs.RecoveryPlans;
+using MedMateAI.Infrastructure.ComputerVision;
+using MedMateAI.Infrastructure.ComputerVision.Options;
 using MedMateAI.Infrastructure.Payments.PayOS;
 using MedMateAI.Infrastructure.NationalInstitutesofHealth;
 using MedMateAI.Infrastructure.NationalInstitutesofHealth.Options;
 using MedMateAI.Infrastructure.Translation;
 using MedMateAI.Infrastructure.Translation.Options;
-using MedMateAI.Infrastructure.BackgroundJobs.RecoveryPlans;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -56,6 +59,10 @@ public static class DependencyInjection
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IMedicalDepartmentService, MedicalDepartmentService>();
         services.AddScoped<IIcdChapterService, IcdChapterService>();
+        services.AddScoped<ILabIndicatorService, LabIndicatorService>();
+        services.AddScoped<ILabTestService, LabTestService>();
+        services.AddScoped<ILabTestResultAnalyzer, LabTestResultAnalyzer>();
+        services.AddScoped<ILabTestOcrStructurer, LabTestOcrStructurer>();
         services.AddScoped<IClinicalQuestionService, ClinicalQuestionService>();
         services.AddScoped<IMedicalFacilityService, MedicalFacilityService>();
         services.AddScoped<IFacilityDepartmentService, FacilityDepartmentService>();
@@ -98,6 +105,7 @@ public static class DependencyInjection
        
         //
         services.Configure<AzureTranslatorOptions>(configuration.GetSection(AzureTranslatorOptions.SectionName));
+        services.Configure<AzureOptions>(configuration.GetSection(AzureOptions.SectionName));
 
         services.Configure<BrevoOptions>(configuration.GetSection(BrevoOptions.SectionName));
         services.Configure<FrontendOptions>(configuration.GetSection(FrontendOptions.SectionName));
@@ -200,6 +208,11 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(15);
         });
 
+        services.AddHttpClient<IDocumentIntelligenceService, AzureDocumentIntelligenceService>(client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(3);
+        });
+
         services.AddHttpClient<IIcdLookupService, NihIcdLookupService>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(15);
@@ -239,7 +252,7 @@ public static class DependencyInjection
            "JWT secret must be at least 32 chars.")
          .ValidateOnStart();
         
-        services.AddAutoMapper(cfg => { }, typeof(UserMappingProfile), typeof(PatientProfileMappingProfile), typeof(IcdChapterMappingProfile), typeof(ClinicalQuestionMappingProfile), typeof(MedicalFacilityMappingProfile), typeof(SymptomAnalysisMappingProfile));
+        services.AddAutoMapper(cfg => { }, typeof(UserMappingProfile), typeof(PatientProfileMappingProfile), typeof(IcdChapterMappingProfile), typeof(ClinicalQuestionMappingProfile), typeof(MedicalFacilityMappingProfile), typeof(SymptomAnalysisMappingProfile), typeof(LabIndicatorMappingProfile));
 
         services.AddAuthentication(options =>
             {
@@ -275,6 +288,8 @@ public static class DependencyInjection
                     }
                 };
             });
+
+        services.AddHangfireBackgroundJobs(configuration);
 
         return services;
     }
