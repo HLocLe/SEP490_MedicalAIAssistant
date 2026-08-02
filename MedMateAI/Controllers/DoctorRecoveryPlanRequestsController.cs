@@ -44,6 +44,13 @@ public sealed class DoctorRecoveryPlanRequestsController : ControllerBase
         await WithUser(userId =>
             _service.GetDoctorMineAsync(userId, page, status, cancellationToken));
 
+    [HttpGet("{requestId:guid}")]
+    public async Task<IActionResult> Detail(
+        Guid requestId,
+        CancellationToken cancellationToken) =>
+        await WithUser(userId =>
+            _service.GetDoctorDetailAsync(userId, requestId, cancellationToken));
+
     [HttpGet("{requestId:guid}/clinical-context")]
     public async Task<IActionResult> ClinicalContext(
         Guid requestId,
