@@ -1,4 +1,4 @@
-using MedMateAI.Application.DTOs.RecoveryPlanRequests;
+using MedMateAI.Application.DTOs.UserSubscriptions.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models;
 using MedMateAI.Domain.Common;

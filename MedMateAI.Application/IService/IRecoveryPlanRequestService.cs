@@ -1,5 +1,6 @@
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.RecoveryPlanRequests;
+using MedMateAI.Application.DTOs.UserSubscriptions.Responses;
 using MedMateAI.Application.Models;
 using MedMateAI.Domain.Enums;
 

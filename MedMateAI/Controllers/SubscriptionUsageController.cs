@@ -1,6 +1,6 @@
 using System.Security.Claims;
 using MedMateAI.Application.DTOs.Common;
-using MedMateAI.Application.DTOs.RecoveryPlanRequests;
+using MedMateAI.Application.DTOs.UserSubscriptions.Responses;
 using MedMateAI.Application.IService;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
