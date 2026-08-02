@@ -97,6 +97,53 @@ public sealed class LabTestsController : ControllerBase
         });
     }
 
+    [HttpGet("{sessionId:guid}/ocr-extracts")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetOcrExtracts(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return Unauthorized(new ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>
+            {
+                Success = false,
+                Message = "Unauthorized.",
+            });
+        }
+
+        if (sessionId == Guid.Empty)
+        {
+            return BadRequest(new ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>
+            {
+                Success = false,
+                Message = "Invalid session id.",
+            });
+        }
+
+        var data = await _labTestService.GetOcrExtractsBySessionIdAsync(
+            currentUser.Id,
+            sessionId,
+            cancellationToken);
+
+        if (data is null)
+        {
+            return NotFound(new ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>
+            {
+                Success = false,
+                Message = "Lab test session not found.",
+            });
+        }
+
+        return Ok(new ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data,
+        });
+    }
+
     [HttpGet("{sessionId:guid}")]
     [ProducesResponseType(typeof(ApiResponse<LabTestUploadResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<LabTestUploadResponse>), StatusCodes.Status404NotFound)]

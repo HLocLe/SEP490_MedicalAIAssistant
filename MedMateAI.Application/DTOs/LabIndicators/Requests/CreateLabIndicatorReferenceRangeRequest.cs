@@ -15,6 +15,4 @@ public sealed class CreateLabIndicatorReferenceRangeRequest
     public double? MaxValue { get; set; }
 
     public string? Unit { get; set; }
-
-    public int Priority { get; set; }
 }

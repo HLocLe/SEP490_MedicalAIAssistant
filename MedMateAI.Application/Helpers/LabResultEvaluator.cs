@@ -5,8 +5,6 @@ namespace MedMateAI.Application.Helpers;
 
 public static class LabResultEvaluator
 {
-    private const double CriticalDeviationPercent = 50;
-
     public static LabResultStatus Evaluate(
         double userValue,
         ReferenceComparisonType comparisonType,
@@ -46,31 +44,42 @@ public static class LabResultEvaluator
         AgeGroup? ageGroup = null)
     {
         var referenceRange = SelectReferenceRange(indicator.LabIndicatorReferenceRanges, gender, ageGroup);
-        if (referenceRange is not null)
-        {
-            return Evaluate(userValue, referenceRange);
-        }
-
-        if (indicator.MinReference.HasValue && indicator.MaxReference.HasValue)
-        {
-            return EvaluateRange(userValue, indicator.MinReference.Value, indicator.MaxReference.Value);
-        }
-
-        return LabResultStatus.Unknown;
+        return referenceRange is null
+            ? LabResultStatus.Unknown
+            : Evaluate(userValue, referenceRange);
     }
 
+   
     public static LabIndicatorReferenceRange? SelectReferenceRange(
         IEnumerable<LabIndicatorReferenceRange> ranges,
         Gender? gender,
         AgeGroup? ageGroup)
     {
-        return ranges
-            .Where(r => !r.IsDeleted)
-            .Where(r => r.Gender is null || r.Gender == gender)
-            .Where(r => r.AgeGroup is null || r.AgeGroup == ageGroup)
-            .OrderByDescending(r => r.Priority)
-            .ThenByDescending(r => (r.Gender.HasValue ? 1 : 0) + (r.AgeGroup.HasValue ? 1 : 0))
-            .FirstOrDefault();
+        var active = ranges.Where(r => !r.IsDeleted).ToList();
+        if (active.Count == 0)
+        {
+            return null;
+        }
+
+        if (gender.HasValue)
+        {
+            var byGender = active.FirstOrDefault(r => r.Gender == gender);
+            if (byGender is not null)
+            {
+                return byGender;
+            }
+        }
+
+        if (ageGroup.HasValue)
+        {
+            var byAge = active.FirstOrDefault(r => r.AgeGroup == ageGroup);
+            if (byAge is not null)
+            {
+                return byAge;
+            }
+        }
+
+        return active.FirstOrDefault(r => r.Gender is null && r.AgeGroup is null);
     }
 
     public static double? CalculateDeviationPercent(
@@ -105,63 +114,22 @@ public static class LabResultEvaluator
             return LabResultStatus.Normal;
         }
 
-        if (userValue > maxValue)
-        {
-            var deviation = CalculateDeviationPercent(
-                userValue,
-                ReferenceComparisonType.Between,
-                minValue,
-                maxValue);
-
-            return deviation >= CriticalDeviationPercent
-                ? LabResultStatus.CriticalHigh
-                : LabResultStatus.High;
-        }
-
-        var lowDeviation = CalculateDeviationPercent(
-            userValue,
-            ReferenceComparisonType.Between,
-            minValue,
-            maxValue);
-
-        return lowDeviation >= CriticalDeviationPercent
-            ? LabResultStatus.CriticalLow
+        return userValue > maxValue
+            ? LabResultStatus.High
             : LabResultStatus.Low;
     }
 
     private static LabResultStatus EvaluateUpperBound(double userValue, double maxValue)
     {
-        if (userValue <= maxValue)
-        {
-            return LabResultStatus.Normal;
-        }
-
-        var deviation = CalculateDeviationPercent(
-            userValue,
-            ReferenceComparisonType.LessThanOrEqual,
-            null,
-            maxValue);
-
-        return deviation >= CriticalDeviationPercent
-            ? LabResultStatus.CriticalHigh
+        return userValue <= maxValue
+            ? LabResultStatus.Normal
             : LabResultStatus.High;
     }
 
     private static LabResultStatus EvaluateLowerBound(double userValue, double minValue)
     {
-        if (userValue >= minValue)
-        {
-            return LabResultStatus.Normal;
-        }
-
-        var deviation = CalculateDeviationPercent(
-            userValue,
-            ReferenceComparisonType.GreaterThanOrEqual,
-            minValue,
-            null);
-
-        return deviation >= CriticalDeviationPercent
-            ? LabResultStatus.CriticalLow
+        return userValue >= minValue
+            ? LabResultStatus.Normal
             : LabResultStatus.Low;
     }
 }

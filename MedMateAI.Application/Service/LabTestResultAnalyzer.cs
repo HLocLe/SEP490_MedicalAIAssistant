@@ -95,7 +95,6 @@ public sealed class LabTestResultAnalyzer : ILabTestResultAnalyzer
             double? referenceMinUsed;
             double? referenceMaxUsed;
             string? referenceUnitUsed;
-            ReferenceComparisonType? comparisonTypeUsed;
             double? deviationPercent;
 
             if (referenceRange is not null)
@@ -104,7 +103,6 @@ public sealed class LabTestResultAnalyzer : ILabTestResultAnalyzer
                 referenceMinUsed = referenceRange.MinValue;
                 referenceMaxUsed = referenceRange.MaxValue;
                 referenceUnitUsed = referenceRange.Unit ?? indicator.Unit;
-                comparisonTypeUsed = referenceRange.ComparisonType;
                 deviationPercent = LabResultEvaluator.CalculateDeviationPercent(
                     row.Value.Value,
                     referenceRange.ComparisonType,
@@ -113,28 +111,11 @@ public sealed class LabTestResultAnalyzer : ILabTestResultAnalyzer
             }
             else
             {
-                status = LabResultEvaluator.Evaluate(
-                    row.Value.Value,
-                    indicator,
-                    session.PatientGenderAtTest,
-                    ageGroup);
-                referenceMinUsed = indicator.MinReference;
-                referenceMaxUsed = indicator.MaxReference;
+                status = LabResultStatus.Unknown;
+                referenceMinUsed = null;
+                referenceMaxUsed = null;
                 referenceUnitUsed = indicator.Unit;
-                comparisonTypeUsed = indicator.MinReference.HasValue && indicator.MaxReference.HasValue
-                    ? ReferenceComparisonType.Between
-                    : indicator.MaxReference.HasValue && !indicator.MinReference.HasValue
-                        ? ReferenceComparisonType.LessThanOrEqual
-                        : indicator.MinReference.HasValue && !indicator.MaxReference.HasValue
-                            ? ReferenceComparisonType.GreaterThanOrEqual
-                            : null;
-                deviationPercent = comparisonTypeUsed.HasValue
-                    ? LabResultEvaluator.CalculateDeviationPercent(
-                        row.Value.Value,
-                        comparisonTypeUsed.Value,
-                        referenceMinUsed,
-                        referenceMaxUsed)
-                    : null;
+                deviationPercent = null;
             }
 
             var adviceCache = indicator.LabIndicatorAdviceCaches

@@ -153,6 +153,42 @@ public sealed class LabTestService : ILabTestService
         };
     }
 
+    public async Task<IReadOnlyList<LabTestOcrExtractResponse>?> GetOcrExtractsBySessionIdAsync(
+        Guid userId,
+        Guid sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty || sessionId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var session = await _unitOfWork.LabTestSessions.GetByIdAsync(sessionId, cancellationToken);
+        if (session is null || session.IsDeleted || session.UserId != userId)
+        {
+            return null;
+        }
+
+        var extracts = await _unitOfWork.LabTestOcrExtracts.GetAllAsync(
+            x => !x.IsDeleted && x.TestSessionId == sessionId,
+            query => query.OrderBy(x => x.RowIndex).ThenBy(x => x.CreatedAt),
+            cancellationToken);
+
+        return extracts
+            .Select(x => new LabTestOcrExtractResponse
+            {
+                OcrExtractId = x.Id,
+                TestSessionId = x.TestSessionId,
+                RowIndex = x.RowIndex,
+                ExtractedTestName = x.ExtractedTestName,
+                ExtractedValue = x.ExtractedValue,
+                ExtractedUnit = x.ExtractedUnit,
+                ExtractedReferenceText = x.ExtractedReferenceText,
+                CreatedAt = x.CreatedAt,
+            })
+            .ToList();
+    }
+
     private static LabTestUploadResponse MapToResponse(LabTestSession session)
     {
         return new LabTestUploadResponse

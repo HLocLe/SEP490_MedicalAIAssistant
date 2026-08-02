@@ -122,54 +122,6 @@ public sealed class SymptomAnalysisController : ControllerBase
         }
     }
 
-    [HttpPost("submit-diagnosis")]
-    [ProducesResponseType(typeof(ApiResponse<DiagnosisSubmitResponse>), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ApiResponse<DiagnosisSubmitResponse>), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(ApiResponse<DiagnosisSubmitResponse>), StatusCodes.Status502BadGateway)]
-    public async Task<IActionResult> SubmitDiagnosis(
-        [FromBody] SubmitClinicalQuestionAnswersRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        if (request is null || request.SessionId == Guid.Empty)
-        {
-            return BadRequest(new ApiResponse<DiagnosisSubmitResponse>
-            {
-                Success = false,
-                Message = "Submit diagnosis failed.",
-                Errors = new List<string> { "Session id is required." },
-            });
-        }
-
-        try
-        {
-            var data = await _symptomAnalysisService.SubmitDiagnosisAsync(request, cancellationToken);
-            return Ok(new ApiResponse<DiagnosisSubmitResponse>
-            {
-                Success = true,
-                Message = "OK",
-                Data = data,
-            });
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new ApiResponse<DiagnosisSubmitResponse>
-            {
-                Success = false,
-                Message = "Submit diagnosis failed.",
-                Errors = new List<string> { ex.Message },
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return StatusCode(StatusCodes.Status502BadGateway, new ApiResponse<DiagnosisSubmitResponse>
-            {
-                Success = false,
-                Message = "MedGemma analysis failed.",
-                Errors = new List<string> { ex.Message },
-            });
-        }
-    }
-
     [HttpGet("my-sessions")]
     [Authorize]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<SymptomAnalysisSessionSummaryResponse>>), StatusCodes.Status200OK)]

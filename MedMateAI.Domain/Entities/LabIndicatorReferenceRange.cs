@@ -18,7 +18,5 @@ public sealed class LabIndicatorReferenceRange : BaseEntity
 
     public string? Unit { get; set; }
 
-    public int Priority { get; set; }
-
     public LabIndicatorMaster Indicator { get; set; } = null!;
 }
