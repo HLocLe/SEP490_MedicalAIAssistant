@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using MedMateAI.Application.DTOs.Payments.PayOS;
 using MedMateAI.Application.DTOs.UserSubscriptions.Requests;
@@ -122,7 +123,7 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
                 Amount = plan.Price,
                 PaymentProvider = "payOS",
                 Status = "Pending",
-                TransactionReference = orderCode.ToString(),
+                TransactionReference = orderCode.ToString(CultureInfo.InvariantCulture),
                 OrderInfo = $"MedMateAI {plan.PlanName ?? "Plan"}",
                 CreatedAt = utcNow,
             };
@@ -188,6 +189,7 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
                 SubscriptionId = subscription.Id,
                 PaymentId = payment.Id,
                 TransactionId = transaction.Id,
+                OrderCode = orderCode.ToString(CultureInfo.InvariantCulture),
                 PaymentUrl = paymentLinkResult.CheckoutUrl,
                 PaymentProvider = "payOS",
             });

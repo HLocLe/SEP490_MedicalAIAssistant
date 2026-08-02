@@ -1,8 +1,12 @@
 using System.Text.Json;
 using MedMateAI.Application.DTOs.Payments.PayOS;
 using MedMateAI.Application.IService;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PayOS;
+using PayOS.Exceptions;
+using PayOS.Models;
 using PayOS.Models.V2.PaymentRequests;
 using PayOS.Models.Webhooks;
 
@@ -17,10 +21,14 @@ public sealed class PayOSService : IPayOSService
 
     private readonly PayOSOptions _options;
     private readonly PayOSClient _payOsClient;
+    private readonly ILogger<PayOSService> _logger;
 
-    public PayOSService(IOptions<PayOSOptions> options)
+    public PayOSService(
+        IOptions<PayOSOptions> options,
+        ILogger<PayOSService> logger)
     {
         _options = options.Value;
+        _logger = logger;
         ValidateOptions(_options);
         _payOsClient = new PayOSClient(_options.ClientId, _options.ApiKey, _options.ChecksumKey);
     }
@@ -59,8 +67,13 @@ public sealed class PayOSService : IPayOSService
             CancelUrl = string.IsNullOrWhiteSpace(request.CancelUrl) ? _options.CancelUrl : request.CancelUrl,
         };
 
-        _ = cancellationToken;
-        var response = await _payOsClient.PaymentRequests.CreateAsync(paymentRequest);
+        var requestOptions = new RequestOptions<CreatePaymentLinkRequest>
+        {
+            CancellationToken = cancellationToken,
+        };
+        var response = await _payOsClient.PaymentRequests.CreateAsync(
+            paymentRequest,
+            requestOptions);
 
         return new PayOSCreatePaymentResult
         {
@@ -70,6 +83,128 @@ public sealed class PayOSService : IPayOSService
             Status = response.Status.ToString().ToUpperInvariant(),
             RawResponse = JsonSerializer.Serialize(response),
         };
+    }
+
+    public async Task<PayOSPaymentLinkLookupResult> GetPaymentLinkAsync(
+        long orderCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (orderCode <= 0)
+        {
+            return PayOSPaymentLinkLookupResult.Fail(
+                PayOSPaymentLinkLookupError.InvalidResponse);
+        }
+
+        try
+        {
+            var requestOptions = new RequestOptions
+            {
+                CancellationToken = cancellationToken,
+            };
+            var response = await _payOsClient.PaymentRequests.GetAsync(
+                orderCode,
+                requestOptions);
+            var status = MapStatus(response.Status);
+
+            if (!IsValidPaymentLink(response, status))
+            {
+                LogLookupFailure(orderCode, "InvalidResponse", null);
+                return PayOSPaymentLinkLookupResult.Fail(
+                    PayOSPaymentLinkLookupError.InvalidResponse);
+            }
+
+            var latestTransaction = response.Transactions?.LastOrDefault();
+            var rawResponse = JsonSerializer.Serialize(response);
+
+            _logger.LogInformation(
+                "payOS payment link lookup completed for order {OrderCode} with status {ProviderStatus}.",
+                orderCode,
+                status);
+
+            return PayOSPaymentLinkLookupResult.Ok(new PayOSPaymentLinkResult
+            {
+                OrderCode = response.OrderCode,
+                PaymentLinkId = response.Id,
+                Amount = response.Amount,
+                AmountPaid = response.AmountPaid,
+                AmountRemaining = response.AmountRemaining,
+                Status = status!,
+                LatestTransactionReference = latestTransaction?.Reference,
+                LatestTransactionDescription = latestTransaction?.Description,
+                RawResponse = rawResponse,
+            });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (UserAbortException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+        catch (UserAbortException ex)
+        {
+            LogLookupFailure(orderCode, "Unavailable", ex.StatusCode);
+            return PayOSPaymentLinkLookupResult.Fail(
+                PayOSPaymentLinkLookupError.Unavailable);
+        }
+        catch (ApiException ex) when (ex.StatusCode == StatusCodes.Status404NotFound)
+        {
+            LogLookupFailure(orderCode, "NotFound", ex.StatusCode);
+            return PayOSPaymentLinkLookupResult.Fail(
+                PayOSPaymentLinkLookupError.NotFound);
+        }
+        catch (ApiException ex) when (ex.StatusCode == StatusCodes.Status429TooManyRequests)
+        {
+            LogLookupFailure(orderCode, "RateLimited", ex.StatusCode);
+            return PayOSPaymentLinkLookupResult.Fail(
+                PayOSPaymentLinkLookupError.RateLimited);
+        }
+        catch (ApiException ex) when (
+            ex.StatusCode is null
+            or StatusCodes.Status408RequestTimeout
+            or >= 500)
+        {
+            LogLookupFailure(orderCode, "Unavailable", ex.StatusCode);
+            return PayOSPaymentLinkLookupResult.Fail(
+                PayOSPaymentLinkLookupError.Unavailable);
+        }
+        catch (ApiException ex)
+        {
+            LogLookupFailure(orderCode, "InvalidResponse", ex.StatusCode);
+            return PayOSPaymentLinkLookupResult.Fail(
+                PayOSPaymentLinkLookupError.InvalidResponse);
+        }
+        catch (HttpRequestException ex)
+        {
+            LogLookupFailure(orderCode, ex.GetType().Name, null);
+            return PayOSPaymentLinkLookupResult.Fail(
+                PayOSPaymentLinkLookupError.Unavailable);
+        }
+        catch (TaskCanceledException ex)
+        {
+            LogLookupFailure(orderCode, ex.GetType().Name, null);
+            return PayOSPaymentLinkLookupResult.Fail(
+                PayOSPaymentLinkLookupError.Unavailable);
+        }
+        catch (JsonException ex)
+        {
+            LogLookupFailure(orderCode, ex.GetType().Name, null);
+            return PayOSPaymentLinkLookupResult.Fail(
+                PayOSPaymentLinkLookupError.InvalidResponse);
+        }
+        catch (NotSupportedException ex)
+        {
+            LogLookupFailure(orderCode, ex.GetType().Name, null);
+            return PayOSPaymentLinkLookupResult.Fail(
+                PayOSPaymentLinkLookupError.InvalidResponse);
+        }
+        catch (Exception ex)
+        {
+            LogLookupFailure(orderCode, ex.GetType().Name, null);
+            return PayOSPaymentLinkLookupResult.Fail(
+                PayOSPaymentLinkLookupError.Unavailable);
+        }
     }
 
     public async Task<PayOSWebhookResult> VerifyWebhookAsync(
@@ -110,7 +245,7 @@ public sealed class PayOSService : IPayOSService
 
         try
         {
-            _ = cancellationToken;
+            cancellationToken.ThrowIfCancellationRequested();
             var verifiedData = await _payOsClient.Webhooks.VerifyAsync(webhook);
             var (isCancelled, status, cancelFlag) = ParseCancelInfo(rawBody);
 
@@ -140,14 +275,61 @@ public sealed class PayOSService : IPayOSService
                 RawBody = rawBody,
             };
         }
-        catch
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                "payOS webhook verification failed with category {ErrorCategory}.",
+                ex.GetType().Name);
             return new PayOSWebhookResult
             {
                 IsValid = false,
                 RawBody = rawBody,
             };
         }
+    }
+
+    private static string? MapStatus(PaymentLinkStatus status)
+    {
+        return status switch
+        {
+            PaymentLinkStatus.Pending => "PENDING",
+            PaymentLinkStatus.Processing => "PROCESSING",
+            PaymentLinkStatus.Paid => "PAID",
+            PaymentLinkStatus.Cancelled => "CANCELLED",
+            PaymentLinkStatus.Underpaid => "UNDERPAID",
+            PaymentLinkStatus.Expired => "EXPIRED",
+            PaymentLinkStatus.Failed => "FAILED",
+            _ => null,
+        };
+    }
+
+    private static bool IsValidPaymentLink(
+        PaymentLink? paymentLink,
+        string? status)
+    {
+        return paymentLink is not null
+            && paymentLink.OrderCode > 0
+            && !string.IsNullOrWhiteSpace(paymentLink.Id)
+            && paymentLink.Amount > 0
+            && paymentLink.AmountPaid >= 0
+            && paymentLink.AmountRemaining >= 0
+            && status is not null;
+    }
+
+    private void LogLookupFailure(
+        long orderCode,
+        string errorCategory,
+        int? providerStatusCode)
+    {
+        _logger.LogWarning(
+            "payOS payment link lookup failed for order {OrderCode}; category {ErrorCategory}; provider status {ProviderStatusCode}.",
+            orderCode,
+            errorCategory,
+            providerStatusCode);
     }
 
     private static void ValidateOptions(PayOSOptions options)

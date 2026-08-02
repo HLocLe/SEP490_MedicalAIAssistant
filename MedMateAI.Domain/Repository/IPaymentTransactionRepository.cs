@@ -8,6 +8,10 @@ public interface IPaymentTransactionRepository : IGenericRepository<PaymentTrans
         string transactionReference,
         CancellationToken cancellationToken = default);
 
+    Task<PaymentTransaction?> GetByTransactionReferenceForUpdateAsync(
+        string transactionReference,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<PaymentTransaction>> GetByPaymentIdAsync(
         Guid paymentId,
         CancellationToken cancellationToken = default);
