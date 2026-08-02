@@ -311,25 +311,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         };
     }
 
-    public async Task<DiagnosisSubmitResponse> SubmitDiagnosisAsync(
-        SubmitClinicalQuestionAnswersRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        var prepared = await PrepareClinicalQuestionSubmissionAsync(request, cancellationToken);
-
-        var analysis = await ExecuteMedGemmaForDiagnosisAnalysisAsync(prepared.Session, prepared.BayesianPrompt, cancellationToken);
-
-        return new DiagnosisSubmitResponse
-        {
-            SessionId = prepared.Session.Id,
-            UserInput = prepared.Session.InputText,
-            Status = analysis.Status,
-            Model = analysis.Model,
-            Diagnoses = analysis.Diagnoses,
-        };
-    }
-
-    // private method cho SubmitClinicalQuestionAnswersAsync và submit diagnoses.
+    // private method cho SubmitClinicalQuestionAnswersAsync.
 
     private sealed record PreparedClinicalSubmission(SymptomAnalysisSession Session,
     IReadOnlyList<SessionClinicalQuestionAnswer> Answers,
@@ -394,7 +376,13 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
     {
         var coreResult = await RunMedGemmaAnalysisCoreAsync(session, bayesianPrompt, cancellationToken);
 
-        var primaryDiagnosis = SelectPrimaryDiagnosisByPluralityChapter(coreResult.Diagnoses);
+        var vietnameseDiagnoses = await TranslateDiagnosesToVietnameseAsync(
+            coreResult.Diagnoses,
+            cancellationToken);
+
+        await ReplaceSessionSymptomsAsync(session.Id, vietnameseDiagnoses, cancellationToken);
+
+        var primaryDiagnosis = SelectPrimaryDiagnosisByPluralityChapter(vietnameseDiagnoses);
 
         var chapterCode = ExtractIcdChapterCode(primaryDiagnosis?.Icd10Code);
 
@@ -420,46 +408,14 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             SessionId = session.Id,
             Status = session.Status,
             Model = coreResult.Model,
-            Diagnoses = coreResult.Diagnoses,
+            Diagnoses = vietnameseDiagnoses,
             PrimaryDiagnosis = primaryDiagnosis,
             RecommendedDepartment = recommendedDepartment,
             RecommendedFacilities = recommendedFacilities,
         };
     }
 
-    //
-    private async Task<DiagnosisDisplayAnalyzeResponse> ExecuteMedGemmaForDiagnosisAnalysisAsync(
-       SymptomAnalysisSession session,
-       string bayesianPrompt,
-       CancellationToken cancellationToken)
-    {
-       
-        var coreResult = await RunMedGemmaAnalysisCoreAsync(session, bayesianPrompt, cancellationToken);
-
-        var vietnameseDiagnoses = await TranslateDiagnosesToVietnameseAsync(
-            coreResult.Diagnoses,
-            cancellationToken);
-
-        await ReplaceSessionSymptomsAsync(session.Id, vietnameseDiagnoses, cancellationToken);
-
-        session.SessionType = SymptomAnalysisSessionType.Diagnoses;
-        session.Status = SymptomAnalysisSessionStatus.Completed;
-        session.CompletedAt = DateTime.UtcNow;
-        session.UpdatedAt = DateTime.UtcNow;
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        return new DiagnosisDisplayAnalyzeResponse
-        {
-            SessionId = session.Id,
-            Status = session.Status,
-            Model = coreResult.Model,
-            Diagnoses = vietnameseDiagnoses,
-           
-        };
-    }
-
-    // private method cho ExecuteMedGemmaAnalysisAsync và exercutemedgemmafordiagnoses
+    // private method cho ExecuteMedGemmaAnalysisAsync
     private sealed record MedGemmaAnalysisCoreResult(IReadOnlyList<BayesianDiagnosisResponse> Diagnoses,
     string? Model);
     private async Task<MedGemmaAnalysisCoreResult> RunMedGemmaAnalysisCoreAsync(
@@ -714,10 +670,10 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             builder.AppendLine($"patient has the following signs: {translatedInput}");
         }
 
-        if (negative.Count > 0)
-        {
-            builder.AppendLine($"patient does not has the following signs: {string.Join(", ", negative)}");
-        }
+        //if (negative.Count > 0)
+        //{
+        //    builder.AppendLine($"patient does not has the following signs: {string.Join(", ", negative)}");
+        //}
 
         builder.AppendLine();
 

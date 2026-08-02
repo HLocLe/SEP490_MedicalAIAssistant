@@ -305,7 +305,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         var ranges = await _unitOfWork.LabIndicatorReferenceRanges.GetAllAsync(
             x => !x.IsDeleted && x.IndicatorId == indicatorId,
-            query => query.OrderByDescending(x => x.Priority).ThenBy(x => x.CreatedAt),
+            query => query.OrderBy(x => x.Gender).ThenBy(x => x.AgeGroup).ThenBy(x => x.CreatedAt),
             cancellationToken);
 
         return (true, false, Array.Empty<string>(), ranges.Select(r => _mapper.Map<LabIndicatorReferenceRangeResponse>(r)).ToList());
@@ -568,6 +568,10 @@ public sealed class LabIndicatorService : ILabIndicatorService
         var entities = new List<LabIndicatorReferenceRange>();
         var utcNow = DateTime.UtcNow;
 
+        var existingRanges = await _unitOfWork.LabIndicatorReferenceRanges.GetAllAsync(
+            x => !x.IsDeleted && x.IndicatorId == indicatorId,
+            cancellationToken: cancellationToken);
+
         for (var index = 0; index < request.ReferenceRanges.Count; index++)
         {
             var range = request.ReferenceRanges[index];
@@ -582,6 +586,20 @@ public sealed class LabIndicatorService : ILabIndicatorService
                 continue;
             }
 
+            var uniquenessErrors = ValidateReferenceRangeUniqueness(
+                range.Gender,
+                range.AgeGroup,
+                existingRanges.Concat(entities).ToList());
+            foreach (var uniquenessError in uniquenessErrors)
+            {
+                validationErrors.Add($"ReferenceRanges[{index}]: {uniquenessError}");
+            }
+
+            if (uniquenessErrors.Count > 0)
+            {
+                continue;
+            }
+
             entities.Add(new LabIndicatorReferenceRange
             {
                 Id = Guid.NewGuid(),
@@ -592,7 +610,6 @@ public sealed class LabIndicatorService : ILabIndicatorService
                 MinValue = range.MinValue,
                 MaxValue = range.MaxValue,
                 Unit = string.IsNullOrWhiteSpace(range.Unit) ? null : range.Unit.Trim(),
-                Priority = range.Priority,
                 CreatedAt = utcNow,
             });
         }
@@ -634,6 +651,16 @@ public sealed class LabIndicatorService : ILabIndicatorService
             return (false, false, rangeErrors, null);
         }
 
+        var existingRanges = await _unitOfWork.LabIndicatorReferenceRanges.GetAllAsync(
+            x => !x.IsDeleted && x.IndicatorId == indicatorId,
+            cancellationToken: cancellationToken);
+
+        var uniquenessErrors = ValidateReferenceRangeUniqueness(request.Gender, request.AgeGroup, existingRanges);
+        if (uniquenessErrors.Count > 0)
+        {
+            return (false, false, uniquenessErrors, null);
+        }
+
         var entity = new LabIndicatorReferenceRange
         {
             Id = Guid.NewGuid(),
@@ -644,7 +671,6 @@ public sealed class LabIndicatorService : ILabIndicatorService
             MinValue = request.MinValue,
             MaxValue = request.MaxValue,
             Unit = NormalizeOptionalText(request.Unit),
-            Priority = request.Priority,
             CreatedAt = DateTime.UtcNow,
         };
 
@@ -688,13 +714,22 @@ public sealed class LabIndicatorService : ILabIndicatorService
             return (false, false, rangeErrors, null);
         }
 
+        var otherRanges = await _unitOfWork.LabIndicatorReferenceRanges.GetAllAsync(
+            x => !x.IsDeleted && x.IndicatorId == indicatorId && x.Id != referenceRangeId,
+            cancellationToken: cancellationToken);
+
+        var uniquenessErrors = ValidateReferenceRangeUniqueness(request.Gender, request.AgeGroup, otherRanges);
+        if (uniquenessErrors.Count > 0)
+        {
+            return (false, false, uniquenessErrors, null);
+        }
+
         range.Gender = request.Gender;
         range.AgeGroup = request.AgeGroup;
         range.ComparisonType = request.ComparisonType;
         range.MinValue = request.MinValue;
         range.MaxValue = request.MaxValue;
         range.Unit = NormalizeOptionalText(request.Unit);
-        range.Priority = request.Priority;
         range.UpdatedAt = DateTime.UtcNow;
 
         _unitOfWork.LabIndicatorReferenceRanges.Update(range);
@@ -1027,12 +1062,56 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
     private static List<string> ValidateReferenceRange(CreateLabIndicatorReferenceRangeRequest range)
     {
-        return ValidateReferenceRangeValues(range.ComparisonType, range.MinValue, range.MaxValue);
+        var errors = ValidateReferenceRangeValues(range.ComparisonType, range.MinValue, range.MaxValue);
+        errors.AddRange(ValidateReferenceRangeDimensions(range.Gender, range.AgeGroup));
+        return errors;
     }
 
     private static List<string> ValidateReferenceRange(UpdateLabIndicatorReferenceRangeRequest range)
     {
-        return ValidateReferenceRangeValues(range.ComparisonType, range.MinValue, range.MaxValue);
+        var errors = ValidateReferenceRangeValues(range.ComparisonType, range.MinValue, range.MaxValue);
+        errors.AddRange(ValidateReferenceRangeDimensions(range.Gender, range.AgeGroup));
+        return errors;
+    }
+
+    private static List<string> ValidateReferenceRangeDimensions(Gender? gender, AgeGroup? ageGroup)
+    {
+        if (gender.HasValue && ageGroup.HasValue)
+        {
+            return new List<string> { "A reference range cannot set both Gender and AgeGroup." };
+        }
+
+        return new List<string>();
+    }
+
+    
+    private static List<string> ValidateReferenceRangeUniqueness(
+        Gender? gender,
+        AgeGroup? ageGroup,
+        IReadOnlyList<LabIndicatorReferenceRange> existingRanges)
+    {
+        var errors = new List<string>();
+
+        if (gender.HasValue)
+        {
+            if (existingRanges.Any(r => r.Gender == gender))
+            {
+                errors.Add($"A reference range for gender {gender} already exists.");
+            }
+        }
+        else if (ageGroup.HasValue)
+        {
+            if (existingRanges.Any(r => r.AgeGroup == ageGroup))
+            {
+                errors.Add($"A reference range for age group {ageGroup} already exists.");
+            }
+        }
+        else if (existingRanges.Any(r => r.Gender is null && r.AgeGroup is null))
+        {
+            errors.Add("A default reference range already exists for this indicator.");
+        }
+
+        return errors;
     }
 
     private static List<string> ValidateReferenceRangeValues(

@@ -6,6 +6,4 @@ public enum LabResultStatus
     Normal = 1,
     High = 2,
     Low = 3,
-    CriticalHigh = 4,
-    CriticalLow = 5,
 }
