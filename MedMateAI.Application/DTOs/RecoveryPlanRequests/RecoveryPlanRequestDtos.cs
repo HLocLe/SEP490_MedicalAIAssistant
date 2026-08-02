@@ -40,6 +40,28 @@ public sealed class RecoveryPlanRequestResponse
     public string? RejectionReason { get; set; }
     public int Version { get; set; }
 }
+public sealed class DoctorRecoveryPlanRequestResponse
+{
+    public Guid Id { get; set; }
+    public Guid UserId { get; set; }
+    public Guid? AssignedDoctorId { get; set; }
+    public RecoveryPlanDiseaseGroup DiseaseGroup { get; set; }
+    public Guid? TreatmentJourneyId { get; set; }
+    public Guid? PrimaryLabTestSessionId { get; set; }
+    public RecoveryPlanRequestStatus Status { get; set; }
+    public string? RequestNote { get; set; }
+    public DateTime RequestedAt { get; set; }
+    public DateTime? AcceptedAt { get; set; }
+    public DateTime? ReviewStartedAt { get; set; }
+    public DateTime? AssignmentExpiresAt { get; set; }
+    public DateTime? RejectedAt { get; set; }
+    public DateTime? CancelledAt { get; set; }
+    public string? RejectionReasonCode { get; set; }
+    public string? RejectionReason { get; set; }
+    public int Version { get; set; }
+    public Guid? RecoveryPlanId { get; set; }
+    public RecoveryPlanStatus? RecoveryPlanStatus { get; set; }
+}
 public sealed class OpenRecoveryPlanRequestResponse
 {
     public Guid Id { get; set; }

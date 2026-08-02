@@ -18,6 +18,10 @@ public interface IRecoveryPlanRepository
         Guid requestId,
         CancellationToken cancellationToken = default);
 
+    Task<Guid?> GetActivePlanIdByRequestIdAsync(
+        Guid requestId,
+        CancellationToken cancellationToken = default);
+
     Task<Guid?> GetRequestIdByPlanIdAsync(
         Guid planId,
         CancellationToken cancellationToken = default);

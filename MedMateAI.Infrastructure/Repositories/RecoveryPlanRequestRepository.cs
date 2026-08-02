@@ -106,7 +106,23 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
         return await ToPagedResultAsync(query, pageNumber, pageSize, cancellationToken);
     }
 
-    public async Task<PagedResult<RecoveryPlanRequest>> GetAssignedToDoctorPagedAsync(
+    public Task<DoctorRecoveryPlanRequestData?> GetAssignedToDoctorByIdAsync(
+        Guid doctorId,
+        Guid requestId,
+        CancellationToken cancellationToken = default)
+    {
+        var requests = _context.RecoveryPlanRequests
+            .AsNoTracking()
+            .Where(request =>
+                !request.IsDeleted
+                && request.Id == requestId
+                && request.AssignedDoctorId == doctorId);
+
+        return ProjectDoctorRequestsWithPlanSummary(requests)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<PagedResult<DoctorRecoveryPlanRequestData>> GetAssignedToDoctorPagedAsync(
         Guid doctorId,
         int pageNumber,
         int pageSize,
@@ -124,7 +140,21 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
             query = query.Where(request => request.Status == status.Value);
         }
 
-        return await ToPagedResultAsync(query, pageNumber, pageSize, cancellationToken);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await ProjectDoctorRequestsWithPlanSummary(query)
+            .OrderBy(request => request.RequestedAt)
+            .ThenBy(request => request.Id)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return new PagedResult<DoctorRecoveryPlanRequestData>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            PageNumber = pageNumber,
+            PageSize = pageSize
+        };
     }
 
     public async Task<RecoveryPlanRequest?> TryAcceptAsync(
@@ -265,6 +295,40 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
     public void AddOutbox(OutboxMessage message)
     {
         _context.OutboxMessages.Add(message);
+    }
+
+    private IQueryable<DoctorRecoveryPlanRequestData> ProjectDoctorRequestsWithPlanSummary(
+        IQueryable<RecoveryPlanRequest> requests)
+    {
+        var plans = _context.RecoveryPlans
+            .AsNoTracking()
+            .Where(plan => !plan.IsDeleted && plan.RecoveryPlanRequestId.HasValue);
+
+        return
+            from request in requests
+            join plan in plans
+                on request.Id equals plan.RecoveryPlanRequestId into requestPlans
+            from plan in requestPlans.DefaultIfEmpty()
+            select new DoctorRecoveryPlanRequestData(
+                request.Id,
+                request.UserId,
+                request.AssignedDoctorId,
+                request.DiseaseGroup,
+                request.TreatmentJourneyId,
+                request.PrimaryLabTestSessionId,
+                request.Status,
+                request.RequestNote,
+                request.RequestedAt,
+                request.AcceptedAt,
+                request.ReviewStartedAt,
+                request.AssignmentExpiresAt,
+                request.RejectedAt,
+                request.CancelledAt,
+                request.RejectionReasonCode,
+                request.RejectionReason,
+                request.Version,
+                (Guid?)plan.Id,
+                (RecoveryPlanStatus?)plan.Status);
     }
 
     private void EnsureActiveTransaction()

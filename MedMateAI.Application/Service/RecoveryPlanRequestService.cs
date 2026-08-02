@@ -290,7 +290,36 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             ToPage(requests, MapOpen));
     }
 
-    public async Task<RecoveryPlanOperationResult<PagedResponse<RecoveryPlanRequestResponse>>> GetDoctorMineAsync(
+    public async Task<RecoveryPlanOperationResult<DoctorRecoveryPlanRequestResponse>>
+        GetDoctorDetailAsync(
+            Guid doctorUserId,
+            Guid requestId,
+            CancellationToken cancellationToken)
+    {
+        var doctor = await _uow.RecoveryPlanRequests.GetDoctorByUserIdAsync(
+            doctorUserId,
+            cancellationToken);
+        if (doctor is null)
+        {
+            return RecoveryPlanOperationResult<DoctorRecoveryPlanRequestResponse>.Fail(
+                RecoveryPlanErrorCode.DoctorProfileNotFound);
+        }
+
+        var request = await _uow.RecoveryPlanRequests.GetAssignedToDoctorByIdAsync(
+            doctor.Id,
+            requestId,
+            cancellationToken);
+        if (request is null)
+        {
+            return RecoveryPlanOperationResult<DoctorRecoveryPlanRequestResponse>.Fail(
+                RecoveryPlanErrorCode.NotFound);
+        }
+
+        return RecoveryPlanOperationResult<DoctorRecoveryPlanRequestResponse>.Ok(
+            MapDoctorRequest(request));
+    }
+
+    public async Task<RecoveryPlanOperationResult<PagedResponse<DoctorRecoveryPlanRequestResponse>>> GetDoctorMineAsync(
         Guid doctorUserId,
         PaginationQuery page,
         RecoveryPlanRequestStatus? status,
@@ -299,7 +328,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         var doctor = await _uow.RecoveryPlanRequests.GetDoctorByUserIdAsync(doctorUserId, cancellationToken);
         if (doctor is null)
         {
-            return RecoveryPlanOperationResult<PagedResponse<RecoveryPlanRequestResponse>>.Fail(
+            return RecoveryPlanOperationResult<PagedResponse<DoctorRecoveryPlanRequestResponse>>.Fail(
                 RecoveryPlanErrorCode.DoctorProfileNotFound);
         }
 
@@ -310,7 +339,8 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             status,
             cancellationToken);
 
-        return RecoveryPlanOperationResult<PagedResponse<RecoveryPlanRequestResponse>>.Ok(ToPage(requests, Map));
+        return RecoveryPlanOperationResult<PagedResponse<DoctorRecoveryPlanRequestResponse>>.Ok(
+            ToPage(requests, MapDoctorRequest));
     }
 
     public async Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> AcceptAsync(
@@ -430,7 +460,13 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             requestId,
             cancellationToken,
             RecoveryPlanRealtimeTransitions.Released,
-            (request, doctor, utcNow) => ReleaseRequest(request, doctor, normalizedReason, utcNow));
+            (request, doctor, utcNow, transitionCancellationToken) =>
+                ReleaseRequestAsync(
+                    request,
+                    doctor,
+                    normalizedReason,
+                    utcNow,
+                    transitionCancellationToken));
     }
 
     public Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> RequestInformationAsync(
@@ -611,15 +647,44 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         return RecoveryPlanErrorCode.None;
     }
 
-    private RecoveryPlanErrorCode ReleaseRequest(
+    private async Task<RecoveryPlanErrorCode> ReleaseRequestAsync(
         RecoveryPlanRequest request,
         Doctor doctor,
         string? reason,
-        DateTime utcNow)
+        DateTime utcNow,
+        CancellationToken cancellationToken)
     {
         if (!CanRelease(request.Status))
         {
             return RecoveryPlanErrorCode.InvalidRequestState;
+        }
+
+        var activePlanId = await _uow.RecoveryPlans.GetActivePlanIdByRequestIdAsync(
+            request.Id,
+            cancellationToken);
+        if (activePlanId.HasValue)
+        {
+            var lockedPlan = await _uow.RecoveryPlans.GetByIdForUpdateAsync(
+                activePlanId.Value,
+                cancellationToken);
+            if (!IsOwnedDraftForRequest(lockedPlan, request.Id, doctor.Id))
+            {
+                return RecoveryPlanErrorCode.Conflict;
+            }
+
+            var plan = await _uow.RecoveryPlans.GetTrackedDetailAsync(
+                activePlanId.Value,
+                cancellationToken);
+            if (!IsOwnedDraftForRequest(plan, request.Id, doctor.Id))
+            {
+                return RecoveryPlanErrorCode.Conflict;
+            }
+
+            var deletionResult = RecoveryPlanDraftMutations.DeletePlan(plan!, utcNow);
+            if (!deletionResult.Success)
+            {
+                return deletionResult.Error;
+            }
         }
 
         var previousStatus = request.Status;
@@ -642,6 +707,18 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         AddOutboxMessage(request, RecoveryPlanOutboxEventTypes.Released, utcNow);
 
         return RecoveryPlanErrorCode.None;
+    }
+
+    private static bool IsOwnedDraftForRequest(
+        RecoveryPlan? plan,
+        Guid requestId,
+        Guid doctorId)
+    {
+        return plan is not null
+            && !plan.IsDeleted
+            && plan.RecoveryPlanRequestId == requestId
+            && plan.DoctorId == doctorId
+            && plan.Status == RecoveryPlanStatus.Draft;
     }
 
     private RecoveryPlanErrorCode RequestMoreInformation(
@@ -1106,9 +1183,33 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         RequestedAt = request.RequestedAt
     };
 
-    private static PagedResponse<TOutput> ToPage<TOutput>(
-        PagedResult<RecoveryPlanRequest> page,
-        Func<RecoveryPlanRequest, TOutput> map) => new()
+    private static DoctorRecoveryPlanRequestResponse MapDoctorRequest(
+        DoctorRecoveryPlanRequestData request) => new()
+        {
+            Id = request.Id,
+            UserId = request.UserId,
+            AssignedDoctorId = request.AssignedDoctorId,
+            DiseaseGroup = request.DiseaseGroup,
+            TreatmentJourneyId = request.TreatmentJourneyId,
+            PrimaryLabTestSessionId = request.PrimaryLabTestSessionId,
+            Status = request.Status,
+            RequestNote = request.RequestNote,
+            RequestedAt = request.RequestedAt,
+            AcceptedAt = request.AcceptedAt,
+            ReviewStartedAt = request.ReviewStartedAt,
+            AssignmentExpiresAt = request.AssignmentExpiresAt,
+            RejectedAt = request.RejectedAt,
+            CancelledAt = request.CancelledAt,
+            RejectionReasonCode = request.RejectionReasonCode,
+            RejectionReason = request.RejectionReason,
+            Version = request.Version,
+            RecoveryPlanId = request.RecoveryPlanId,
+            RecoveryPlanStatus = request.RecoveryPlanStatus
+        };
+
+    private static PagedResponse<TOutput> ToPage<TInput, TOutput>(
+        PagedResult<TInput> page,
+        Func<TInput, TOutput> map) => new()
         {
             PageNumber = page.PageNumber,
             PageSize = page.PageSize,

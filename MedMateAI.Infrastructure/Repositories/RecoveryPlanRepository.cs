@@ -56,6 +56,19 @@ public sealed class RecoveryPlanRepository : IRecoveryPlanRepository
                 cancellationToken);
     }
 
+    public Task<Guid?> GetActivePlanIdByRequestIdAsync(
+        Guid requestId,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.RecoveryPlans
+            .AsNoTracking()
+            .Where(plan =>
+                plan.RecoveryPlanRequestId == requestId
+                && !plan.IsDeleted)
+            .Select(plan => (Guid?)plan.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
     public Task<Guid?> GetRequestIdByPlanIdAsync(
         Guid planId,
         CancellationToken cancellationToken = default)

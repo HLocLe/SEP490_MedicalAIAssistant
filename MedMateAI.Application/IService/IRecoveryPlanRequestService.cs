@@ -43,7 +43,12 @@ public interface IRecoveryPlanRequestService
         RecoveryPlanDiseaseGroup? diseaseGroup,
         CancellationToken cancellationToken);
 
-    Task<RecoveryPlanOperationResult<PagedResponse<RecoveryPlanRequestResponse>>> GetDoctorMineAsync(
+    Task<RecoveryPlanOperationResult<DoctorRecoveryPlanRequestResponse>> GetDoctorDetailAsync(
+        Guid doctorUserId,
+        Guid requestId,
+        CancellationToken cancellationToken);
+
+    Task<RecoveryPlanOperationResult<PagedResponse<DoctorRecoveryPlanRequestResponse>>> GetDoctorMineAsync(
         Guid doctorUserId,
         PaginationQuery page,
         RecoveryPlanRequestStatus? status,

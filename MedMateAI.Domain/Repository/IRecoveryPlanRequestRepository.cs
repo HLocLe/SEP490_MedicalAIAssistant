@@ -32,7 +32,12 @@ public interface IRecoveryPlanRequestRepository
         RecoveryPlanRequestStatus? status,
         CancellationToken cancellationToken = default);
 
-    Task<PagedResult<RecoveryPlanRequest>> GetAssignedToDoctorPagedAsync(
+    Task<DoctorRecoveryPlanRequestData?> GetAssignedToDoctorByIdAsync(
+        Guid doctorId,
+        Guid requestId,
+        CancellationToken cancellationToken = default);
+
+    Task<PagedResult<DoctorRecoveryPlanRequestData>> GetAssignedToDoctorPagedAsync(
         Guid doctorId,
         int pageNumber,
         int pageSize,
