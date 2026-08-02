@@ -105,6 +105,27 @@ public sealed class PaymentsController : ControllerBase
         });
     }
 
+    [Authorize]
+    [HttpPost("payos-reconcile/{orderCode:long}")]
+    [ProducesResponseType(typeof(ApiResponse<PayOSPaymentStatusResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PayOSPaymentStatusResponse>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<PayOSPaymentStatusResponse>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<PayOSPaymentStatusResponse>), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse<PayOSPaymentStatusResponse>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse<PayOSPaymentStatusResponse>), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiResponse<PayOSPaymentStatusResponse>), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiResponse<PayOSPaymentStatusResponse>), StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> ReconcilePayOSPayment(
+        long orderCode,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _paymentService.ReconcilePayOSPaymentAsync(
+            orderCode,
+            cancellationToken);
+
+        return this.ToActionResult(result);
+    }
+
     [Authorize(Roles = "Admin")]
     [HttpGet]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<PaymentResponse>>), StatusCodes.Status200OK)]

@@ -12,6 +12,12 @@ public sealed class PayOSPaymentStatusResponse
 
     public string SubscriptionStatus { get; set; } = string.Empty;
 
+    public string? ProviderStatus { get; set; }
+
+    public decimal? AmountPaid { get; set; }
+
+    public decimal? AmountRemaining { get; set; }
+
     public bool IsPaid { get; set; }
 
     public bool IsActive { get; set; }

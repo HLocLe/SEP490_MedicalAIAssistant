@@ -3,32 +3,43 @@ using System.Security.Claims;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Payments.PayOS;
 using MedMateAI.Application.DTOs.Payments.Responses;
-using MedMateAI.Domain.Common;
 using MedMateAI.Application.IService;
+using MedMateAI.Application.Models.Payments;
+using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Persistence;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 
 namespace MedMateAI.Application.Service;
 
 public sealed class PaymentService : IPaymentService
 {
+    private const string PendingStatus = "PENDING";
+    private const string ProcessingStatus = "PROCESSING";
     private const string PaidStatus = "PAID";
     private const string CancelledStatus = "CANCELLED";
+    private const string UnderpaidStatus = "UNDERPAID";
+    private const string ExpiredStatus = "EXPIRED";
+    private const string FailedStatus = "FAILED";
+    private const string PayOsProvider = "payOS";
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPayOSService _payOsService;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ILogger<PaymentService> _logger;
 
     public PaymentService(
         IUnitOfWork unitOfWork,
         IPayOSService payOsService,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        ILogger<PaymentService> logger)
     {
         _unitOfWork = unitOfWork;
         _payOsService = payOsService;
         _httpContextAccessor = httpContextAccessor;
+        _logger = logger;
     }
 
     public async Task<PayOSReturnResponse> ProcessPayOSReturnAsync(
@@ -55,49 +66,61 @@ public sealed class PaymentService : IPaymentService
             return false;
         }
 
-        var transaction = await _unitOfWork.PaymentTransactions.GetByTransactionReferenceAsync(
-            callback.OrderCode.ToString(CultureInfo.InvariantCulture),
-            cancellationToken);
-
-        if (transaction is null || transaction.Payment is null)
+        if (!callback.IsPaid && !callback.IsCancelled)
         {
-            return false;
-        }
-
-        var amountMatches = transaction.Payment.Amount == callback.Amount;
-        if (!amountMatches)
-        {
-            return false;
-        }
-
-        if (callback.IsPaid)
-        {
-            await MarkPaymentPaidAsync(
-                transaction,
-                callback,
-                providerStatus: PaidStatus,
-                responseCode: callback.Code,
-                providerTransactionId: callback.Reference ?? callback.PaymentLinkId,
-                orderInfo: callback.Description,
-                rawResponse: callback.RawBody,
-                cancellationToken);
             return true;
         }
 
-        if (callback.IsCancelled)
+        var transactionReference = callback.OrderCode.ToString(CultureInfo.InvariantCulture);
+        var verifiedState = CreateWebhookVerifiedState(callback);
+
+        _unitOfWork.ClearTrackedChanges();
+        try
         {
-            await MarkPaymentCancelledAsync(
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            var transaction = await _unitOfWork.PaymentTransactions
+                .GetByTransactionReferenceForUpdateAsync(
+                    transactionReference,
+                    cancellationToken);
+            var validationError = ValidateLockedTransaction(
                 transaction,
-                callback,
-                providerStatus: CancelledStatus,
-                responseCode: callback.Code,
-                providerTransactionId: callback.Reference ?? callback.PaymentLinkId,
-                rawResponse: callback.RawBody,
-                cancellationToken);
+                callback.OrderCode,
+                verifiedState,
+                currentUserId: null);
+            if (validationError != PaymentReconciliationErrorCode.None)
+            {
+                await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+                return false;
+            }
+
+            var mutationError = ApplyVerifiedPayOSState(
+                transaction!,
+                verifiedState,
+                DateTime.UtcNow);
+            if (mutationError != PaymentReconciliationErrorCode.None)
+            {
+                await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+                return false;
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
             return true;
         }
-
-        return true;
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            _logger.LogWarning(
+                "payOS webhook processing failed for order {OrderCode}; category {ErrorCategory}.",
+                callback.OrderCode,
+                ex.GetType().Name);
+            return false;
+        }
     }
 
     public async Task<PayOSPaymentStatusResponse?> GetPayOSPaymentStatusAsync(
@@ -119,6 +142,159 @@ public sealed class PaymentService : IPaymentService
         }
 
         return BuildPaymentStatusResponse(transaction, orderCode);
+    }
+
+    public async Task<PaymentReconciliationResult<PayOSPaymentStatusResponse>>
+        ReconcilePayOSPaymentAsync(
+            long orderCode,
+            CancellationToken cancellationToken = default)
+    {
+        if (orderCode <= 0)
+        {
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                PaymentReconciliationErrorCode.InvalidRequest,
+                "Invalid orderCode.");
+        }
+
+        var currentUserId = GetCurrentUserId();
+        if (!currentUserId.HasValue)
+        {
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                PaymentReconciliationErrorCode.Unauthenticated,
+                "Authentication is required.");
+        }
+
+        var transactionReference = orderCode.ToString(CultureInfo.InvariantCulture);
+        PaymentTransaction? snapshot;
+        try
+        {
+            snapshot = await _unitOfWork.PaymentTransactions.GetByTransactionReferenceAsync(
+                transactionReference,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                "Local payment lookup failed for order {OrderCode}; category {ErrorCategory}.",
+                orderCode,
+                ex.GetType().Name);
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                PaymentReconciliationErrorCode.Conflict,
+                "Payment state could not be verified.");
+        }
+
+        var localError = ValidateLocalSnapshot(snapshot, orderCode, currentUserId.Value);
+        if (localError != PaymentReconciliationErrorCode.None)
+        {
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                localError,
+                BuildReconciliationFailureMessage(localError));
+        }
+
+        if (HasCompletePaidState(snapshot!))
+        {
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Ok(
+                BuildPaymentStatusResponse(snapshot!, orderCode));
+        }
+
+        PayOSPaymentLinkLookupResult lookup;
+        try
+        {
+            // Provider I/O deliberately occurs before opening the database transaction.
+            lookup = await _payOsService.GetPaymentLinkAsync(orderCode, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                "payOS reconciliation lookup failed for order {OrderCode}; category {ErrorCategory}.",
+                orderCode,
+                ex.GetType().Name);
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                PaymentReconciliationErrorCode.ProviderUnavailable,
+                "payOS is temporarily unavailable.");
+        }
+
+        if (!lookup.Success || lookup.Data is null)
+        {
+            var lookupError = MapLookupError(lookup.Error);
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                lookupError,
+                BuildReconciliationFailureMessage(lookupError));
+        }
+
+        var providerState = lookup.Data;
+        var providerValidationError = ValidateProviderAgainstLocalSnapshot(
+            providerState,
+            snapshot!,
+            orderCode);
+        if (providerValidationError != PaymentReconciliationErrorCode.None)
+        {
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                providerValidationError,
+                BuildReconciliationFailureMessage(providerValidationError));
+        }
+
+        _unitOfWork.ClearTrackedChanges();
+        try
+        {
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            var transaction = await _unitOfWork.PaymentTransactions
+                .GetByTransactionReferenceForUpdateAsync(
+                    transactionReference,
+                    cancellationToken);
+            var lockedValidationError = ValidateLockedTransaction(
+                transaction,
+                orderCode,
+                providerState,
+                currentUserId.Value);
+            if (lockedValidationError != PaymentReconciliationErrorCode.None)
+            {
+                return await RollbackReconciliationFailureAsync(
+                    lockedValidationError,
+                    BuildReconciliationFailureMessage(lockedValidationError));
+            }
+
+            var mutationError = ApplyVerifiedPayOSState(
+                transaction!,
+                providerState,
+                DateTime.UtcNow);
+            if (mutationError != PaymentReconciliationErrorCode.None)
+            {
+                return await RollbackReconciliationFailureAsync(
+                    mutationError,
+                    BuildReconciliationFailureMessage(mutationError));
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Ok(
+                BuildPaymentStatusResponse(transaction!, orderCode, providerState));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            _logger.LogWarning(
+                "Payment reconciliation failed for order {OrderCode}; category {ErrorCategory}.",
+                orderCode,
+                ex.GetType().Name);
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                PaymentReconciliationErrorCode.Conflict,
+                "Payment reconciliation could not be completed.");
+        }
     }
 
     public async Task<PagedResponse<PaymentResponse>> GetAllPaymentsAsync(
@@ -259,104 +435,419 @@ public sealed class PaymentService : IPaymentService
         };
     }
 
-    private async Task MarkPaymentPaidAsync(
-        PaymentTransaction transaction,
-        PayOSWebhookResult? callback,
-        string providerStatus,
-        string? responseCode,
-        string? providerTransactionId,
-        string? orderInfo,
-        string? rawResponse,
-        CancellationToken cancellationToken)
+    private static PayOSPaymentLinkResult CreateWebhookVerifiedState(
+        PayOSWebhookResult callback)
     {
+        var status = callback.IsPaid ? PaidStatus : CancelledStatus;
+
+        return new PayOSPaymentLinkResult
+        {
+            OrderCode = callback.OrderCode,
+            PaymentLinkId = callback.PaymentLinkId ?? string.Empty,
+            Amount = callback.Amount,
+            AmountPaid = callback.IsPaid ? callback.Amount : 0,
+            AmountRemaining = callback.IsPaid ? 0 : callback.Amount,
+            Status = status,
+            LatestTransactionReference = callback.Reference,
+            LatestTransactionDescription = callback.Description,
+            ResponseCode = callback.Code,
+            RawResponse = callback.RawBody ?? string.Empty,
+        };
+    }
+
+    private static PaymentReconciliationErrorCode ValidateLocalSnapshot(
+        PaymentTransaction? transaction,
+        long orderCode,
+        Guid currentUserId)
+    {
+        if (transaction is null
+            || transaction.IsDeleted
+            || transaction.Payment is null
+            || transaction.Payment.IsDeleted
+            || transaction.Payment.UserSubscription is null
+            || transaction.Payment.UserSubscription.IsDeleted
+            || transaction.Payment.UserSubscription.Plan is null
+            || transaction.Payment.UserSubscription.Plan.IsDeleted)
+        {
+            return PaymentReconciliationErrorCode.NotFound;
+        }
+
+        if (!IsPayOsTransaction(transaction))
+        {
+            return PaymentReconciliationErrorCode.Conflict;
+        }
+
         var payment = transaction.Payment;
-        var subscription = payment?.UserSubscription;
-        if (payment is null || subscription is null)
+        var subscription = payment.UserSubscription;
+        if (transaction.UserId != currentUserId
+            || payment.UserId != currentUserId
+            || subscription.UserId != currentUserId)
         {
-            return;
+            return PaymentReconciliationErrorCode.Forbidden;
         }
 
-        if (payment.Status == PaymentStatus.Paid)
+        var expectedReference = orderCode.ToString(CultureInfo.InvariantCulture);
+        if (!string.Equals(
+                transaction.TransactionReference,
+                expectedReference,
+                StringComparison.Ordinal))
         {
-            return;
+            return PaymentReconciliationErrorCode.OrderCodeMismatch;
         }
 
-        var utcNow = DateTime.UtcNow;
-        payment.Status = PaymentStatus.Paid;
-        payment.PaidAt = utcNow;
-        payment.UpdatedAt = utcNow;
+        if (transaction.PaymentId != payment.Id
+            || transaction.UserSubscriptionId != subscription.Id
+            || payment.UserSubscriptionId != subscription.Id)
+        {
+            return PaymentReconciliationErrorCode.Conflict;
+        }
+
+        return LocalAmountsMatch(transaction, payment)
+            ? PaymentReconciliationErrorCode.None
+            : PaymentReconciliationErrorCode.AmountMismatch;
+    }
+
+    private static PaymentReconciliationErrorCode ValidateProviderAgainstLocalSnapshot(
+        PayOSPaymentLinkResult providerState,
+        PaymentTransaction transaction,
+        long orderCode)
+    {
+        if (providerState.OrderCode != orderCode)
+        {
+            return PaymentReconciliationErrorCode.OrderCodeMismatch;
+        }
+
+        var payment = transaction.Payment!;
+        if (!TryConvertWholeVnd(payment.Amount, out var paymentAmount)
+            || !TryConvertWholeVnd(transaction.Amount, out var transactionAmount)
+            || providerState.Amount != paymentAmount
+            || providerState.Amount != transactionAmount)
+        {
+            return PaymentReconciliationErrorCode.AmountMismatch;
+        }
+
+        if (providerState.Status == PaidStatus
+            && providerState.AmountPaid < providerState.Amount)
+        {
+            return PaymentReconciliationErrorCode.AmountMismatch;
+        }
+
+        return PaymentReconciliationErrorCode.None;
+    }
+
+    private static PaymentReconciliationErrorCode ValidateLockedTransaction(
+        PaymentTransaction? transaction,
+        long orderCode,
+        PayOSPaymentLinkResult providerState,
+        Guid? currentUserId)
+    {
+        if (transaction is null
+            || transaction.IsDeleted
+            || transaction.Payment is null
+            || transaction.Payment.IsDeleted
+            || transaction.Payment.UserSubscription is null
+            || transaction.Payment.UserSubscription.IsDeleted
+            || transaction.Payment.UserSubscription.Plan is null
+            || transaction.Payment.UserSubscription.Plan.IsDeleted)
+        {
+            return PaymentReconciliationErrorCode.NotFound;
+        }
+
+        if (!IsPayOsTransaction(transaction))
+        {
+            return PaymentReconciliationErrorCode.Conflict;
+        }
+
+        var payment = transaction.Payment;
+        var subscription = payment.UserSubscription;
+        if (currentUserId.HasValue
+            && (transaction.UserId != currentUserId.Value
+                || payment.UserId != currentUserId.Value
+                || subscription.UserId != currentUserId.Value))
+        {
+            return PaymentReconciliationErrorCode.Forbidden;
+        }
+
+        if (providerState.OrderCode != orderCode
+            || !string.Equals(
+                transaction.TransactionReference,
+                orderCode.ToString(CultureInfo.InvariantCulture),
+                StringComparison.Ordinal))
+        {
+            return PaymentReconciliationErrorCode.OrderCodeMismatch;
+        }
+
+        if (transaction.PaymentId != payment.Id
+            || transaction.UserSubscriptionId != subscription.Id
+            || payment.UserSubscriptionId != subscription.Id)
+        {
+            return PaymentReconciliationErrorCode.Conflict;
+        }
+
+        var amountError = ValidateProviderAgainstLocalSnapshot(
+            providerState,
+            transaction,
+            orderCode);
+        if (amountError != PaymentReconciliationErrorCode.None)
+        {
+            return amountError;
+        }
+
+        return payment.Status == PaymentStatus.Refunded
+            ? PaymentReconciliationErrorCode.Conflict
+            : PaymentReconciliationErrorCode.None;
+    }
+
+    private static bool LocalAmountsMatch(
+        PaymentTransaction transaction,
+        Payment payment)
+    {
+        return TryConvertWholeVnd(payment.Amount, out var paymentAmount)
+            && TryConvertWholeVnd(transaction.Amount, out var transactionAmount)
+            && paymentAmount == transactionAmount;
+    }
+
+    private static bool TryConvertWholeVnd(decimal amount, out long value)
+    {
+        value = 0;
+        if (amount <= 0
+            || amount != decimal.Truncate(amount)
+            || amount > long.MaxValue)
+        {
+            return false;
+        }
+
+        value = decimal.ToInt64(amount);
+        return true;
+    }
+
+    private static bool HasCompletePaidState(PaymentTransaction transaction)
+    {
+        var payment = transaction.Payment!;
+        var subscription = payment.UserSubscription;
+
+        return payment.Status == PaymentStatus.Paid
+            && payment.PaidAt.HasValue
+            && string.Equals(transaction.Status, "Paid", StringComparison.Ordinal)
+            && transaction.PaidAt.HasValue
+            && transaction.ProcessedAt.HasValue
+            && subscription.Status == SubscriptionStatus.Active
+            && subscription.StartDate.HasValue
+            && subscription.EndDate.HasValue;
+    }
+
+    private static PaymentReconciliationErrorCode ApplyVerifiedPayOSState(
+        PaymentTransaction transaction,
+        PayOSPaymentLinkResult providerState,
+        DateTime utcNow)
+    {
+        if (!IsSupportedProviderStatus(providerState.Status))
+        {
+            return PaymentReconciliationErrorCode.ProviderInvalidResponse;
+        }
+
+        UpdateProviderAudit(transaction, providerState, utcNow);
+
+        switch (providerState.Status)
+        {
+            case PaidStatus:
+                ApplyPaidState(transaction, utcNow);
+                break;
+            case CancelledStatus:
+                ApplyCancelledState(transaction, utcNow);
+                break;
+            case ExpiredStatus:
+            case FailedStatus:
+                ApplyFailedState(transaction, utcNow);
+                break;
+            case PendingStatus:
+            case ProcessingStatus:
+            case UnderpaidStatus:
+                break;
+        }
+
+        return PaymentReconciliationErrorCode.None;
+    }
+
+    private static bool IsSupportedProviderStatus(string status)
+    {
+        return status is PendingStatus
+            or ProcessingStatus
+            or PaidStatus
+            or CancelledStatus
+            or UnderpaidStatus
+            or ExpiredStatus
+            or FailedStatus;
+    }
+
+    private static bool IsPayOsTransaction(PaymentTransaction transaction)
+    {
+        return string.Equals(
+            transaction.PaymentProvider,
+            PayOsProvider,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void UpdateProviderAudit(
+        PaymentTransaction transaction,
+        PayOSPaymentLinkResult providerState,
+        DateTime utcNow)
+    {
+        var providerTransactionId =
+            providerState.LatestTransactionReference
+            ?? providerState.PaymentLinkId;
+        if (!string.IsNullOrWhiteSpace(providerTransactionId))
+        {
+            transaction.ProviderTransactionId = providerTransactionId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(providerState.ResponseCode))
+        {
+            transaction.ProviderResponseCode = providerState.ResponseCode;
+        }
+
+        if (!string.IsNullOrWhiteSpace(providerState.LatestTransactionDescription))
+        {
+            transaction.OrderInfo = providerState.LatestTransactionDescription;
+        }
+
+        if (!string.IsNullOrWhiteSpace(providerState.RawResponse))
+        {
+            transaction.RawResponse = providerState.RawResponse;
+        }
+
+        transaction.ProviderTransactionStatus = providerState.Status;
+        transaction.UpdatedAt = utcNow;
+    }
+
+    private static void ApplyPaidState(
+        PaymentTransaction transaction,
+        DateTime utcNow)
+    {
+        var payment = transaction.Payment!;
+        var subscription = payment.UserSubscription;
+        var paidAt = payment.PaidAt ?? transaction.PaidAt ?? utcNow;
+
+        if (payment.Status != PaymentStatus.Paid || !payment.PaidAt.HasValue)
+        {
+            payment.Status = PaymentStatus.Paid;
+            payment.PaidAt = paidAt;
+            payment.UpdatedAt = utcNow;
+        }
 
         transaction.Status = "Paid";
-        transaction.PaidAt = utcNow;
-        transaction.ProcessedAt = utcNow;
-        transaction.ProviderTransactionId = providerTransactionId ?? transaction.ProviderTransactionId;
-        transaction.ProviderResponseCode = responseCode ?? transaction.ProviderResponseCode;
-        transaction.ProviderTransactionStatus = providerStatus;
-        transaction.OrderInfo = orderInfo ?? transaction.OrderInfo;
-        transaction.RawResponse = rawResponse ?? transaction.RawResponse;
-        transaction.UpdatedAt = utcNow;
+        transaction.PaidAt ??= paidAt;
+        transaction.ProcessedAt ??= utcNow;
 
-        var durationInDays = subscription.Plan?.DurationInDays ?? 0;
+        var startDate = subscription.StartDate ?? paidAt;
+        var durationInDays = subscription.Plan.DurationInDays;
         if (durationInDays <= 0)
         {
             durationInDays = 1;
         }
 
-        subscription.Status = SubscriptionStatus.Active;
-        subscription.StartDate = utcNow;
-        subscription.EndDate = utcNow.AddDays(durationInDays);
-        subscription.UpdatedAt = utcNow;
-
-        _unitOfWork.Payments.Update(payment);
-        _unitOfWork.PaymentTransactions.Update(transaction);
-        _unitOfWork.UserSubscriptions.Update(subscription);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        _ = callback;
+        if (subscription.Status != SubscriptionStatus.Active
+            || !subscription.StartDate.HasValue
+            || !subscription.EndDate.HasValue)
+        {
+            subscription.Status = SubscriptionStatus.Active;
+            subscription.StartDate = startDate;
+            subscription.EndDate ??= startDate.AddDays(durationInDays);
+            subscription.UpdatedAt = utcNow;
+        }
     }
 
-    private async Task MarkPaymentCancelledAsync(
+    private static void ApplyCancelledState(
         PaymentTransaction transaction,
-        PayOSWebhookResult? callback,
-        string providerStatus,
-        string? responseCode,
-        string? providerTransactionId,
-        string? rawResponse,
-        CancellationToken cancellationToken)
+        DateTime utcNow)
     {
-        var payment = transaction.Payment;
-        var subscription = payment?.UserSubscription;
-        if (payment is null || subscription is null)
+        var payment = transaction.Payment!;
+        var subscription = payment.UserSubscription;
+        if (payment.Status == PaymentStatus.Paid
+            || subscription.Status == SubscriptionStatus.Active)
         {
             return;
         }
 
-        if (payment.Status == PaymentStatus.Paid)
-        {
-            return;
-        }
-
-        var utcNow = DateTime.UtcNow;
         payment.Status = PaymentStatus.Cancelled;
         payment.UpdatedAt = utcNow;
-
         transaction.Status = "Cancelled";
-        transaction.ProcessedAt = utcNow;
-        transaction.ProviderTransactionId = providerTransactionId ?? transaction.ProviderTransactionId;
-        transaction.ProviderResponseCode = responseCode ?? transaction.ProviderResponseCode;
-        transaction.ProviderTransactionStatus = providerStatus;
-        transaction.RawResponse = rawResponse ?? transaction.RawResponse;
-        transaction.UpdatedAt = utcNow;
-
+        transaction.ProcessedAt ??= utcNow;
         subscription.Status = SubscriptionStatus.Cancelled;
         subscription.UpdatedAt = utcNow;
+    }
 
-        _unitOfWork.Payments.Update(payment);
-        _unitOfWork.PaymentTransactions.Update(transaction);
-        _unitOfWork.UserSubscriptions.Update(subscription);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+    private static void ApplyFailedState(
+        PaymentTransaction transaction,
+        DateTime utcNow)
+    {
+        var payment = transaction.Payment!;
+        var subscription = payment.UserSubscription;
+        if (payment.Status == PaymentStatus.Paid
+            || subscription.Status == SubscriptionStatus.Active)
+        {
+            return;
+        }
 
-        _ = callback;
+        payment.Status = PaymentStatus.Failed;
+        payment.UpdatedAt = utcNow;
+        transaction.Status = "Failed";
+        transaction.ProcessedAt ??= utcNow;
+        subscription.Status = SubscriptionStatus.Cancelled;
+        subscription.UpdatedAt = utcNow;
+    }
+
+    private async Task<PaymentReconciliationResult<PayOSPaymentStatusResponse>>
+        RollbackReconciliationFailureAsync(
+            PaymentReconciliationErrorCode error,
+            string message)
+    {
+        await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+        return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(error, message);
+    }
+
+    private static PaymentReconciliationErrorCode MapLookupError(
+        PayOSPaymentLinkLookupError error)
+    {
+        return error switch
+        {
+            PayOSPaymentLinkLookupError.NotFound =>
+                PaymentReconciliationErrorCode.ProviderNotFound,
+            PayOSPaymentLinkLookupError.RateLimited =>
+                PaymentReconciliationErrorCode.ProviderRateLimited,
+            PayOSPaymentLinkLookupError.Unavailable =>
+                PaymentReconciliationErrorCode.ProviderUnavailable,
+            _ => PaymentReconciliationErrorCode.ProviderInvalidResponse,
+        };
+    }
+
+    private static string BuildReconciliationFailureMessage(
+        PaymentReconciliationErrorCode error)
+    {
+        return error switch
+        {
+            PaymentReconciliationErrorCode.Unauthenticated =>
+                "Authentication is required.",
+            PaymentReconciliationErrorCode.InvalidRequest =>
+                "Invalid payment reconciliation request.",
+            PaymentReconciliationErrorCode.NotFound =>
+                "Payment transaction was not found.",
+            PaymentReconciliationErrorCode.Forbidden =>
+                "Payment transaction does not belong to the current user.",
+            PaymentReconciliationErrorCode.ProviderNotFound =>
+                "payOS payment link was not found.",
+            PaymentReconciliationErrorCode.ProviderRateLimited =>
+                "payOS rate limit was reached. Please try again later.",
+            PaymentReconciliationErrorCode.ProviderUnavailable =>
+                "payOS is temporarily unavailable.",
+            PaymentReconciliationErrorCode.ProviderInvalidResponse =>
+                "payOS returned an invalid payment state.",
+            PaymentReconciliationErrorCode.OrderCodeMismatch =>
+                "Payment order code does not match.",
+            PaymentReconciliationErrorCode.AmountMismatch =>
+                "Payment amount does not match.",
+            _ => "Payment state is inconsistent.",
+        };
     }
 
     private static bool TryGetOrderCode(
@@ -380,18 +871,25 @@ public sealed class PaymentService : IPaymentService
 
     private static PayOSPaymentStatusResponse BuildPaymentStatusResponse(
         PaymentTransaction transaction,
-        long orderCode)
+        long orderCode,
+        PayOSPaymentLinkResult? providerState = null)
     {
         var payment = transaction.Payment;
         var subscription = payment?.UserSubscription ?? transaction.UserSubscription;
         var paymentStatus = payment?.Status.ToString() ?? transaction.Status ?? string.Empty;
         var subscriptionStatus = subscription?.Status.ToString() ?? string.Empty;
+        var effectiveProviderStatus =
+            providerState?.Status
+            ?? transaction.ProviderTransactionStatus;
         var isPaid = payment?.Status == PaymentStatus.Paid;
         var isActive = subscription?.Status == SubscriptionStatus.Active;
         var isCancelled =
             payment?.Status == PaymentStatus.Cancelled
-            || subscription?.Status == SubscriptionStatus.Cancelled
-            || string.Equals(transaction.Status, "Cancelled", StringComparison.OrdinalIgnoreCase);
+            || string.Equals(transaction.Status, "Cancelled", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(
+                effectiveProviderStatus,
+                CancelledStatus,
+                StringComparison.OrdinalIgnoreCase);
 
         return new PayOSPaymentStatusResponse
         {
@@ -400,10 +898,16 @@ public sealed class PaymentService : IPaymentService
             SubscriptionId = transaction.UserSubscriptionId,
             PaymentStatus = paymentStatus,
             SubscriptionStatus = subscriptionStatus,
+            ProviderStatus = effectiveProviderStatus,
+            AmountPaid = providerState?.AmountPaid,
+            AmountRemaining = providerState?.AmountRemaining,
             IsPaid = isPaid,
             IsActive = isActive,
             IsCancelled = isCancelled,
-            Message = BuildPaymentStatusMessage(payment?.Status, subscription?.Status),
+            Message = BuildPaymentStatusMessage(
+                payment?.Status,
+                subscription?.Status,
+                effectiveProviderStatus),
         };
     }
 
@@ -484,7 +988,8 @@ public sealed class PaymentService : IPaymentService
 
     private static string BuildPaymentStatusMessage(
         PaymentStatus? paymentStatus,
-        SubscriptionStatus? subscriptionStatus)
+        SubscriptionStatus? subscriptionStatus,
+        string? providerStatus = null)
     {
         if (paymentStatus == PaymentStatus.Paid && subscriptionStatus == SubscriptionStatus.Active)
         {
@@ -496,9 +1001,39 @@ public sealed class PaymentService : IPaymentService
             return "Payment is paid, but subscription is not active.";
         }
 
+        if (string.Equals(providerStatus, UnderpaidStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Payment amount received by payOS is insufficient.";
+        }
+
+        if (string.Equals(providerStatus, ProcessingStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Payment is processing with payOS.";
+        }
+
+        if (string.Equals(providerStatus, PendingStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Payment is pending verification with payOS.";
+        }
+
+        if (string.Equals(providerStatus, ExpiredStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Payment link expired before payment was completed.";
+        }
+
+        if (string.Equals(providerStatus, FailedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Payment verification failed at payOS.";
+        }
+
+        if (string.Equals(providerStatus, CancelledStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Payment was cancelled.";
+        }
+
         return paymentStatus switch
         {
-            PaymentStatus.Pending => "Payment is pending. Waiting for payOS webhook.",
+            PaymentStatus.Pending => "Payment is pending verification with payOS.",
             PaymentStatus.Cancelled => "Payment was cancelled.",
             PaymentStatus.Failed => "Payment failed.",
             PaymentStatus.Refunded => "Payment was refunded.",
