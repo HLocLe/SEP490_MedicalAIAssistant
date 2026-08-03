@@ -82,13 +82,8 @@ public sealed class AuthService : IAuthService
             return (false, addRoleResult.Errors.Select(e => e.Description), null);
         }
 
-        return (true, Array.Empty<string>(), new AuthResponse
-        {
-            Email = user.Email ?? string.Empty,
-            UserId = user.Id,
-            ExpiresAtUtc = default,
-            FirstLogin = true,
-        });
+        var result = await GenerateAuthResponseAsync(user, cancellationToken);
+        return (true, Array.Empty<string>(), result);
     }
     //
      public async Task<(bool Succeeded, IEnumerable<string> Errors, AuthResponse? Result)> RegisterForStaffAsync(
