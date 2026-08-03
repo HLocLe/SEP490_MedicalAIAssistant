@@ -1,4 +1,6 @@
 using System.Text.Json;
+using MedMateAI.Application.Common;
+using MedMateAI.Application.DTOs.SubscriptionPlanQuotas.Responses;
 using MedMateAI.Application.DTOs.SubscriptionPlans.Requests;
 using MedMateAI.Application.DTOs.SubscriptionPlans.Responses;
 using MedMateAI.Application.IService;
@@ -11,10 +13,6 @@ namespace MedMateAI.Application.Service;
 
 public sealed class SubscriptionPlanService : ISubscriptionPlanService
 {
-    private const string AllPlansCacheKey = "subscription-plans:all";
-    private const string ActivePlansCacheKey = "subscription-plans:active";
-    private const string PlanCacheKeyPrefix = "subscription-plans:";
-
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
     private static readonly DistributedCacheEntryOptions CacheOptions = new()
     {
@@ -24,21 +22,29 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
     private readonly IGenericRepository<SubscriptionPlan> _subscriptionPlanRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDistributedCache _cache;
+    private readonly ISubscriptionPlanQuotaService _quotaService;
+    private readonly ISubscriptionPlanCacheInvalidator _cacheInvalidator;
 
     public SubscriptionPlanService(
         IGenericRepository<SubscriptionPlan> subscriptionPlanRepository,
         IUnitOfWork unitOfWork,
-        IDistributedCache cache)
+        IDistributedCache cache,
+        ISubscriptionPlanQuotaService quotaService,
+        ISubscriptionPlanCacheInvalidator cacheInvalidator)
     {
         _subscriptionPlanRepository = subscriptionPlanRepository;
         _unitOfWork = unitOfWork;
         _cache = cache;
+        _quotaService = quotaService;
+        _cacheInvalidator = cacheInvalidator;
     }
 
     public async Task<IReadOnlyList<SubscriptionPlanResponse>> ListSubscriptionPlansAsync(
         CancellationToken cancellationToken = default)
     {
-        var cached = await _cache.GetStringAsync(AllPlansCacheKey, cancellationToken);
+        var cached = await _cache.GetStringAsync(
+            SubscriptionPlanCacheKeys.All,
+            cancellationToken);
         if (!string.IsNullOrWhiteSpace(cached))
         {
             var cachedResponse = JsonSerializer.Deserialize<List<SubscriptionPlanResponse>>(cached);
@@ -50,15 +56,20 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
 
         var entities = await _subscriptionPlanRepository.GetAllAsync(cancellationToken);
 
-        var response = entities
+        var plans = entities
             .Where(x => !x.IsDeleted)
             .OrderBy(x => x.Price)
             .ThenBy(x => x.PlanName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-            .Select(MapToResponse)
+            .ToList();
+        var quotasByPlan = await _quotaService.GetActivePlanQuotasAsync(
+            plans.Select(plan => plan.Id).ToArray(),
+            cancellationToken);
+        var response = plans
+            .Select(plan => MapToResponse(plan, GetQuotas(quotasByPlan, plan.Id)))
             .ToList();
 
         await _cache.SetStringAsync(
-            AllPlansCacheKey,
+            SubscriptionPlanCacheKeys.All,
             JsonSerializer.Serialize(response),
             CacheOptions,
             cancellationToken);
@@ -69,7 +80,9 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
     public async Task<IReadOnlyList<SubscriptionPlanResponse>> ListActiveSubscriptionPlansAsync(
         CancellationToken cancellationToken = default)
     {
-        var cached = await _cache.GetStringAsync(ActivePlansCacheKey, cancellationToken);
+        var cached = await _cache.GetStringAsync(
+            SubscriptionPlanCacheKeys.Active,
+            cancellationToken);
         if (!string.IsNullOrWhiteSpace(cached))
         {
             var cachedResponse = JsonSerializer.Deserialize<List<SubscriptionPlanResponse>>(cached);
@@ -81,15 +94,20 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
 
         var entities = await _subscriptionPlanRepository.GetAllAsync(cancellationToken);
 
-        var response = entities
+        var plans = entities
             .Where(x => !x.IsDeleted && x.IsActive)
             .OrderBy(x => x.Price)
             .ThenBy(x => x.PlanName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-            .Select(MapToResponse)
+            .ToList();
+        var quotasByPlan = await _quotaService.GetActivePlanQuotasAsync(
+            plans.Select(plan => plan.Id).ToArray(),
+            cancellationToken);
+        var response = plans
+            .Select(plan => MapToResponse(plan, GetQuotas(quotasByPlan, plan.Id)))
             .ToList();
 
         await _cache.SetStringAsync(
-            ActivePlansCacheKey,
+            SubscriptionPlanCacheKeys.Active,
             JsonSerializer.Serialize(response),
             CacheOptions,
             cancellationToken);
@@ -106,7 +124,7 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
             return null;
         }
 
-        var cacheKey = GetPlanCacheKey(id);
+        var cacheKey = SubscriptionPlanCacheKeys.ForPlan(id);
         var cached = await _cache.GetStringAsync(cacheKey, cancellationToken);
         if (!string.IsNullOrWhiteSpace(cached))
         {
@@ -123,7 +141,10 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
             return null;
         }
 
-        var response = MapToResponse(entity);
+        var quotasByPlan = await _quotaService.GetActivePlanQuotasAsync(
+            new[] { entity.Id },
+            cancellationToken);
+        var response = MapToResponse(entity, GetQuotas(quotasByPlan, entity.Id));
 
         await _cache.SetStringAsync(
             cacheKey,
@@ -189,9 +210,9 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
 
         _subscriptionPlanRepository.Add(entity);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        await InvalidateCachesAsync(entity.Id, cancellationToken);
+        await _cacheInvalidator.InvalidateAsync(entity.Id, CancellationToken.None);
 
-        return MapToResponse(entity);
+        return MapToResponse(entity, Array.Empty<SubscriptionPlanQuotaResponse>());
     }
 
     public async Task<SubscriptionPlanResponse?> UpdateSubscriptionPlanAsync(
@@ -282,9 +303,12 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
 
         _subscriptionPlanRepository.Update(entity);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        await InvalidateCachesAsync(id, cancellationToken);
+        await _cacheInvalidator.InvalidateAsync(id, CancellationToken.None);
 
-        return MapToResponse(entity);
+        var quotasByPlan = await _quotaService.GetActivePlanQuotasAsync(
+            new[] { entity.Id },
+            CancellationToken.None);
+        return MapToResponse(entity, GetQuotas(quotasByPlan, entity.Id));
     }
 
     public async Task<SubscriptionPlanResponse?> UpdateSubscriptionPlanStatusAsync(
@@ -313,9 +337,12 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
 
         _subscriptionPlanRepository.Update(entity);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        await InvalidateCachesAsync(id, cancellationToken);
+        await _cacheInvalidator.InvalidateAsync(id, CancellationToken.None);
 
-        return MapToResponse(entity);
+        var quotasByPlan = await _quotaService.GetActivePlanQuotasAsync(
+            new[] { entity.Id },
+            CancellationToken.None);
+        return MapToResponse(entity, GetQuotas(quotasByPlan, entity.Id));
     }
 
     public async Task<bool> DeleteSubscriptionPlanAsync(
@@ -340,19 +367,14 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
 
         _subscriptionPlanRepository.Update(entity);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-        await InvalidateCachesAsync(id, cancellationToken);
+        await _cacheInvalidator.InvalidateAsync(id, CancellationToken.None);
 
         return true;
     }
 
-    private async Task InvalidateCachesAsync(Guid id, CancellationToken cancellationToken)
-    {
-        await _cache.RemoveAsync(AllPlansCacheKey, cancellationToken);
-        await _cache.RemoveAsync(ActivePlansCacheKey, cancellationToken);
-        await _cache.RemoveAsync(GetPlanCacheKey(id), cancellationToken);
-    }
-
-    private static SubscriptionPlanResponse MapToResponse(SubscriptionPlan entity)
+    private static SubscriptionPlanResponse MapToResponse(
+        SubscriptionPlan entity,
+        IReadOnlyList<SubscriptionPlanQuotaResponse> quotas)
     {
         return new SubscriptionPlanResponse
         {
@@ -362,6 +384,7 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
             DurationInDays = entity.DurationInDays,
             FeatureLimitJson = entity.FeatureLimitJson,
             IsActive = entity.IsActive,
+            Quotas = quotas,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
         };
@@ -390,8 +413,12 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
         return string.IsNullOrWhiteSpace(json) ? null : json.Trim();
     }
 
-    private static string GetPlanCacheKey(Guid id)
+    private static IReadOnlyList<SubscriptionPlanQuotaResponse> GetQuotas(
+        IReadOnlyDictionary<Guid, IReadOnlyList<SubscriptionPlanQuotaResponse>> quotasByPlan,
+        Guid planId)
     {
-        return $"{PlanCacheKeyPrefix}{id}";
+        return quotasByPlan.TryGetValue(planId, out var quotas)
+            ? quotas
+            : Array.Empty<SubscriptionPlanQuotaResponse>();
     }
 }

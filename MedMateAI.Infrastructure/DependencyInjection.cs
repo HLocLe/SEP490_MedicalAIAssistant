@@ -72,6 +72,9 @@ public static class DependencyInjection
         services.AddScoped<IDoctorAccountRegistrationService, DoctorAccountRegistrationService>();
         services.AddScoped<IFeedbackReviewService, FeedbackReviewService>();
         services.AddScoped<IPatientProfileService, PatientProfileService>();
+        services.AddScoped<ISubscriptionPlanQuotaRepository, SubscriptionPlanQuotaRepository>();
+        services.AddScoped<ISubscriptionPlanQuotaService, SubscriptionPlanQuotaService>();
+        services.AddScoped<ISubscriptionPlanCacheInvalidator, SubscriptionPlanCacheInvalidator>();
         services.AddScoped<ISubscriptionPlanService, SubscriptionPlanService>();
         services.AddScoped<IAIConfigService, AIConfigService>();
         services.AddScoped<IWebChatbotService, WebChatbotService>();
