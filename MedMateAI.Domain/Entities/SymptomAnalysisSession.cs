@@ -18,10 +18,6 @@ public sealed class SymptomAnalysisSession : BaseEntity
 
     public DateTime? CompletedAt { get; set; }
 
-    public string? ChapterCode { get; set; }
-
-    public IcdChapter? IcdChapter { get; set; }
-
     public ICollection<SessionSymptom> SessionSymptoms { get; set; } = new List<SessionSymptom>();
 
     public ICollection<SessionClinicalQuestionAnswer> ClinicalQuestionAnswers { get; set; } =

@@ -234,7 +234,6 @@ public sealed class IcdChapterService : IIcdChapterService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
-            var sessionIds = await _unitOfWork.SymptomAnalysisSessions.DetachChapterCodeAsync(oldCode, cancellationToken);
             var departmentIds = await _unitOfWork.MedicalDepartments.DetachChapterCodeAsync(oldCode, cancellationToken);
 
             await _unitOfWork.ClinicalQuestions.UpdateChapterCodeByChapterIdAsync(chapter.Id, newCode, cancellationToken);
@@ -242,7 +241,6 @@ public sealed class IcdChapterService : IIcdChapterService
             await _unitOfWork.IcdChapters.UpdateChapterCodeByIdAsync(chapter.Id, newCode, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            await _unitOfWork.SymptomAnalysisSessions.AttachChapterCodeAsync(sessionIds, newCode, cancellationToken);
             await _unitOfWork.MedicalDepartments.AttachChapterCodeAsync(departmentIds, newCode, cancellationToken);
 
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
