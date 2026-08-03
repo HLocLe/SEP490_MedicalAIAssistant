@@ -10,7 +10,5 @@ public sealed class IcdChapter : BaseEntity
 
     public ICollection<ClinicalQuestion> ClinicalQuestions { get; set; } = new List<ClinicalQuestion>();
 
-    public ICollection<SymptomAnalysisSession> SymptomAnalysisSessions { get; set; } = new List<SymptomAnalysisSession>();
-
     public ICollection<MedicalDepartment> MedicalDepartments { get; set; } = new List<MedicalDepartment>();
 }

@@ -44,19 +44,12 @@ public sealed class IcdChapterConfiguration : IEntityTypeConfiguration<IcdChapte
         builder.HasMany(x => x.ClinicalQuestions)
             .WithOne(x => x.IcdChapter)
             .HasForeignKey(x => x.ChapterId)
-        
-            .OnDelete(DeleteBehavior.Restrict);
-
-        builder.HasMany(x => x.SymptomAnalysisSessions)
-            .WithOne(x => x.IcdChapter)
-            .HasForeignKey(x => x.ChapterCode)
-           
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasMany(x => x.MedicalDepartments)
             .WithOne(x => x.IcdChapter)
             .HasForeignKey(x => x.ChapterCode)
-           
+            .HasPrincipalKey(x => x.ChapterCode)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }
