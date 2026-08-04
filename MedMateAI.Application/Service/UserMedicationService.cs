@@ -386,7 +386,6 @@ public sealed class UserMedicationService : IUserMedicationService
 
             medication.ReminderTimes.Add(new UserMedicationReminderTime
             {
-                Id = Guid.NewGuid(),
                 UserMedicationId = medication.Id,
                 TimeOfDay = requestedTime,
                 IsActive = true,
