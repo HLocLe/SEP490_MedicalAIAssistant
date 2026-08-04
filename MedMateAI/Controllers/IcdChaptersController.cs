@@ -10,6 +10,9 @@ namespace MedMateAI.Controllers;
 [Route("api/icd-chapters")]
 public sealed class IcdChaptersController : ControllerBase
 {
+    private const string InvalidIdMessage = "Id ICD chapter không hợp lệ";
+    private const string NotFoundMessage = "Không tìm thấy ICD chapter";
+
     private readonly IIcdChapterService _icdChapterService;
 
     public IcdChaptersController(IIcdChapterService icdChapterService)
@@ -30,12 +33,7 @@ public sealed class IcdChaptersController : ControllerBase
             search,
             cancellationToken);
 
-        return Ok(new ApiResponse<PagedResponse<IcdChapterResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(Success(data, "OK"));
     }
 
     [HttpGet("{id}")]
@@ -46,29 +44,16 @@ public sealed class IcdChaptersController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IcdChapterResponse>
-            {
-                Success = false,
-                Message = "Id ICD chapter không hợp lệ",
-            });
+            return BadRequest(Fail<IcdChapterResponse>(InvalidIdMessage));
         }
 
         var data = await _icdChapterService.GetIcdChapterByIdAsync(id, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<IcdChapterResponse>
-            {
-                Success = false,
-                Message = "Không tìm thấy ICD chapter",
-            });
+            return NotFound(Fail<IcdChapterResponse>(NotFoundMessage));
         }
 
-        return Ok(new ApiResponse<IcdChapterResponse>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(Success(data, "OK"));
     }
 
     [HttpPost]
@@ -81,21 +66,10 @@ public sealed class IcdChaptersController : ControllerBase
         var (ok, errors, data) = await _icdChapterService.CreateIcdChapterAsync(request, cancellationToken);
         if (!ok || data is null)
         {
-            var errorList = errors.ToList();
-            return BadRequest(new ApiResponse<IcdChapterResponse>
-            {
-                Success = false,
-                Message = errorList.FirstOrDefault() ?? "Tạo ICD chapter thất bại",
-                Errors = errorList,
-            });
+            return BadRequest(FailFromErrors<IcdChapterResponse>(errors, "Tạo ICD chapter thất bại"));
         }
 
-        return Ok(new ApiResponse<IcdChapterResponse>
-        {
-            Success = true,
-            Message = "Tạo ICD chapter thành công",
-            Data = data,
-        });
+        return Ok(Success(data, "Tạo ICD chapter thành công"));
     }
 
     [HttpPost("bulk")]
@@ -108,20 +82,10 @@ public sealed class IcdChaptersController : ControllerBase
         var (ok, errors, data) = await _icdChapterService.BulkCreateIcdChaptersAsync(request, cancellationToken);
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<IcdChapterResponse>>
-            {
-                Success = false,
-                Message = "Bulk create ICD chapters failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(FailFromErrors<IReadOnlyList<IcdChapterResponse>>(errors, "Bulk create ICD chapters failed."));
         }
 
-        return Ok(new ApiResponse<IReadOnlyList<IcdChapterResponse>>
-        {
-            Success = true,
-            Message = $"{data.Count} ICD chapter(s) created.",
-            Data = data,
-        });
+        return Ok(Success(data, $"{data.Count} ICD chapter(s) created."));
     }
 
     [HttpPut("{id}")]
@@ -135,41 +99,22 @@ public sealed class IcdChaptersController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IcdChapterResponse>
-            {
-                Success = false,
-                Message = "Id ICD chapter không hợp lệ",
-            });
+            return BadRequest(Fail<IcdChapterResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _icdChapterService.UpdateIcdChapterAsync(id, request, cancellationToken);
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<IcdChapterResponse>
-            {
-                Success = false,
-                Message = "Không tìm thấy ICD chapter",
-            });
+            return NotFound(Fail<IcdChapterResponse>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            var errorList = errors.ToList();
-            return BadRequest(new ApiResponse<IcdChapterResponse>
-            {
-                Success = false,
-                Message = errorList.FirstOrDefault() ?? "Cập nhật ICD chapter thất bại",
-                Errors = errorList,
-            });
+            return BadRequest(FailFromErrors<IcdChapterResponse>(errors, "Cập nhật ICD chapter thất bại"));
         }
 
-        return Ok(new ApiResponse<IcdChapterResponse>
-        {
-            Success = true,
-            Message = "Cập nhật ICD chapter thành công",
-            Data = data,
-        });
+        return Ok(Success(data, "Cập nhật ICD chapter thành công"));
     }
 
     [HttpDelete("{id}")]
@@ -180,33 +125,19 @@ public sealed class IcdChaptersController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = "Id ICD chapter không hợp lệ",
-            });
+            return BadRequest(Fail(InvalidIdMessage));
         }
 
         var (ok, notFound, errors) = await _icdChapterService.SoftDeleteIcdChapterAsync(id, cancellationToken);
 
         if (notFound)
         {
-            return NotFound(new ApiResponse
-            {
-                Success = false,
-                Message = "Không tìm thấy ICD chapter",
-            });
+            return NotFound(Fail(NotFoundMessage));
         }
 
         if (!ok)
         {
-            var errorList = errors.ToList();
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = errorList.FirstOrDefault() ?? "Xóa ICD chapter thất bại",
-                Errors = errorList,
-            });
+            return BadRequest(FailFromErrors(errors, "Xóa ICD chapter thất bại"));
         }
 
         return Ok(new ApiResponse
@@ -214,5 +145,46 @@ public sealed class IcdChaptersController : ControllerBase
             Success = true,
             Message = "Xóa ICD chapter thành công",
         });
+    }
+
+    private static ApiResponse<T> Success<T>(T data, string message) => new()
+    {
+        Success = true,
+        Message = message,
+        Data = data,
+    };
+
+    private static ApiResponse Fail(string message) => new()
+    {
+        Success = false,
+        Message = message,
+    };
+
+    private static ApiResponse<T> Fail<T>(string message) => new()
+    {
+        Success = false,
+        Message = message,
+    };
+
+    private static ApiResponse FailFromErrors(IEnumerable<string> errors, string fallbackMessage)
+    {
+        var errorList = errors.ToList();
+        return new ApiResponse
+        {
+            Success = false,
+            Message = errorList.FirstOrDefault() ?? fallbackMessage,
+            Errors = errorList,
+        };
+    }
+
+    private static ApiResponse<T> FailFromErrors<T>(IEnumerable<string> errors, string fallbackMessage)
+    {
+        var errorList = errors.ToList();
+        return new ApiResponse<T>
+        {
+            Success = false,
+            Message = errorList.FirstOrDefault() ?? fallbackMessage,
+            Errors = errorList,
+        };
     }
 }

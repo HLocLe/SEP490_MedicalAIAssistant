@@ -53,29 +53,16 @@ public sealed class AIConfigsController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(taskType))
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "TaskType là bắt buộc",
-            });
+            return BadRequest(Fail("TaskType là bắt buộc"));
         }
 
         var data = await _aiConfigService.GetActiveAIConfigByTaskTypeAsync(taskType, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Không tìm thấy AI config",
-            });
+            return NotFound(Fail("Không tìm thấy AI config"));
         }
 
-        return Ok(new ApiResponse<AIConfigResponse>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(Success(data, "OK"));
     }
 
     [HttpGet("{id:guid}")]
@@ -86,29 +73,16 @@ public sealed class AIConfigsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Id AI config không hợp lệ",
-            });
+            return BadRequest(Fail("Id AI config không hợp lệ"));
         }
 
         var data = await _aiConfigService.GetAIConfigByIdAsync(id, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Không tìm thấy AI config",
-            });
+            return NotFound(Fail("Không tìm thấy AI config"));
         }
 
-        return Ok(new ApiResponse<AIConfigResponse>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(Success(data, "OK"));
     }
 
     [HttpPost]
@@ -120,42 +94,17 @@ public sealed class AIConfigsController : ControllerBase
     {
         if (request is null)
         {
-            const string message = "Request body là bắt buộc";
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = message,
-                Errors = new List<string> { message },
-            });
+            return BadRequest(Fail("Request body là bắt buộc", includeInErrors: true));
         }
 
         try
         {
             var data = await _aiConfigService.CreateAIConfigAsync(request, cancellationToken);
-            return Ok(new ApiResponse<AIConfigResponse>
-            {
-                Success = true,
-                Message = "Tạo AI config thành công",
-                Data = data,
-            });
+            return Ok(Success(data, "Tạo AI config thành công"));
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = ex.Message,
-                Errors = new List<string> { ex.Message },
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = ex.Message,
-                Errors = new List<string> { ex.Message },
-            });
+            return BadRequest(Fail(ex.Message, includeInErrors: true));
         }
     }
 
@@ -170,22 +119,12 @@ public sealed class AIConfigsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Id AI config không hợp lệ",
-            });
+            return BadRequest(Fail("Id AI config không hợp lệ"));
         }
 
         if (request is null)
         {
-            const string message = "Request body là bắt buộc";
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = message,
-                Errors = new List<string> { message },
-            });
+            return BadRequest(Fail("Request body là bắt buộc", includeInErrors: true));
         }
 
         try
@@ -193,37 +132,14 @@ public sealed class AIConfigsController : ControllerBase
             var data = await _aiConfigService.UpdateAIConfigAsync(id, request, cancellationToken);
             if (data is null)
             {
-                return NotFound(new ApiResponse<AIConfigResponse>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy AI config",
-                });
+                return NotFound(Fail("Không tìm thấy AI config"));
             }
 
-            return Ok(new ApiResponse<AIConfigResponse>
-            {
-                Success = true,
-                Message = "Cập nhật AI config thành công",
-                Data = data,
-            });
+            return Ok(Success(data, "Cập nhật AI config thành công"));
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = ex.Message,
-                Errors = new List<string> { ex.Message },
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = ex.Message,
-                Errors = new List<string> { ex.Message },
-            });
+            return BadRequest(Fail(ex.Message, includeInErrors: true));
         }
     }
 
@@ -238,22 +154,12 @@ public sealed class AIConfigsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Id AI config không hợp lệ",
-            });
+            return BadRequest(Fail("Id AI config không hợp lệ"));
         }
 
         if (request is null)
         {
-            const string message = "Request body là bắt buộc";
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = message,
-                Errors = new List<string> { message },
-            });
+            return BadRequest(Fail("Request body là bắt buộc", includeInErrors: true));
         }
 
         try
@@ -261,28 +167,14 @@ public sealed class AIConfigsController : ControllerBase
             var data = await _aiConfigService.UpdateAIConfigStatusAsync(id, request, cancellationToken);
             if (data is null)
             {
-                return NotFound(new ApiResponse<AIConfigResponse>
-                {
-                    Success = false,
-                    Message = "Không tìm thấy AI config",
-                });
+                return NotFound(Fail("Không tìm thấy AI config"));
             }
 
-            return Ok(new ApiResponse<AIConfigResponse>
-            {
-                Success = true,
-                Message = "Cập nhật trạng thái AI config thành công",
-                Data = data,
-            });
+            return Ok(Success(data, "Cập nhật trạng thái AI config thành công"));
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = ex.Message,
-                Errors = new List<string> { ex.Message },
-            });
+            return BadRequest(Fail(ex.Message, includeInErrors: true));
         }
     }
 
@@ -319,4 +211,18 @@ public sealed class AIConfigsController : ControllerBase
             Data = true,
         });
     }
+
+    private static ApiResponse<AIConfigResponse> Success(AIConfigResponse data, string message) => new()
+    {
+        Success = true,
+        Message = message,
+        Data = data,
+    };
+
+    private static ApiResponse<AIConfigResponse> Fail(string message, bool includeInErrors = false) => new()
+    {
+        Success = false,
+        Message = message,
+        Errors = includeInErrors ? new List<string> { message } : new List<string>(),
+    };
 }

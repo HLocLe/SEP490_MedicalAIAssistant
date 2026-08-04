@@ -10,6 +10,9 @@ namespace MedMateAI.Controllers;
 [Route("api/medical-departments")]
 public sealed class MedicalDepartmentsController : ControllerBase
 {
+    private const string InvalidIdMessage = "Id khoa không hợp lệ";
+    private const string NotFoundMessage = "Không tìm thấy khoa";
+
     private readonly IMedicalDepartmentService _medicalDepartmentService;
 
     public MedicalDepartmentsController(IMedicalDepartmentService medicalDepartmentService)
@@ -22,12 +25,7 @@ public sealed class MedicalDepartmentsController : ControllerBase
     public async Task<IActionResult> List(CancellationToken cancellationToken = default)
     {
         var data = await _medicalDepartmentService.ListMedicalDepartmentsAsync(cancellationToken);
-        return Ok(new ApiResponse<IReadOnlyList<MedicalDepartmentResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(Success(data, "OK"));
     }
 
     [HttpGet("{id:guid}")]
@@ -38,29 +36,16 @@ public sealed class MedicalDepartmentsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Id khoa không hợp lệ",
-            });
+            return BadRequest(Fail<MedicalDepartmentResponse>(InvalidIdMessage));
         }
 
         var data = await _medicalDepartmentService.GetMedicalDepartmentByIdAsync(id, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Không tìm thấy khoa",
-            });
+            return NotFound(Fail<MedicalDepartmentResponse>(NotFoundMessage));
         }
 
-        return Ok(new ApiResponse<MedicalDepartmentResponse>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(Success(data, "OK"));
     }
 
     [HttpPost]
@@ -71,21 +56,10 @@ public sealed class MedicalDepartmentsController : ControllerBase
         var (ok, errors, data) = await _medicalDepartmentService.CreateMedicalDepartmentAsync(request, cancellationToken);
         if (!ok || data is null)
         {
-            var errorList = errors.ToList();
-            return BadRequest(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = errorList.FirstOrDefault() ?? "Tạo khoa thất bại",
-                Errors = errorList,
-            });
+            return BadRequest(FailFromErrors<MedicalDepartmentResponse>(errors, "Tạo khoa thất bại"));
         }
 
-        return Ok(new ApiResponse<MedicalDepartmentResponse>
-        {
-            Success = true,
-            Message = "Tạo khoa thành công",
-            Data = data,
-        });
+        return Ok(Success(data, "Tạo khoa thành công"));
     }
 
     [HttpPut("{id:guid}")]
@@ -99,41 +73,22 @@ public sealed class MedicalDepartmentsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Id khoa không hợp lệ",
-            });
+            return BadRequest(Fail<MedicalDepartmentResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _medicalDepartmentService.UpdateMedicalDepartmentAsync(id, request, cancellationToken);
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Không tìm thấy khoa",
-            });
+            return NotFound(Fail<MedicalDepartmentResponse>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            var errorList = errors.ToList();
-            return BadRequest(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = errorList.FirstOrDefault() ?? "Cập nhật khoa thất bại",
-                Errors = errorList,
-            });
+            return BadRequest(FailFromErrors<MedicalDepartmentResponse>(errors, "Cập nhật khoa thất bại"));
         }
 
-        return Ok(new ApiResponse<MedicalDepartmentResponse>
-        {
-            Success = true,
-            Message = "Cập nhật khoa thành công",
-            Data = data,
-        });
+        return Ok(Success(data, "Cập nhật khoa thành công"));
     }
 
     [HttpDelete("{id:guid}")]
@@ -144,33 +99,19 @@ public sealed class MedicalDepartmentsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = "Id khoa không hợp lệ",
-            });
+            return BadRequest(Fail(InvalidIdMessage));
         }
 
         var (ok, notFound, errors) = await _medicalDepartmentService.SoftDeleteMedicalDepartmentAsync(id, cancellationToken);
 
         if (notFound)
         {
-            return NotFound(new ApiResponse
-            {
-                Success = false,
-                Message = "Không tìm thấy khoa",
-            });
+            return NotFound(Fail(NotFoundMessage));
         }
 
         if (!ok)
         {
-            var errorList = errors.ToList();
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = errorList.FirstOrDefault() ?? "Xóa khoa thất bại",
-                Errors = errorList,
-            });
+            return BadRequest(FailFromErrors(errors, "Xóa khoa thất bại"));
         }
 
         return Ok(new ApiResponse
@@ -178,5 +119,46 @@ public sealed class MedicalDepartmentsController : ControllerBase
             Success = true,
             Message = "Xóa khoa thành công",
         });
+    }
+
+    private static ApiResponse<T> Success<T>(T data, string message) => new()
+    {
+        Success = true,
+        Message = message,
+        Data = data,
+    };
+
+    private static ApiResponse Fail(string message) => new()
+    {
+        Success = false,
+        Message = message,
+    };
+
+    private static ApiResponse<T> Fail<T>(string message) => new()
+    {
+        Success = false,
+        Message = message,
+    };
+
+    private static ApiResponse FailFromErrors(IEnumerable<string> errors, string fallbackMessage)
+    {
+        var errorList = errors.ToList();
+        return new ApiResponse
+        {
+            Success = false,
+            Message = errorList.FirstOrDefault() ?? fallbackMessage,
+            Errors = errorList,
+        };
+    }
+
+    private static ApiResponse<T> FailFromErrors<T>(IEnumerable<string> errors, string fallbackMessage)
+    {
+        var errorList = errors.ToList();
+        return new ApiResponse<T>
+        {
+            Success = false,
+            Message = errorList.FirstOrDefault() ?? fallbackMessage,
+            Errors = errorList,
+        };
     }
 }
