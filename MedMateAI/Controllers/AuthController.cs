@@ -1,8 +1,8 @@
 using MedMateAI.Application.DTOs.Auth.Requests;
 using MedMateAI.Application.DTOs.Auth.Responses;
 using MedMateAI.Application.DTOs.Common;
+using MedMateAI.Application.DTOs.Users.Responses;
 using MedMateAI.Application.IService;
-using MedMateAI.Infrastructure.Auth.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,60 +14,32 @@ public sealed class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
 
-    private readonly IUserService _userService;
-
-    public AuthController(IAuthService authService, IUserService userService)
+    public AuthController(IAuthService authService)
     {
         _authService = authService;
-        _userService = userService;
     }
 
     [HttpPost("register")]
     [AllowAnonymous]
-    [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<ApplicationUserResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<ApplicationUserResponse>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken cancellationToken)
     {
-        var (succeeded, errors, result) = await _authService.RegisterAsync(request, cancellationToken);
+        var (succeeded, errorMessage, errors, result) = await _authService.RegisterAsync(request, cancellationToken);
         if (!succeeded)
         {
-            return BadRequest(new ApiResponse<AuthResponse>
+            return BadRequest(new ApiResponse<ApplicationUserResponse>
             {
                 Success = false,
-                Message = "Registration failed",
+                Message = errorMessage ?? "Registration failed",
                 Errors = errors.ToList(),
             });
         }
 
-        return Ok(new ApiResponse<AuthResponse>
+        return Ok(new ApiResponse<ApplicationUserResponse>
         {
             Success = true,
             Message = "Registration succeeded",
-            Data = result,
-        });
-    }
-
-    [HttpPost("register/staff")]
-    [AllowAnonymous]
-    [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> RegisterStaff([FromBody] RegisterRequest request, CancellationToken cancellationToken)
-    {
-        var (succeeded, errors, result) = await _authService.RegisterForStaffAsync(request, cancellationToken);
-        if (!succeeded)
-        {
-            return BadRequest(new ApiResponse<AuthResponse>
-            {
-                Success = false,
-                Message = "Doctor registration failed",
-                Errors = errors.ToList(),
-            });
-        }
-
-        return Ok(new ApiResponse<AuthResponse>
-        {
-            Success = true,
-            Message = "Doctor account created. Status is pending until approved.",
             Data = result,
         });
     }
@@ -78,13 +50,13 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken cancellationToken)
     {
-        var (succeeded, result) = await _authService.LoginAsync(request, cancellationToken);
+        var (succeeded, errorMessage, result) = await _authService.LoginAsync(request, cancellationToken);
         if (!succeeded || result is null)
         {
             return Unauthorized(new ApiResponse<AuthResponse>
             {
                 Success = false,
-                Message = "Invalid email or password.",
+                Message = errorMessage ?? "Invalid email or password.",
             });
         }
 
@@ -103,24 +75,29 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Google([FromBody] GoogleLoginRequest request, CancellationToken cancellationToken)
     {
-        var (succeeded, errors, result) = await _authService.LoginWithGoogleAsync(request, cancellationToken);
+        var (succeeded, errorMessage, errors, result) = await _authService.LoginWithGoogleAsync(request, cancellationToken);
         if (!succeeded || result is null)
-        { 
-        
-         if (errors.Any())
+        {
+            var message = errorMessage ?? "Google login failed";
+            var unauthorized =
+                message is "Credential Google không hợp lệ"
+                    or "Tài khoản của bạn đã bị lock";
+
+            if (unauthorized)
             {
-                return BadRequest(new ApiResponse<AuthResponse>
+                return Unauthorized(new ApiResponse<AuthResponse>
                 {
                     Success = false,
-                    Message = "Google login failed",
+                    Message = message,
                     Errors = errors.ToList(),
                 });
             }
 
-            return Unauthorized(new ApiResponse<AuthResponse>
+            return BadRequest(new ApiResponse<AuthResponse>
             {
                 Success = false,
-                Message = "Invalid Google credential.",
+                Message = message,
+                Errors = errors.ToList(),
             });
         }
 
@@ -175,13 +152,13 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request, CancellationToken cancellationToken)
     {
-        var (succeeded, errors) = await _authService.ForgotPasswordAsync(request, cancellationToken);
+        var (succeeded, errorMessage, errors) = await _authService.ForgotPasswordAsync(request, cancellationToken);
         if (!succeeded)
         {
             return BadRequest(new ApiResponse
             {
                 Success = false,
-                Message = "Forgot password failed",
+                Message = errorMessage ?? "Yêu cầu đặt lại mật khẩu thất bại",
                 Errors = errors.ToList(),
             });
         }
@@ -189,7 +166,7 @@ public sealed class AuthController : ControllerBase
         return Ok(new ApiResponse
         {
             Success = true,
-            Message = "If the email exists, an OTP has been sent.",
+            Message = "Nếu email tồn tại trên hệ thống, mã OTP đã được gửi.",
         });
     }
 
@@ -199,13 +176,13 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordWithOtpRequest request, CancellationToken cancellationToken)
     {
-        var (succeeded, errors) = await _authService.ChangePasswordWithOtpAsync(request, cancellationToken);
+        var (succeeded, errorMessage, errors) = await _authService.ChangePasswordWithOtpAsync(request, cancellationToken);
         if (!succeeded)
         {
             return BadRequest(new ApiResponse
             {
                 Success = false,
-                Message = "Change password failed",
+                Message = errorMessage ?? "Thay đổi mật khẩu thất bại",
                 Errors = errors.ToList(),
             });
         }
@@ -213,32 +190,7 @@ public sealed class AuthController : ControllerBase
         return Ok(new ApiResponse
         {
             Success = true,
-            Message = "Password changed successfully.",
-        });
-    }
-
-    [HttpPost("{userId}/approve-staff")]
-    [AllowAnonymous]
-    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Approve(Guid userId, CancellationToken cancellationToken)
-    {
-        var (ok, errors, data) = await _userService.ApproveUserAsync(userId, cancellationToken);
-        if (!ok)
-        {
-            return BadRequest(new ApiResponse<ApproveUserResponse>
-            {
-                Success = false,
-                Message = "Approve user failed.",
-                Errors = errors.ToList(),
-            });
-        }
-
-        return Ok(new ApiResponse<ApproveUserResponse>
-        {
-            Success = true,
-            Message = "User approved.",
-            Data = data,
+            Message = "Mật khẩu đã được thay đổi thành công.",
         });
     }
 }
