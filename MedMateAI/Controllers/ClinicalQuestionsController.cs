@@ -2,6 +2,7 @@ using MedMateAI.Application.DTOs.ClinicalQuestions.Requests;
 using MedMateAI.Application.DTOs.ClinicalQuestions.Responses;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.IService;
+using MedMateAI.Helpers;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
@@ -31,7 +32,7 @@ public sealed class ClinicalQuestionsController : ControllerBase
     {
         if (chapterId.HasValue && chapterId.Value == Guid.Empty)
         {
-            return BadRequest(Fail<PagedResponse<ClinicalQuestionResponse>>("Id ICD chapter không hợp lệ"));
+            return BadRequest(ApiResponseFactory.Fail<PagedResponse<ClinicalQuestionResponse>>("Id ICD chapter không hợp lệ"));
         }
 
         var data = await _clinicalQuestionService.ListClinicalQuestionsAsync(
@@ -41,7 +42,7 @@ public sealed class ClinicalQuestionsController : ControllerBase
             search,
             cancellationToken);
 
-        return Ok(Success(data, "OK"));
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("{id:guid}")]
@@ -52,16 +53,16 @@ public sealed class ClinicalQuestionsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(Fail<ClinicalQuestionResponse>(InvalidIdMessage));
+            return BadRequest(ApiResponseFactory.Fail<ClinicalQuestionResponse>(InvalidIdMessage));
         }
 
         var data = await _clinicalQuestionService.GetClinicalQuestionByIdAsync(id, cancellationToken);
         if (data is null)
         {
-            return NotFound(Fail<ClinicalQuestionResponse>(NotFoundMessage));
+            return NotFound(ApiResponseFactory.Fail<ClinicalQuestionResponse>(NotFoundMessage));
         }
 
-        return Ok(Success(data, "OK"));
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpPost]
@@ -74,10 +75,10 @@ public sealed class ClinicalQuestionsController : ControllerBase
         var (ok, errors, data) = await _clinicalQuestionService.CreateClinicalQuestionAsync(request, cancellationToken);
         if (!ok || data is null)
         {
-            return BadRequest(FailFromErrors<ClinicalQuestionResponse>(errors, "Tạo câu hỏi lâm sàng thất bại"));
+            return BadRequest(ApiResponseFactory.FailFromErrors<ClinicalQuestionResponse>(errors, "Tạo câu hỏi lâm sàng thất bại"));
         }
 
-        return Ok(Success(data, "Tạo câu hỏi lâm sàng thành công"));
+        return Ok(ApiResponseFactory.Success(data, "Tạo câu hỏi lâm sàng thành công"));
     }
 
     [HttpPost("bulk")]
@@ -90,10 +91,10 @@ public sealed class ClinicalQuestionsController : ControllerBase
         var (ok, errors, data) = await _clinicalQuestionService.BulkCreateClinicalQuestionsAsync(request, cancellationToken);
         if (!ok || data is null)
         {
-            return BadRequest(FailFromErrors<IReadOnlyList<ClinicalQuestionResponse>>(errors, "Tạo hàng loạt câu hỏi lâm sàng thất bại"));
+            return BadRequest(ApiResponseFactory.FailFromErrors<IReadOnlyList<ClinicalQuestionResponse>>(errors, "Tạo hàng loạt câu hỏi lâm sàng thất bại"));
         }
 
-        return Ok(Success(data, $"Tạo thành công {data.Count} câu hỏi lâm sàng"));
+        return Ok(ApiResponseFactory.Success(data, $"Tạo thành công {data.Count} câu hỏi lâm sàng"));
     }
 
     [HttpPut("{id:guid}")]
@@ -107,22 +108,22 @@ public sealed class ClinicalQuestionsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(Fail<ClinicalQuestionResponse>(InvalidIdMessage));
+            return BadRequest(ApiResponseFactory.Fail<ClinicalQuestionResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _clinicalQuestionService.UpdateClinicalQuestionAsync(id, request, cancellationToken);
 
         if (notFound)
         {
-            return NotFound(Fail<ClinicalQuestionResponse>(NotFoundMessage));
+            return NotFound(ApiResponseFactory.Fail<ClinicalQuestionResponse>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(FailFromErrors<ClinicalQuestionResponse>(errors, "Cập nhật câu hỏi lâm sàng thất bại"));
+            return BadRequest(ApiResponseFactory.FailFromErrors<ClinicalQuestionResponse>(errors, "Cập nhật câu hỏi lâm sàng thất bại"));
         }
 
-        return Ok(Success(data, "Cập nhật câu hỏi lâm sàng thành công"));
+        return Ok(ApiResponseFactory.Success(data, "Cập nhật câu hỏi lâm sàng thành công"));
     }
 
     [HttpDelete("{id:guid}")]
@@ -133,66 +134,17 @@ public sealed class ClinicalQuestionsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(Fail(InvalidIdMessage));
+            return BadRequest(ApiResponseFactory.Fail(InvalidIdMessage));
         }
 
         var (ok, notFound, errors) = await _clinicalQuestionService.SoftDeleteClinicalQuestionAsync(id, cancellationToken);
-
-        if (notFound)
-        {
-            return NotFound(Fail(NotFoundMessage));
-        }
-
-        if (!ok)
-        {
-            return BadRequest(FailFromErrors(errors, "Xóa câu hỏi lâm sàng thất bại"));
-        }
-
-        return Ok(new ApiResponse
-        {
-            Success = true,
-            Message = "Xóa câu hỏi lâm sàng thành công",
-        });
-    }
-
-    private static ApiResponse<T> Success<T>(T data, string message) => new()
-    {
-        Success = true,
-        Message = message,
-        Data = data,
-    };
-
-    private static ApiResponse Fail(string message) => new()
-    {
-        Success = false,
-        Message = message,
-    };
-
-    private static ApiResponse<T> Fail<T>(string message) => new()
-    {
-        Success = false,
-        Message = message,
-    };
-
-    private static ApiResponse FailFromErrors(IEnumerable<string> errors, string fallbackMessage)
-    {
-        var errorList = errors.ToList();
-        return new ApiResponse
-        {
-            Success = false,
-            Message = errorList.FirstOrDefault() ?? fallbackMessage,
-            Errors = errorList,
-        };
-    }
-
-    private static ApiResponse<T> FailFromErrors<T>(IEnumerable<string> errors, string fallbackMessage)
-    {
-        var errorList = errors.ToList();
-        return new ApiResponse<T>
-        {
-            Success = false,
-            Message = errorList.FirstOrDefault() ?? fallbackMessage,
-            Errors = errorList,
-        };
+        return ApiResponseFactory.SoftDeleteResult(
+            this,
+            ok,
+            notFound,
+            errors,
+            NotFoundMessage,
+            "Xóa câu hỏi lâm sàng thất bại",
+            "Xóa câu hỏi lâm sàng thành công");
     }
 }
