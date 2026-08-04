@@ -118,25 +118,25 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
     {
         if (request is null)
         {
-            return (false, new[] { "Request body is required." }, null);
+            return (false, new[] { "Request body là bắt buộc" }, null);
         }
 
         var errors = new List<string>();
 
         if (request.FacilityId == Guid.Empty)
         {
-            errors.Add("FacilityId is required.");
+            errors.Add("FacilityId là bắt buộc");
         }
 
         if (!IsRatingValid(request.Rating))
         {
-            errors.Add("Rating must be between 1 and 5.");
+            errors.Add("Rating phải từ 1 đến 5");
         }
 
         var comment = NormalizeText(request.Comment);
         if (comment is not null && comment.Length > MaxCommentLength)
         {
-            errors.Add($"Comment must be less than or equal to {MaxCommentLength} characters.");
+            errors.Add($"Comment không được vượt quá {MaxCommentLength} ký tự.");
         }
 
         var imageUrls = NormalizeCreateImageUrls(request.ImageUrls, errors);
@@ -144,7 +144,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
         var userId = GetCurrentUserId();
         if (!userId.HasValue)
         {
-            errors.Add("User is not authenticated.");
+            errors.Add("Người dùng chưa đăng nhập");
         }
 
         if (errors.Count > 0)
@@ -159,12 +159,12 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
 
         if (facility is null)
         {
-            return (false, new[] { "Medical facility not found." }, null);
+            return (false, new[] { "Không tìm thấy cơ sở y tế" }, null);
         }
 
         if (!facility.IsActive)
         {
-            return (false, new[] { "Medical facility is not active." }, null);
+            return (false, new[] { "Cơ sở y tế không hoạt động" }, null);
         }
 
         var existingReview = await _unitOfWork.FeedbackReviews.GetByUserAndFacilityAsync(
@@ -174,7 +174,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
 
         if (existingReview is not null)
         {
-            return (false, new[] { "You have already reviewed this facility." }, null);
+            return (false, new[] { "Bạn đã đánh giá cơ sở y tế này" }, null);
         }
 
         var entity = new FeedbackReview
@@ -206,18 +206,18 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid feedback review id." }, null);
+            return (false, false, new[] { "Id feedback không hợp lệ" }, null);
         }
 
         if (request is null)
         {
-            return (false, false, new[] { "Request body is required." }, null);
+            return (false, false, new[] { "Request body là bắt buộc" }, null);
         }
 
         var entity = await _unitOfWork.FeedbackReviews.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Feedback review not found." }, null);
+            return (false, true, new[] { "Không tìm thấy feedback" }, null);
         }
 
         var validation = ValidateUpdateFeedbackReviewRequest(request, entity.ImageUrls);
@@ -240,7 +240,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
         var response = await ReloadMapAndCacheFeedbackReviewAsync(id, cancellationToken);
         if (response is null)
         {
-            return (false, true, new[] { "Feedback review not found." }, null);
+            return (false, true, new[] { "Không tìm thấy feedback" }, null);
         }
 
         return (true, false, Array.Empty<string>(), response);
@@ -256,7 +256,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
 
         if (request.Rating.HasValue && !IsRatingValid(request.Rating.Value))
         {
-            errors.Add("Rating must be between 1 and 5.");
+            errors.Add("Rating phải từ 1 đến 5");
         }
 
         if (request.Comment is not null)
@@ -264,7 +264,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             commentFromRequest = NormalizeText(request.Comment);
             if (commentFromRequest is not null && commentFromRequest.Length > MaxCommentLength)
             {
-                errors.Add($"Comment must be less than or equal to {MaxCommentLength} characters.");
+                errors.Add($"Comment không được vượt quá {MaxCommentLength} ký tự.");
             }
         }
 
@@ -319,23 +319,23 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid feedback review id." }, null);
+            return (false, false, new[] { "Id feedback không hợp lệ" }, null);
         }
 
         if (request is null)
         {
-            return (false, false, new[] { "Request body is required." }, null);
+            return (false, false, new[] { "Request body là bắt buộc" }, null);
         }
 
         var entity = await _unitOfWork.FeedbackReviews.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Feedback review not found." }, null);
+            return (false, true, new[] { "Không tìm thấy feedback" }, null);
         }
 
         if (!TryNormalizeStatus(request.Status, out var normalizedStatus))
         {
-            return (false, false, new[] { "Status is invalid." }, null);
+            return (false, false, new[] { "Status không hợp lệ" }, null);
         }
 
         entity.Status = normalizedStatus;
@@ -349,7 +349,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
         var response = await ReloadMapAndCacheFeedbackReviewAsync(id, cancellationToken);
         if (response is null)
         {
-            return (false, true, new[] { "Feedback review not found." }, null);
+            return (false, true, new[] { "Không tìm thấy feedback" }, null);
         }
 
         return (true, false, Array.Empty<string>(), response);
@@ -361,13 +361,13 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid feedback review id." });
+            return (false, false, new[] { "Id feedback không hợp lệ" });
         }
 
         var entity = await _unitOfWork.FeedbackReviews.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Feedback review not found." });
+            return (false, true, new[] { "Không tìm thấy feedback" });
         }
 
         var utcNow = DateTime.UtcNow;
@@ -490,19 +490,19 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
 
             if (key is null)
             {
-                errors.Add("ImageUrls contains an invalid empty key.");
+                errors.Add("ImageUrls chứa key rỗng");
                 continue;
             }
 
             if (key.Length > MaxImageKeyLength)
             {
-                errors.Add($"ImageUrls key must be {MaxImageKeyLength} characters or fewer.");
+                errors.Add($"Key ImageUrls không được vượt quá {MaxImageKeyLength} ký tự");
                 continue;
             }
 
             if (seenKeys.ContainsKey(key))
             {
-                errors.Add("ImageUrls contains duplicate keys.");
+                errors.Add("ImageUrls chứa key trùng lặp");
                 continue;
             }
 
@@ -510,7 +510,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
 
             if (url is null)
             {
-                errors.Add("ImageUrls contains an invalid empty URL.");
+                errors.Add("ImageUrls chứa URL rỗng");
                 continue;
             }
 
@@ -520,7 +520,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
 
         if (normalized.Count > MaxFeedbackReviewImages)
         {
-            errors.Add("ImageUrls cannot contain more than 5 images.");
+            errors.Add("ImageUrls không được chứa quá 5 ảnh");
         }
 
         return normalized;
@@ -569,19 +569,19 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
 
         if (key is null)
         {
-            errors.Add("ImageUrls contains an invalid empty key.");
+            errors.Add("ImageUrls chứa key rỗng");
             return null;
         }
 
         if (key.Length > MaxImageKeyLength)
         {
-            errors.Add($"ImageUrls key must be {MaxImageKeyLength} characters or fewer.");
+            errors.Add($"Key ImageUrls không được vượt quá {MaxImageKeyLength} ký tự");
             return null;
         }
 
         if (!seenKeys.Add(key))
         {
-            errors.Add("ImageUrls contains duplicate keys.");
+            errors.Add("ImageUrls chứa key trùng lặp");
             return null;
         }
 
@@ -621,7 +621,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
     {
         if (imageUrls.Count > MaxFeedbackReviewImages)
         {
-            errors.Add("ImageUrls cannot contain more than 5 images.");
+            errors.Add("ImageUrls không được chứa quá 5 ảnh");
         }
     }
 
@@ -635,12 +635,12 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
     {
         if (imageUrl.Length > ImageUrlMaxLength)
         {
-            errors.Add("ImageUrl must be 2048 characters or fewer.");
+            errors.Add("ImageUrl không được vượt quá 2048 ký tự");
         }
 
         if (!IsValidHttpUrl(imageUrl))
         {
-            errors.Add("ImageUrl must be a valid absolute http or https URL.");
+            errors.Add("ImageUrl không hợp lệ");
         }
     }
 
