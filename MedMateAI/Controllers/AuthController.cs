@@ -28,13 +28,13 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken cancellationToken)
     {
-        var (succeeded, errors, result) = await _authService.RegisterAsync(request, cancellationToken);
+        var (succeeded, errorMessage, errors, result) = await _authService.RegisterAsync(request, cancellationToken);
         if (!succeeded)
         {
             return BadRequest(new ApiResponse<AuthResponse>
             {
                 Success = false,
-                Message = "Registration failed",
+                Message = errorMessage ?? "Registration failed",
                 Errors = errors.ToList(),
             });
         }
@@ -53,13 +53,13 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RegisterStaff([FromBody] RegisterRequest request, CancellationToken cancellationToken)
     {
-        var (succeeded, errors, result) = await _authService.RegisterForStaffAsync(request, cancellationToken);
+        var (succeeded, errorMessage, errors, result) = await _authService.RegisterForStaffAsync(request, cancellationToken);
         if (!succeeded)
         {
             return BadRequest(new ApiResponse<AuthResponse>
             {
                 Success = false,
-                Message = "Doctor registration failed",
+                Message = errorMessage ?? "Doctor registration failed",
                 Errors = errors.ToList(),
             });
         }
@@ -78,13 +78,13 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken cancellationToken)
     {
-        var (succeeded, result) = await _authService.LoginAsync(request, cancellationToken);
+        var (succeeded, errorMessage, result) = await _authService.LoginAsync(request, cancellationToken);
         if (!succeeded || result is null)
         {
             return Unauthorized(new ApiResponse<AuthResponse>
             {
                 Success = false,
-                Message = "Invalid email or password.",
+                Message = errorMessage ?? "Invalid email or password.",
             });
         }
 
