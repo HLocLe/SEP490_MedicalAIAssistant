@@ -68,7 +68,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
     {
         if (request is null)
         {
-            return (false, new[] { "Request body is required." }, null);
+            return (false, new[] { "Request body là bắt buộc" }, null);
         }
 
         var validationErrors = ValidateIndicatorFields(request.Symbol, request.MinReference, request.MaxReference);
@@ -81,7 +81,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (await _unitOfWork.LabIndicators.SymbolExistsAsync(symbol, cancellationToken: cancellationToken))
         {
-            return (false, new[] { "Indicator symbol already exists." }, null);
+            return (false, new[] { "Ký hiệu chỉ số đã tồn tại" }, null);
         }
 
         var entity = MapToMasterEntity(request, symbol);
@@ -140,7 +140,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
         {
             if (await _unitOfWork.LabIndicators.SymbolExistsAsync(symbol, cancellationToken: cancellationToken))
             {
-                errors.Add($"Indicator symbol already exists: {symbol}");
+                errors.Add($"Ký hiệu chỉ số đã tồn tại: {symbol}");
             }
         }
 
@@ -170,31 +170,31 @@ public sealed class LabIndicatorService : ILabIndicatorService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid indicator id." }, null);
+            return (false, false, new[] { "Id chỉ số xét nghiệm không hợp lệ" }, null);
         }
 
         if (request is null)
         {
-            return (false, false, new[] { "Request body is required." }, null);
+            return (false, false, new[] { "Request body là bắt buộc" }, null);
         }
 
         var indicator = await _unitOfWork.LabIndicators.GetByIdAsync(id, cancellationToken);
         if (indicator is null || indicator.IsDeleted)
         {
-            return (false, true, new[] { "Lab indicator not found." }, null);
+            return (false, true, new[] { "Không tìm thấy chỉ số xét nghiệm" }, null);
         }
 
         if (request.Symbol is not null)
         {
             if (string.IsNullOrWhiteSpace(request.Symbol))
             {
-                return (false, false, new[] { "Symbol cannot be empty when provided." }, null);
+                return (false, false, new[] { "Symbol không được để trống" }, null);
             }
 
             var newSymbol = NormalizeSymbol(request.Symbol)!;
             if (await _unitOfWork.LabIndicators.SymbolExistsAsync(newSymbol, id, cancellationToken))
             {
-                return (false, false, new[] { "Indicator symbol already exists." }, null);
+                return (false, false, new[] { "Ký hiệu chỉ số đã tồn tại" }, null);
             }
 
             indicator.Symbol = newSymbol;
@@ -254,13 +254,13 @@ public sealed class LabIndicatorService : ILabIndicatorService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid indicator id." });
+            return (false, false, new[] { "Id chỉ số xét nghiệm không hợp lệ" });
         }
 
         var indicator = await _unitOfWork.LabIndicators.GetByIdAsync(id, cancellationToken);
         if (indicator is null || indicator.IsDeleted)
         {
-            return (false, true, new[] { "Lab indicator not found." });
+            return (false, true, new[] { "Không tìm thấy chỉ số xét nghiệm" });
         }
 
         var utcNow = DateTime.UtcNow;
@@ -353,7 +353,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
             var alias = request.Aliases[index];
             if (string.IsNullOrWhiteSpace(alias.AliasText))
             {
-                validationErrors.Add($"Aliases[{index}]: AliasText is required.");
+                validationErrors.Add($"Aliases[{index}]: AliasText là bắt buộc");
                 continue;
             }
 
@@ -389,7 +389,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
             if (exists is not null)
             {
-                validationErrors.Add($"Alias already exists for this indicator: {aliasText}");
+                validationErrors.Add($"Alias đã tồn tại cho chỉ số này: {aliasText}");
             }
         }
 
@@ -432,7 +432,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (request is null || string.IsNullOrWhiteSpace(request.AliasText))
         {
-            return (false, false, new[] { "AliasText is required." }, null);
+            return (false, false, new[] { "AliasText là bắt buộc" }, null);
         }
 
         var aliasText = request.AliasText.Trim();
@@ -444,7 +444,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (exists is not null)
         {
-            return (false, false, new[] { $"Alias already exists for this indicator: {aliasText}" }, null);
+            return (false, false, new[] { $"Alias đã tồn tại cho chỉ số này: {aliasText}" }, null);
         }
 
         var entity = new LabIndicatorAlias
@@ -477,18 +477,18 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (aliasId == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid alias id." }, null);
+            return (false, false, new[] { "Id alias không hợp lệ" }, null);
         }
 
         if (request is null || string.IsNullOrWhiteSpace(request.AliasText))
         {
-            return (false, false, new[] { "AliasText is required." }, null);
+            return (false, false, new[] { "AliasText là bắt buộc" }, null);
         }
 
         var alias = await _unitOfWork.LabIndicatorAliases.GetByIdAsync(aliasId, cancellationToken);
         if (alias is null || alias.IsDeleted || alias.IndicatorId != indicatorId)
         {
-            return (false, true, new[] { "Alias not found." }, null);
+            return (false, true, new[] { "Không tìm thấy alias" }, null);
         }
 
         var aliasText = request.AliasText.Trim();
@@ -501,7 +501,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (duplicate is not null)
         {
-            return (false, false, new[] { $"Alias already exists for this indicator: {aliasText}" }, null);
+            return (false, false, new[] { $"Alias đã tồn tại cho chỉ số này: {aliasText}" }, null);
         }
 
         alias.AliasText = aliasText;
@@ -528,13 +528,13 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (aliasId == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid alias id." });
+            return (false, false, new[] { "Id alias không hợp lệ" });
         }
 
         var alias = await _unitOfWork.LabIndicatorAliases.GetByIdAsync(aliasId, cancellationToken);
         if (alias is null || alias.IsDeleted || alias.IndicatorId != indicatorId)
         {
-            return (false, true, new[] { "Alias not found." });
+            return (false, true, new[] { "Không tìm thấy alias" });
         }
 
         var utcNow = DateTime.UtcNow;
@@ -642,7 +642,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (request is null)
         {
-            return (false, false, new[] { "Reference range request is required." }, null);
+            return (false, false, new[] { "Request khoảng tham chiếu là bắt buộc" }, null);
         }
 
         var rangeErrors = ValidateReferenceRange(request);
@@ -694,18 +694,18 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (referenceRangeId == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid reference range id." }, null);
+            return (false, false, new[] { "Id khoảng tham chiếu không hợp lệ" }, null);
         }
 
         if (request is null)
         {
-            return (false, false, new[] { "Reference range request is required." }, null);
+            return (false, false, new[] { "Request khoảng tham chiếu là bắt buộc" }, null);
         }
 
         var range = await _unitOfWork.LabIndicatorReferenceRanges.GetByIdAsync(referenceRangeId, cancellationToken);
         if (range is null || range.IsDeleted || range.IndicatorId != indicatorId)
         {
-            return (false, true, new[] { "Reference range not found." }, null);
+            return (false, true, new[] { "Không tìm thấy khoảng tham chiếu" }, null);
         }
 
         var rangeErrors = ValidateReferenceRange(request);
@@ -751,13 +751,13 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (referenceRangeId == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid reference range id." });
+            return (false, false, new[] { "Id khoảng tham chiếu không hợp lệ" });
         }
 
         var range = await _unitOfWork.LabIndicatorReferenceRanges.GetByIdAsync(referenceRangeId, cancellationToken);
         if (range is null || range.IsDeleted || range.IndicatorId != indicatorId)
         {
-            return (false, true, new[] { "Reference range not found." });
+            return (false, true, new[] { "Không tìm thấy khoảng tham chiếu" });
         }
 
         var utcNow = DateTime.UtcNow;
@@ -796,7 +796,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
             var advice = request.AdviceCaches[index];
             if (advice.Status == LabResultStatus.Unknown)
             {
-                validationErrors.Add($"AdviceCaches[{index}]: Status cannot be Unknown.");
+                validationErrors.Add($"AdviceCaches[{index}]: Status không được là Unknown");
                 continue;
             }
 
@@ -806,7 +806,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
             if (exists is not null)
             {
-                validationErrors.Add($"Advice cache already exists for status {advice.Status}.");
+                validationErrors.Add($"Advice cache đã tồn tại cho status {advice.Status}.");
                 continue;
             }
 
@@ -864,12 +864,12 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (request is null)
         {
-            return (false, false, new[] { "Advice cache request is required." }, null);
+            return (false, false, new[] { "Request advice cache là bắt buộc" }, null);
         }
 
         if (request.Status == LabResultStatus.Unknown)
         {
-            return (false, false, new[] { "Status cannot be Unknown." }, null);
+            return (false, false, new[] { "Status không được là Unknown" }, null);
         }
 
         var exists = await _unitOfWork.LabIndicatorAdviceCaches.FirstOrDefaultAsync(
@@ -878,7 +878,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (exists is not null)
         {
-            return (false, false, new[] { $"Advice cache already exists for status {request.Status}." }, null);
+            return (false, false, new[] { $"Advice cache đã tồn tại cho status {request.Status}." }, null);
         }
 
         var entity = new LabIndicatorAdviceCache
@@ -919,23 +919,23 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (cacheId == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid advice cache id." }, null);
+            return (false, false, new[] { "Id advice cache không hợp lệ" }, null);
         }
 
         if (request is null)
         {
-            return (false, false, new[] { "Advice cache request is required." }, null);
+            return (false, false, new[] { "Request advice cache là bắt buộc" }, null);
         }
 
         if (request.Status == LabResultStatus.Unknown)
         {
-            return (false, false, new[] { "Status cannot be Unknown." }, null);
+            return (false, false, new[] { "Status không được là Unknown" }, null);
         }
 
         var advice = await _unitOfWork.LabIndicatorAdviceCaches.GetByIdAsync(cacheId, cancellationToken);
         if (advice is null || advice.IsDeleted || advice.IndicatorId != indicatorId)
         {
-            return (false, true, new[] { "Advice cache not found." }, null);
+            return (false, true, new[] { "Không tìm thấy advice cache" }, null);
         }
 
         var duplicate = await _unitOfWork.LabIndicatorAdviceCaches.FirstOrDefaultAsync(
@@ -947,7 +947,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (duplicate is not null)
         {
-            return (false, false, new[] { $"Advice cache already exists for status {request.Status}." }, null);
+            return (false, false, new[] { $"Advice cache đã tồn tại cho status {request.Status}." }, null);
         }
 
         advice.Status = request.Status;
@@ -982,13 +982,13 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (cacheId == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid advice cache id." });
+            return (false, false, new[] { "Id advice cache không hợp lệ" });
         }
 
         var advice = await _unitOfWork.LabIndicatorAdviceCaches.GetByIdAsync(cacheId, cancellationToken);
         if (advice is null || advice.IsDeleted || advice.IndicatorId != indicatorId)
         {
-            return (false, true, new[] { "Advice cache not found." });
+            return (false, true, new[] { "Không tìm thấy advice cache" });
         }
 
         var utcNow = DateTime.UtcNow;
@@ -1008,13 +1008,13 @@ public sealed class LabIndicatorService : ILabIndicatorService
     {
         if (indicatorId == Guid.Empty)
         {
-            return (false, false, new List<string> { "Invalid indicator id." });
+            return (false, false, new List<string> { "Id chỉ số xét nghiệm không hợp lệ" });
         }
 
         var indicator = await _unitOfWork.LabIndicators.GetByIdAsync(indicatorId, cancellationToken);
         if (indicator is null || indicator.IsDeleted)
         {
-            return (false, true, new List<string> { "Lab indicator not found." });
+            return (false, true, new List<string> { "Không tìm thấy chỉ số xét nghiệm" });
         }
 
         return (true, false, new List<string>());
@@ -1043,7 +1043,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
 
         if (string.IsNullOrWhiteSpace(symbol))
         {
-            errors.Add("Symbol is required.");
+            errors.Add("Symbol là bắt buộc");
         }
 
         errors.AddRange(ValidateFallbackRange(minReference, maxReference));
@@ -1054,7 +1054,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
     {
         if (minReference.HasValue && maxReference.HasValue && minReference.Value > maxReference.Value)
         {
-            return new List<string> { "MinReference cannot be greater than MaxReference." };
+            return new List<string> { "MinReference không được lớn hơn MaxReference" };
         }
 
         return new List<string>();
@@ -1078,7 +1078,7 @@ public sealed class LabIndicatorService : ILabIndicatorService
     {
         if (gender.HasValue && ageGroup.HasValue)
         {
-            return new List<string> { "A reference range cannot set both Gender and AgeGroup." };
+            return new List<string> { "Khoảng tham chiếu không thể đặt cả Gender và AgeGroup" };
         }
 
         return new List<string>();
@@ -1096,19 +1096,19 @@ public sealed class LabIndicatorService : ILabIndicatorService
         {
             if (existingRanges.Any(r => r.Gender == gender))
             {
-                errors.Add($"A reference range for gender {gender} already exists.");
+                errors.Add($"Khoảng tham chiếu cho giới tính {gender} đã tồn tại.");
             }
         }
         else if (ageGroup.HasValue)
         {
             if (existingRanges.Any(r => r.AgeGroup == ageGroup))
             {
-                errors.Add($"A reference range for age group {ageGroup} already exists.");
+                errors.Add($"Khoảng tham chiếu cho nhóm tuổi {ageGroup} đã tồn tại.");
             }
         }
         else if (existingRanges.Any(r => r.Gender is null && r.AgeGroup is null))
         {
-            errors.Add("A default reference range already exists for this indicator.");
+            errors.Add("Khoảng tham chiếu mặc định đã tồn tại cho chỉ số này");
         }
 
         return errors;
@@ -1122,13 +1122,13 @@ public sealed class LabIndicatorService : ILabIndicatorService
         return comparisonType switch
         {
             ReferenceComparisonType.Between when !minValue.HasValue || !maxValue.HasValue =>
-                new List<string> { "Between comparison requires MinValue and MaxValue." },
+                new List<string> { "So sánh Between yêu cầu MinValue và MaxValue" },
             ReferenceComparisonType.Between when minValue > maxValue =>
-                new List<string> { "MinValue cannot be greater than MaxValue." },
+                new List<string> { "MinValue không được lớn hơn MaxValue" },
             ReferenceComparisonType.LessThanOrEqual when !maxValue.HasValue =>
-                new List<string> { "LessThanOrEqual comparison requires MaxValue." },
+                new List<string> { "So sánh LessThanOrEqual yêu cầu MaxValue" },
             ReferenceComparisonType.GreaterThanOrEqual when !minValue.HasValue =>
-                new List<string> { "GreaterThanOrEqual comparison requires MinValue." },
+                new List<string> { "So sánh GreaterThanOrEqual yêu cầu MinValue" },
             _ => new List<string>(),
         };
     }
