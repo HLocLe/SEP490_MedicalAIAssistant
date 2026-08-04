@@ -56,7 +56,7 @@ public sealed class AIConfigsController : ControllerBase
             return BadRequest(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "Invalid task type.",
+                Message = "TaskType là bắt buộc",
             });
         }
 
@@ -66,7 +66,7 @@ public sealed class AIConfigsController : ControllerBase
             return NotFound(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "AI config not found.",
+                Message = "Không tìm thấy AI config",
             });
         }
 
@@ -89,7 +89,7 @@ public sealed class AIConfigsController : ControllerBase
             return BadRequest(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "Invalid AI config id.",
+                Message = "Id AI config không hợp lệ",
             });
         }
 
@@ -99,7 +99,7 @@ public sealed class AIConfigsController : ControllerBase
             return NotFound(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "AI config not found.",
+                Message = "Không tìm thấy AI config",
             });
         }
 
@@ -120,11 +120,12 @@ public sealed class AIConfigsController : ControllerBase
     {
         if (request is null)
         {
+            const string message = "Request body là bắt buộc";
             return BadRequest(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "Create AI config failed.",
-                Errors = new List<string> { "Request body is required." },
+                Message = message,
+                Errors = new List<string> { message },
             });
         }
 
@@ -134,7 +135,7 @@ public sealed class AIConfigsController : ControllerBase
             return Ok(new ApiResponse<AIConfigResponse>
             {
                 Success = true,
-                Message = "AI config created.",
+                Message = "Tạo AI config thành công",
                 Data = data,
             });
         }
@@ -143,7 +144,7 @@ public sealed class AIConfigsController : ControllerBase
             return BadRequest(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "Create AI config failed.",
+                Message = ex.Message,
                 Errors = new List<string> { ex.Message },
             });
         }
@@ -152,7 +153,7 @@ public sealed class AIConfigsController : ControllerBase
             return BadRequest(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "Create AI config failed.",
+                Message = ex.Message,
                 Errors = new List<string> { ex.Message },
             });
         }
@@ -172,17 +173,18 @@ public sealed class AIConfigsController : ControllerBase
             return BadRequest(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "Invalid AI config id.",
+                Message = "Id AI config không hợp lệ",
             });
         }
 
         if (request is null)
         {
+            const string message = "Request body là bắt buộc";
             return BadRequest(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "Update AI config failed.",
-                Errors = new List<string> { "Request body is required." },
+                Message = message,
+                Errors = new List<string> { message },
             });
         }
 
@@ -194,14 +196,14 @@ public sealed class AIConfigsController : ControllerBase
                 return NotFound(new ApiResponse<AIConfigResponse>
                 {
                     Success = false,
-                    Message = "AI config not found.",
+                    Message = "Không tìm thấy AI config",
                 });
             }
 
             return Ok(new ApiResponse<AIConfigResponse>
             {
                 Success = true,
-                Message = "AI config updated.",
+                Message = "Cập nhật AI config thành công",
                 Data = data,
             });
         }
@@ -210,7 +212,7 @@ public sealed class AIConfigsController : ControllerBase
             return BadRequest(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "Update AI config failed.",
+                Message = ex.Message,
                 Errors = new List<string> { ex.Message },
             });
         }
@@ -219,7 +221,7 @@ public sealed class AIConfigsController : ControllerBase
             return BadRequest(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "Update AI config failed.",
+                Message = ex.Message,
                 Errors = new List<string> { ex.Message },
             });
         }
@@ -239,36 +241,49 @@ public sealed class AIConfigsController : ControllerBase
             return BadRequest(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "Invalid AI config id.",
+                Message = "Id AI config không hợp lệ",
             });
         }
 
         if (request is null)
         {
+            const string message = "Request body là bắt buộc";
             return BadRequest(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "Update AI config status failed.",
-                Errors = new List<string> { "Request body is required." },
+                Message = message,
+                Errors = new List<string> { message },
             });
         }
 
-        var data = await _aiConfigService.UpdateAIConfigStatusAsync(id, request, cancellationToken);
-        if (data is null)
+        try
         {
-            return NotFound(new ApiResponse<AIConfigResponse>
+            var data = await _aiConfigService.UpdateAIConfigStatusAsync(id, request, cancellationToken);
+            if (data is null)
+            {
+                return NotFound(new ApiResponse<AIConfigResponse>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy AI config",
+                });
+            }
+
+            return Ok(new ApiResponse<AIConfigResponse>
+            {
+                Success = true,
+                Message = "Cập nhật trạng thái AI config thành công",
+                Data = data,
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ApiResponse<AIConfigResponse>
             {
                 Success = false,
-                Message = "AI config not found.",
+                Message = ex.Message,
+                Errors = new List<string> { ex.Message },
             });
         }
-
-        return Ok(new ApiResponse<AIConfigResponse>
-        {
-            Success = true,
-            Message = "AI config status updated.",
-            Data = data,
-        });
     }
 
     [HttpDelete("{id:guid}")]
@@ -282,7 +297,7 @@ public sealed class AIConfigsController : ControllerBase
             return BadRequest(new ApiResponse<bool>
             {
                 Success = false,
-                Message = "Invalid AI config id.",
+                Message = "Id AI config không hợp lệ",
             });
         }
 
@@ -292,7 +307,7 @@ public sealed class AIConfigsController : ControllerBase
             return NotFound(new ApiResponse<bool>
             {
                 Success = false,
-                Message = "AI config not found.",
+                Message = "Không tìm thấy AI config",
                 Data = false,
             });
         }
@@ -300,7 +315,7 @@ public sealed class AIConfigsController : ControllerBase
         return Ok(new ApiResponse<bool>
         {
             Success = true,
-            Message = "AI config deleted (soft).",
+            Message = "Xóa AI config thành công",
             Data = true,
         });
     }

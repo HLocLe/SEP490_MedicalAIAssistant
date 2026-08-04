@@ -41,7 +41,7 @@ public sealed class MedicalDepartmentsController : ControllerBase
             return BadRequest(new ApiResponse<MedicalDepartmentResponse>
             {
                 Success = false,
-                Message = "Invalid medical department id.",
+                Message = "Id khoa không hợp lệ",
             });
         }
 
@@ -51,7 +51,7 @@ public sealed class MedicalDepartmentsController : ControllerBase
             return NotFound(new ApiResponse<MedicalDepartmentResponse>
             {
                 Success = false,
-                Message = "Medical department not found.",
+                Message = "Không tìm thấy khoa",
             });
         }
 
@@ -68,31 +68,22 @@ public sealed class MedicalDepartmentsController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<MedicalDepartmentResponse>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateMedicalDepartmentRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.DepartmentName))
-        {
-            return BadRequest(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Create medical department failed.",
-                Errors = new List<string> { "Department name is required." },
-            });
-        }
-
         var (ok, errors, data) = await _medicalDepartmentService.CreateMedicalDepartmentAsync(request, cancellationToken);
         if (!ok || data is null)
         {
+            var errorList = errors.ToList();
             return BadRequest(new ApiResponse<MedicalDepartmentResponse>
             {
                 Success = false,
-                Message = "Create medical department failed.",
-                Errors = errors.ToList(),
+                Message = errorList.FirstOrDefault() ?? "Tạo khoa thất bại",
+                Errors = errorList,
             });
         }
 
         return Ok(new ApiResponse<MedicalDepartmentResponse>
         {
             Success = true,
-            Message = "Medical department created.",
+            Message = "Tạo khoa thành công",
             Data = data,
         });
     }
@@ -111,17 +102,7 @@ public sealed class MedicalDepartmentsController : ControllerBase
             return BadRequest(new ApiResponse<MedicalDepartmentResponse>
             {
                 Success = false,
-                Message = "Invalid medical department id.",
-            });
-        }
-
-        if (request.DepartmentName is not null && string.IsNullOrWhiteSpace(request.DepartmentName))
-        {
-            return BadRequest(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Update medical department failed.",
-                Errors = new List<string> { "Department name cannot be empty when provided." },
+                Message = "Id khoa không hợp lệ",
             });
         }
 
@@ -132,24 +113,25 @@ public sealed class MedicalDepartmentsController : ControllerBase
             return NotFound(new ApiResponse<MedicalDepartmentResponse>
             {
                 Success = false,
-                Message = "Medical department not found.",
+                Message = "Không tìm thấy khoa",
             });
         }
 
         if (!ok || data is null)
         {
+            var errorList = errors.ToList();
             return BadRequest(new ApiResponse<MedicalDepartmentResponse>
             {
                 Success = false,
-                Message = "Update medical department failed.",
-                Errors = errors.ToList(),
+                Message = errorList.FirstOrDefault() ?? "Cập nhật khoa thất bại",
+                Errors = errorList,
             });
         }
 
         return Ok(new ApiResponse<MedicalDepartmentResponse>
         {
             Success = true,
-            Message = "Medical department updated.",
+            Message = "Cập nhật khoa thành công",
             Data = data,
         });
     }
@@ -165,7 +147,7 @@ public sealed class MedicalDepartmentsController : ControllerBase
             return BadRequest(new ApiResponse
             {
                 Success = false,
-                Message = "Invalid medical department id.",
+                Message = "Id khoa không hợp lệ",
             });
         }
 
@@ -176,24 +158,25 @@ public sealed class MedicalDepartmentsController : ControllerBase
             return NotFound(new ApiResponse
             {
                 Success = false,
-                Message = "Medical department not found.",
+                Message = "Không tìm thấy khoa",
             });
         }
 
         if (!ok)
         {
+            var errorList = errors.ToList();
             return BadRequest(new ApiResponse
             {
                 Success = false,
-                Message = "Delete medical department failed.",
-                Errors = errors.ToList(),
+                Message = errorList.FirstOrDefault() ?? "Xóa khoa thất bại",
+                Errors = errorList,
             });
         }
 
         return Ok(new ApiResponse
         {
             Success = true,
-            Message = "Medical department deleted (soft).",
+            Message = "Xóa khoa thành công",
         });
     }
 }

@@ -49,7 +49,7 @@ public sealed class IcdChaptersController : ControllerBase
             return BadRequest(new ApiResponse<IcdChapterResponse>
             {
                 Success = false,
-                Message = "Invalid ICD chapter id.",
+                Message = "Id ICD chapter không hợp lệ",
             });
         }
 
@@ -59,7 +59,7 @@ public sealed class IcdChaptersController : ControllerBase
             return NotFound(new ApiResponse<IcdChapterResponse>
             {
                 Success = false,
-                Message = "ICD chapter not found.",
+                Message = "Không tìm thấy ICD chapter",
             });
         }
 
@@ -81,18 +81,19 @@ public sealed class IcdChaptersController : ControllerBase
         var (ok, errors, data) = await _icdChapterService.CreateIcdChapterAsync(request, cancellationToken);
         if (!ok || data is null)
         {
+            var errorList = errors.ToList();
             return BadRequest(new ApiResponse<IcdChapterResponse>
             {
                 Success = false,
-                Message = "Create ICD chapter failed.",
-                Errors = errors.ToList(),
+                Message = errorList.FirstOrDefault() ?? "Tạo ICD chapter thất bại",
+                Errors = errorList,
             });
         }
 
         return Ok(new ApiResponse<IcdChapterResponse>
         {
             Success = true,
-            Message = "ICD chapter created.",
+            Message = "Tạo ICD chapter thành công",
             Data = data,
         });
     }
@@ -137,7 +138,7 @@ public sealed class IcdChaptersController : ControllerBase
             return BadRequest(new ApiResponse<IcdChapterResponse>
             {
                 Success = false,
-                Message = "Invalid ICD chapter id.",
+                Message = "Id ICD chapter không hợp lệ",
             });
         }
 
@@ -148,24 +149,25 @@ public sealed class IcdChaptersController : ControllerBase
             return NotFound(new ApiResponse<IcdChapterResponse>
             {
                 Success = false,
-                Message = "ICD chapter not found.",
+                Message = "Không tìm thấy ICD chapter",
             });
         }
 
         if (!ok || data is null)
         {
+            var errorList = errors.ToList();
             return BadRequest(new ApiResponse<IcdChapterResponse>
             {
                 Success = false,
-                Message = "Update ICD chapter failed.",
-                Errors = errors.ToList(),
+                Message = errorList.FirstOrDefault() ?? "Cập nhật ICD chapter thất bại",
+                Errors = errorList,
             });
         }
 
         return Ok(new ApiResponse<IcdChapterResponse>
         {
             Success = true,
-            Message = "ICD chapter updated.",
+            Message = "Cập nhật ICD chapter thành công",
             Data = data,
         });
     }
@@ -181,7 +183,7 @@ public sealed class IcdChaptersController : ControllerBase
             return BadRequest(new ApiResponse
             {
                 Success = false,
-                Message = "Invalid ICD chapter id.",
+                Message = "Id ICD chapter không hợp lệ",
             });
         }
 
@@ -192,24 +194,25 @@ public sealed class IcdChaptersController : ControllerBase
             return NotFound(new ApiResponse
             {
                 Success = false,
-                Message = "ICD chapter not found.",
+                Message = "Không tìm thấy ICD chapter",
             });
         }
 
         if (!ok)
         {
+            var errorList = errors.ToList();
             return BadRequest(new ApiResponse
             {
                 Success = false,
-                Message = "Delete ICD chapter failed.",
-                Errors = errors.ToList(),
+                Message = errorList.FirstOrDefault() ?? "Xóa ICD chapter thất bại",
+                Errors = errorList,
             });
         }
 
         return Ok(new ApiResponse
         {
             Success = true,
-            Message = "ICD chapter deleted (soft).",
+            Message = "Xóa ICD chapter thành công",
         });
     }
 }

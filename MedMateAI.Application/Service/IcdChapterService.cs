@@ -70,7 +70,7 @@ public sealed class IcdChapterService : IIcdChapterService
     {
         if (request is null)
         {
-            return (false, new[] { "Request body is required." }, null);
+            return (false, new[] { "Request body là bắt buộc" }, null);
         }
 
         var validationErrors = ValidateChapterFields(request.ChapterCode, request.ChapterName);
@@ -89,7 +89,7 @@ public sealed class IcdChapterService : IIcdChapterService
 
         if (existingChapter is not null)
         {
-            return (false, new[] { "Chapter code already exists." }, null);
+            return (false, new[] { "ChapterCode đã tồn tại" }, null);
         }
 
         var newChapter = new IcdChapter
@@ -145,33 +145,33 @@ public sealed class IcdChapterService : IIcdChapterService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid ICD chapter id." }, null);
+            return (false, false, new[] { "Id ICD chapter không hợp lệ" }, null);
         }
 
         if (request is null)
         {
-            return (false, false, new[] { "Request body is required." }, null);
+            return (false, false, new[] { "Request body là bắt buộc" }, null);
         }
 
         if (request.ChapterName is not null && string.IsNullOrWhiteSpace(request.ChapterName))
         {
-            return (false, false, new[] { "Chapter name cannot be empty when provided." }, null);
+            return (false, false, new[] { "ChapterName không được để trống" }, null);
         }
 
         if (request.ChapterCode is not null && string.IsNullOrWhiteSpace(request.ChapterCode))
         {
-            return (false, false, new[] { "Chapter code cannot be empty when provided." }, null);
+            return (false, false, new[] { "ChapterCode không được để trống" }, null);
         }
 
         if (request.ChapterName is null && request.KeywordWeights is null && request.ChapterCode is null)
         {
-            return (false, false, new[] { "No fields to update." }, null);
+            return (false, false, new[] { "Không có trường nào để cập nhật" }, null);
         }
 
         var chapter = await _unitOfWork.IcdChapters.GetByIdAsync(id, cancellationToken);
         if (chapter is null || chapter.IsDeleted)
         {
-            return (false, true, new[] { "ICD chapter not found." }, null);
+            return (false, true, new[] { "Không tìm thấy ICD chapter" }, null);
         }
 
         var newCode = request.ChapterCode is not null ? NormalizeChapterCode(request.ChapterCode) : null;
@@ -195,7 +195,7 @@ public sealed class IcdChapterService : IIcdChapterService
 
             if (exists is not null)
             {
-                return (false, false, new[] { "Chapter code already exists." }, null);
+                return (false, false, new[] { "ChapterCode đã tồn tại" }, null);
             }
         }
 
@@ -260,13 +260,13 @@ public sealed class IcdChapterService : IIcdChapterService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid ICD chapter id." });
+            return (false, false, new[] { "Id ICD chapter không hợp lệ" });
         }
 
         var chapter = await _unitOfWork.IcdChapters.GetByIdAsync(id, cancellationToken);
         if (chapter is null || chapter.IsDeleted)
         {
-            return (false, true, new[] { "ICD chapter not found." });
+            return (false, true, new[] { "Không tìm thấy ICD chapter" });
         }
 
         chapter.IsDeleted = true;
@@ -379,12 +379,12 @@ public sealed class IcdChapterService : IIcdChapterService
 
         if (NormalizeChapterCode(chapterCode) is null)
         {
-            errors.Add("Chapter code is required.");
+            errors.Add("ChapterCode là bắt buộc");
         }
 
         if (string.IsNullOrWhiteSpace(chapterName))
         {
-            errors.Add("Chapter name is required.");
+            errors.Add("ChapterName là bắt buộc");
         }
 
         return errors;

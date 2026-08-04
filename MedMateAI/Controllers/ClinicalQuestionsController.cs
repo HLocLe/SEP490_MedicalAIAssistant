@@ -31,7 +31,7 @@ public sealed class ClinicalQuestionsController : ControllerBase
             return BadRequest(new ApiResponse<PagedResponse<ClinicalQuestionResponse>>
             {
                 Success = false,
-                Message = "Invalid ICD chapter id.",
+                Message = "Id ICD chapter không hợp lệ",
             });
         }
 
@@ -61,7 +61,7 @@ public sealed class ClinicalQuestionsController : ControllerBase
             return BadRequest(new ApiResponse<ClinicalQuestionResponse>
             {
                 Success = false,
-                Message = "Invalid clinical question id.",
+                Message = "Id câu hỏi không hợp lệ",
             });
         }
 
@@ -71,7 +71,7 @@ public sealed class ClinicalQuestionsController : ControllerBase
             return NotFound(new ApiResponse<ClinicalQuestionResponse>
             {
                 Success = false,
-                Message = "Clinical question not found.",
+                Message = "Không tìm thấy câu hỏi lâm sàng",
             });
         }
 
@@ -93,18 +93,19 @@ public sealed class ClinicalQuestionsController : ControllerBase
         var (ok, errors, data) = await _clinicalQuestionService.CreateClinicalQuestionAsync(request, cancellationToken);
         if (!ok || data is null)
         {
+            var errorList = errors.ToList();
             return BadRequest(new ApiResponse<ClinicalQuestionResponse>
             {
                 Success = false,
-                Message = "Create clinical question failed.",
-                Errors = errors.ToList(),
+                Message = errorList.FirstOrDefault() ?? "Tạo câu hỏi lâm sàng thất bại",
+                Errors = errorList,
             });
         }
 
         return Ok(new ApiResponse<ClinicalQuestionResponse>
         {
             Success = true,
-            Message = "Clinical question created.",
+            Message = "Tạo câu hỏi lâm sàng thành công",
             Data = data,
         });
     }
@@ -119,18 +120,19 @@ public sealed class ClinicalQuestionsController : ControllerBase
         var (ok, errors, data) = await _clinicalQuestionService.BulkCreateClinicalQuestionsAsync(request, cancellationToken);
         if (!ok || data is null)
         {
+            var errorList = errors.ToList();
             return BadRequest(new ApiResponse<IReadOnlyList<ClinicalQuestionResponse>>
             {
                 Success = false,
-                Message = "Bulk create clinical questions failed.",
-                Errors = errors.ToList(),
+                Message = errorList.FirstOrDefault() ?? "Tạo hàng loạt câu hỏi lâm sàng thất bại",
+                Errors = errorList,
             });
         }
 
         return Ok(new ApiResponse<IReadOnlyList<ClinicalQuestionResponse>>
         {
             Success = true,
-            Message = $"{data.Count} clinical question(s) created.",
+            Message = $"Tạo thành công {data.Count} câu hỏi lâm sàng",
             Data = data,
         });
     }
@@ -149,7 +151,7 @@ public sealed class ClinicalQuestionsController : ControllerBase
             return BadRequest(new ApiResponse<ClinicalQuestionResponse>
             {
                 Success = false,
-                Message = "Invalid clinical question id.",
+                Message = "Id câu hỏi không hợp lệ",
             });
         }
 
@@ -160,24 +162,25 @@ public sealed class ClinicalQuestionsController : ControllerBase
             return NotFound(new ApiResponse<ClinicalQuestionResponse>
             {
                 Success = false,
-                Message = "Clinical question not found.",
+                Message = "Không tìm thấy câu hỏi lâm sàng",
             });
         }
 
         if (!ok || data is null)
         {
+            var errorList = errors.ToList();
             return BadRequest(new ApiResponse<ClinicalQuestionResponse>
             {
                 Success = false,
-                Message = "Update clinical question failed.",
-                Errors = errors.ToList(),
+                Message = errorList.FirstOrDefault() ?? "Cập nhật câu hỏi lâm sàng thất bại",
+                Errors = errorList,
             });
         }
 
         return Ok(new ApiResponse<ClinicalQuestionResponse>
         {
             Success = true,
-            Message = "Clinical question updated.",
+            Message = "Cập nhật câu hỏi lâm sàng thành công",
             Data = data,
         });
     }
@@ -193,7 +196,7 @@ public sealed class ClinicalQuestionsController : ControllerBase
             return BadRequest(new ApiResponse
             {
                 Success = false,
-                Message = "Invalid clinical question id.",
+                Message = "Id câu hỏi không hợp lệ",
             });
         }
 
@@ -204,24 +207,25 @@ public sealed class ClinicalQuestionsController : ControllerBase
             return NotFound(new ApiResponse
             {
                 Success = false,
-                Message = "Clinical question not found.",
+                Message = "Không tìm thấy câu hỏi lâm sàng",
             });
         }
 
         if (!ok)
         {
+            var errorList = errors.ToList();
             return BadRequest(new ApiResponse
             {
                 Success = false,
-                Message = "Delete clinical question failed.",
-                Errors = errors.ToList(),
+                Message = errorList.FirstOrDefault() ?? "Xóa câu hỏi lâm sàng thất bại",
+                Errors = errorList,
             });
         }
 
         return Ok(new ApiResponse
         {
             Success = true,
-            Message = "Clinical question deleted (soft).",
+            Message = "Xóa câu hỏi lâm sàng thành công",
         });
     }
 }

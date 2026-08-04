@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using MedMateAI.Application.DTOs.Auth.Requests;
 using MedMateAI.Application.DTOs.Auth.Responses;
 using MedMateAI.Application.DTOs.Users.Responses;
@@ -449,6 +450,70 @@ public sealed class AuthService : IAuthService
         }
 
         _cache.Remove(cacheKey);
+        return (true, null, Array.Empty<string>());
+    }
+
+    public async Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors)> ChangePasswordAsync(
+        ChangePasswordRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.CurrentPassword))
+        {
+            const string message = "Mật khẩu hiện tại là bắt buộc";
+            return (false, message, new[] { message });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            const string message = "Mật khẩu mới là bắt buộc";
+            return (false, message, new[] { message });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ConfirmNewPassword))
+        {
+            const string message = "Mật khẩu xác nhận là bắt buộc";
+            return (false, message, new[] { message });
+        }
+
+        if (!string.Equals(request.NewPassword, request.ConfirmNewPassword, StringComparison.Ordinal))
+        {
+            const string message = "Mật khẩu xác nhận không khớp";
+            return (false, message, new[] { message });
+        }
+
+        var userId = _httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            const string message = "Unauthorized";
+            return (false, message, new[] { message });
+        }
+
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user is null || user.IsDeleted)
+        {
+            const string message = "Unauthorized";
+            return (false, message, new[] { message });
+        }
+
+        if (!await _userManager.HasPasswordAsync(user))
+        {
+            const string message = "Tài khoản chưa có mật khẩu. Vui lòng đặt mật khẩu qua quên mật khẩu.";
+            return (false, message, new[] { message });
+        }
+
+        var result = await _userManager.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
+        if (!result.Succeeded)
+        {
+            if (result.Errors.Any(e => e.Code == "PasswordMismatch"))
+            {
+                const string message = "Mật khẩu hiện tại không đúng";
+                return (false, message, new[] { message });
+            }
+
+            const string failMessage = "Đổi mật khẩu thất bại";
+            return (false, failMessage, result.Errors.Select(e => e.Description));
+        }
+
         return (true, null, Array.Empty<string>());
     }
 

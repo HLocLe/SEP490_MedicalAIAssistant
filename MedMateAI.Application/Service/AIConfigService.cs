@@ -79,7 +79,7 @@ public sealed class AIConfigService : IAIConfigService
     {
         if (string.IsNullOrWhiteSpace(taskType))
         {
-            throw new ArgumentException("Task type is required.");
+            throw new ArgumentException("TaskType là bắt buộc");
         }
 
         var normalizedTaskType = taskType.Trim();
@@ -103,22 +103,22 @@ public sealed class AIConfigService : IAIConfigService
     {
         if (request is null)
         {
-            throw new ArgumentException("Request is required.");
+            throw new ArgumentException("Request body là bắt buộc");
         }
 
         if (string.IsNullOrWhiteSpace(request.TaskType))
         {
-            throw new ArgumentException("TaskType is required.");
+            throw new ArgumentException("TaskType là bắt buộc");
         }
 
         if (!IsValidTemperature(request.Temperature))
         {
-            throw new ArgumentException("Temperature must be between 0 and 2.");
+            throw new ArgumentException("Temperature phải từ 0 đến 2");
         }
 
         if (!IsValidMaxTokens(request.MaxTokens))
         {
-            throw new ArgumentException("MaxTokens must be greater than 0 when provided.");
+            throw new ArgumentException("MaxTokens phải lớn hơn 0");
         }
 
         var taskType = request.TaskType.Trim();
@@ -131,7 +131,7 @@ public sealed class AIConfigService : IAIConfigService
 
         if (duplicatedConfig is not null)
         {
-            throw new InvalidOperationException("TaskType already exists.");
+            throw new InvalidOperationException("TaskType đã tồn tại");
         }
 
         var entity = new AISystemConfig
@@ -164,7 +164,7 @@ public sealed class AIConfigService : IAIConfigService
 
         if (request is null)
         {
-            throw new ArgumentException("Request is required.");
+            throw new ArgumentException("Request body là bắt buộc");
         }
 
         var entity = await _aiConfigRepository.GetByIdAsync(id, cancellationToken);
@@ -177,7 +177,7 @@ public sealed class AIConfigService : IAIConfigService
         {
             if (string.IsNullOrWhiteSpace(request.TaskType))
             {
-                throw new ArgumentException("TaskType cannot be empty when provided.");
+                throw new ArgumentException("TaskType không được để trống");
             }
 
             var normalizedTaskType = request.TaskType.Trim();
@@ -191,7 +191,7 @@ public sealed class AIConfigService : IAIConfigService
 
                 if (duplicatedConfig is not null)
                 {
-                    throw new InvalidOperationException("TaskType already exists.");
+                    throw new InvalidOperationException("TaskType đã tồn tại");
                 }
             }
 
@@ -212,7 +212,7 @@ public sealed class AIConfigService : IAIConfigService
         {
             if (!IsValidTemperature(request.Temperature))
             {
-                throw new ArgumentException("Temperature must be between 0 and 2.");
+                throw new ArgumentException("Temperature phải từ 0 đến 2");
             }
 
             entity.Temperature = request.Temperature;
@@ -222,7 +222,7 @@ public sealed class AIConfigService : IAIConfigService
         {
             if (!IsValidMaxTokens(request.MaxTokens))
             {
-                throw new ArgumentException("MaxTokens must be greater than 0 when provided.");
+                throw new ArgumentException("MaxTokens phải lớn hơn 0");
             }
 
             entity.MaxTokens = request.MaxTokens;
@@ -253,7 +253,7 @@ public sealed class AIConfigService : IAIConfigService
 
         if (request is null)
         {
-            throw new ArgumentException("Request is required.");
+            throw new ArgumentException("Request body là bắt buộc");
         }
 
         var entity = await _aiConfigRepository.GetByIdAsync(id, cancellationToken);
