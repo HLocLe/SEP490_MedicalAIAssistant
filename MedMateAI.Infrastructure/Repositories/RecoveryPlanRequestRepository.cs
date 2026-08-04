@@ -106,7 +106,7 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
         return await ToPagedResultAsync(query, pageNumber, pageSize, cancellationToken);
     }
 
-    public Task<DoctorRecoveryPlanRequestData?> GetAssignedToDoctorByIdAsync(
+    public async Task<DoctorRecoveryPlanRequestData?> GetAssignedToDoctorByIdAsync(
         Guid doctorId,
         Guid requestId,
         CancellationToken cancellationToken = default)
@@ -118,8 +118,18 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
                 && request.Id == requestId
                 && request.AssignedDoctorId == doctorId);
 
-        return ProjectDoctorRequestsWithPlanSummary(requests)
+        var request = await ProjectDoctorRequests(requests)
             .SingleOrDefaultAsync(cancellationToken);
+        if (request is null)
+        {
+            return null;
+        }
+
+        var planSummaries = await GetActivePlanSummariesAsync(
+            new[] { request.Id },
+            cancellationToken);
+
+        return AttachPlanSummary(request, planSummaries);
     }
 
     public async Task<PagedResult<DoctorRecoveryPlanRequestData>> GetAssignedToDoctorPagedAsync(
@@ -141,12 +151,18 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
-        var items = await ProjectDoctorRequestsWithPlanSummary(query)
+        var pageRequests = await ProjectDoctorRequests(query)
             .OrderBy(request => request.RequestedAt)
             .ThenBy(request => request.Id)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
+        var planSummaries = await GetActivePlanSummariesAsync(
+            pageRequests.Select(request => request.Id).ToArray(),
+            cancellationToken);
+        var items = pageRequests
+            .Select(request => AttachPlanSummary(request, planSummaries))
+            .ToList();
 
         return new PagedResult<DoctorRecoveryPlanRequestData>
         {
@@ -297,38 +313,82 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
         _context.OutboxMessages.Add(message);
     }
 
-    private IQueryable<DoctorRecoveryPlanRequestData> ProjectDoctorRequestsWithPlanSummary(
+    private static IQueryable<DoctorRecoveryPlanRequestData> ProjectDoctorRequests(
         IQueryable<RecoveryPlanRequest> requests)
     {
-        var plans = _context.RecoveryPlans
-            .AsNoTracking()
-            .Where(plan => !plan.IsDeleted && plan.RecoveryPlanRequestId.HasValue);
+        return requests.Select(request => new DoctorRecoveryPlanRequestData(
+            request.Id,
+            request.UserId,
+            request.AssignedDoctorId,
+            request.DiseaseGroup,
+            request.TreatmentJourneyId,
+            request.PrimaryLabTestSessionId,
+            request.Status,
+            request.RequestNote,
+            request.RequestedAt,
+            request.AcceptedAt,
+            request.ReviewStartedAt,
+            request.AssignmentExpiresAt,
+            request.RejectedAt,
+            request.CancelledAt,
+            request.RejectionReasonCode,
+            request.RejectionReason,
+            request.Version,
+            null,
+            null));
+    }
 
-        return
-            from request in requests
-            join plan in plans
-                on request.Id equals plan.RecoveryPlanRequestId into requestPlans
-            from plan in requestPlans.DefaultIfEmpty()
-            select new DoctorRecoveryPlanRequestData(
-                request.Id,
-                request.UserId,
-                request.AssignedDoctorId,
-                request.DiseaseGroup,
-                request.TreatmentJourneyId,
-                request.PrimaryLabTestSessionId,
-                request.Status,
-                request.RequestNote,
-                request.RequestedAt,
-                request.AcceptedAt,
-                request.ReviewStartedAt,
-                request.AssignmentExpiresAt,
-                request.RejectedAt,
-                request.CancelledAt,
-                request.RejectionReasonCode,
-                request.RejectionReason,
-                request.Version,
-                (Guid?)plan.Id,
-                (RecoveryPlanStatus?)plan.Status);
+    private async Task<IReadOnlyDictionary<Guid, (Guid PlanId, RecoveryPlanStatus Status)>>
+        GetActivePlanSummariesAsync(
+            IReadOnlyCollection<Guid> requestIds,
+            CancellationToken cancellationToken)
+    {
+        if (requestIds.Count == 0)
+        {
+            return new Dictionary<Guid, (Guid PlanId, RecoveryPlanStatus Status)>();
+        }
+
+        var plans = await _context.RecoveryPlans
+            .AsNoTracking()
+            .Where(plan =>
+                !plan.IsDeleted
+                && plan.RecoveryPlanRequestId.HasValue
+                && requestIds.Contains(plan.RecoveryPlanRequestId.Value))
+            .OrderByDescending(plan => plan.CreatedAt)
+            .ThenByDescending(plan => plan.Id)
+            .Select(plan => new
+            {
+                RequestId = plan.RecoveryPlanRequestId.GetValueOrDefault(),
+                PlanId = plan.Id,
+                plan.Status
+            })
+            .ToListAsync(cancellationToken);
+
+        var summaries = new Dictionary<Guid, (Guid PlanId, RecoveryPlanStatus Status)>();
+        foreach (var plan in plans)
+        {
+            // The filtered unique index guarantees one active plan per request.
+            // TryAdd also keeps materialization safe if legacy data violates that invariant.
+            summaries.TryAdd(plan.RequestId, (plan.PlanId, plan.Status));
+        }
+
+        return summaries;
+    }
+
+    private static DoctorRecoveryPlanRequestData AttachPlanSummary(
+        DoctorRecoveryPlanRequestData request,
+        IReadOnlyDictionary<Guid, (Guid PlanId, RecoveryPlanStatus Status)> planSummaries)
+    {
+        if (!planSummaries.TryGetValue(request.Id, out var plan))
+        {
+            return request;
+        }
+
+        return request with
+        {
+            RecoveryPlanId = plan.PlanId,
+            RecoveryPlanStatus = plan.Status
+        };
     }
 
     private void EnsureActiveTransaction()
