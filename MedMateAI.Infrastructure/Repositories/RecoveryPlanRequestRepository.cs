@@ -111,25 +111,24 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
         Guid requestId,
         CancellationToken cancellationToken = default)
     {
-        var requests = _context.RecoveryPlanRequests
+        var request = await _context.RecoveryPlanRequests
             .AsNoTracking()
             .Where(request =>
                 !request.IsDeleted
                 && request.Id == requestId
-                && request.AssignedDoctorId == doctorId);
-
-        var request = await ProjectDoctorRequests(requests)
+                && request.AssignedDoctorId == doctorId)
             .SingleOrDefaultAsync(cancellationToken);
         if (request is null)
         {
             return null;
         }
 
+        var requestData = MapDoctorRequestData(request);
         var planSummaries = await GetActivePlanSummariesAsync(
-            new[] { request.Id },
+            new[] { requestData.Id },
             cancellationToken);
 
-        return AttachPlanSummary(request, planSummaries);
+        return AttachPlanSummary(requestData, planSummaries);
     }
 
     public async Task<PagedResult<DoctorRecoveryPlanRequestData>> GetAssignedToDoctorPagedAsync(
@@ -151,12 +150,15 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
-        var pageRequests = await ProjectDoctorRequests(query)
+        var pageRequestEntities = await query
             .OrderBy(request => request.RequestedAt)
             .ThenBy(request => request.Id)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
+        var pageRequests = pageRequestEntities
+            .Select(MapDoctorRequestData)
+            .ToList();
         var planSummaries = await GetActivePlanSummariesAsync(
             pageRequests.Select(request => request.Id).ToArray(),
             cancellationToken);
@@ -313,10 +315,10 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
         _context.OutboxMessages.Add(message);
     }
 
-    private static IQueryable<DoctorRecoveryPlanRequestData> ProjectDoctorRequests(
-        IQueryable<RecoveryPlanRequest> requests)
+    private static DoctorRecoveryPlanRequestData MapDoctorRequestData(
+        RecoveryPlanRequest request)
     {
-        return requests.Select(request => new DoctorRecoveryPlanRequestData(
+        return new DoctorRecoveryPlanRequestData(
             request.Id,
             request.UserId,
             request.AssignedDoctorId,
@@ -335,7 +337,7 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
             request.RejectionReason,
             request.Version,
             null,
-            null));
+            null);
     }
 
     private async Task<IReadOnlyDictionary<Guid, (Guid PlanId, RecoveryPlanStatus Status)>>
