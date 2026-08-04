@@ -141,7 +141,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
     {
         if (request is null)
         {
-            return (false, new[] { "Request body is required." }, null);
+            return (false, new[] { "Request body là bắt buộc" }, null);
         }
 
         var validation = ValidateCreateMedicalFacilityRequest(request);
@@ -154,14 +154,14 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         var invalidDepartmentIds = await GetInvalidDepartmentIdsAsync(distinctDepartmentIds, cancellationToken);
         if (invalidDepartmentIds.Count > 0)
         {
-            validation.Errors.Add("Some DepartmentIds do not exist or are deleted.");
+            validation.Errors.Add("Một số DepartmentId không tồn tại hoặc đã xóa");
             return (false, validation.Errors, null);
         }
 
         var normalizedAddress = NormalizeText(request.Address);
         if (await HasDuplicateFacilityAsync(null, validation.FacilityName!, normalizedAddress, cancellationToken))
         {
-            return (false, new[] { "Medical facility with same facility name and address already exists." }, null);
+            return (false, new[] { "Cơ sở y tế cùng tên và địa chỉ đã tồn tại" }, null);
         }
 
         var utcNow = DateTime.UtcNow;
@@ -208,18 +208,18 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid medical facility id." }, null);
+            return (false, false, new[] { "Id cơ sở y tế không hợp lệ" }, null);
         }
 
         if (request is null)
         {
-            return (false, false, new[] { "Request body is required." }, null);
+            return (false, false, new[] { "Request body là bắt buộc" }, null);
         }
 
         var entity = await _unitOfWork.MedicalFacilities.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Medical facility not found." }, null);
+            return (false, true, new[] { "Không tìm thấy cơ sở y tế" }, null);
         }
 
         var errors = new List<string>();
@@ -233,18 +233,18 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             facilityNameFromRequest = NormalizeText(request.FacilityName);
             if (string.IsNullOrWhiteSpace(facilityNameFromRequest))
             {
-                errors.Add("Facility name cannot be empty when provided.");
+                errors.Add("Tên cơ sở y tế không được để trống");
             }
         }
 
         if (request.Latitude.HasValue && !IsLatitudeValid(request.Latitude.Value))
         {
-            errors.Add("Latitude must be between -90 and 90.");
+            errors.Add("Latitude phải từ -90 đến 90");
         }
 
         if (request.Longitude.HasValue && !IsLongitudeValid(request.Longitude.Value))
         {
-            errors.Add("Longitude must be between -180 and 180.");
+            errors.Add("Longitude phải từ -180 đến 180");
         }
 
         if (request.Address is not null)
@@ -257,7 +257,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             websiteFromRequest = NormalizeText(request.Website);
             if (!string.IsNullOrWhiteSpace(websiteFromRequest) && !IsValidAbsoluteUrl(websiteFromRequest))
             {
-                errors.Add("Website must be a valid absolute URL.");
+                errors.Add("Website không hợp lệ");
             }
         }
 
@@ -268,12 +268,12 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             {
                 if (imageUrlFromRequest.Length > ImageUrlMaxLength)
                 {
-                    errors.Add("ImageUrl must be 2048 characters or fewer.");
+                    errors.Add("ImageUrl không được vượt quá 2048 ký tự");
                 }
 
                 if (!IsValidHttpUrl(imageUrlFromRequest))
                 {
-                    errors.Add("ImageUrl must be a valid absolute http or https URL.");
+                    errors.Add("ImageUrl không hợp lệ");
                 }
             }
         }
@@ -284,25 +284,25 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             var requestedDepartmentIds = request.DepartmentIds.ToList();
             if (requestedDepartmentIds.Any(x => x == Guid.Empty))
             {
-                errors.Add("DepartmentIds contains invalid empty guid.");
+                errors.Add("DepartmentIds chứa Guid rỗng");
             }
 
             if (requestedDepartmentIds.Count != requestedDepartmentIds.Distinct().Count())
             {
-                errors.Add("DepartmentIds must contain distinct values.");
+                errors.Add("DepartmentIds phải là các giá trị khác nhau");
             }
 
             distinctDepartmentIds = requestedDepartmentIds.Distinct().ToList();
             var invalidDepartmentIds = await GetInvalidDepartmentIdsAsync(distinctDepartmentIds, cancellationToken);
             if (invalidDepartmentIds.Count > 0)
             {
-                errors.Add("Some DepartmentIds do not exist or are deleted.");
+                errors.Add("Một số DepartmentId không tồn tại hoặc đã xóa");
             }
         }
 
         if (request.FacilityType.HasValue && !IsValidFacilityType(request.FacilityType.Value))
         {
-            errors.Add("FacilityType is invalid.");
+            errors.Add("FacilityType không hợp lệ");
         }
 
         if (errors.Count > 0)
@@ -313,7 +313,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         var finalFacilityName = facilityNameFromRequest ?? NormalizeText(entity.FacilityName);
         if (string.IsNullOrWhiteSpace(finalFacilityName))
         {
-            return (false, false, new[] { "Facility name is required." }, null);
+            return (false, false, new[] { "Tên cơ sở y tế là bắt buộc" }, null);
         }
 
         var finalAddress = request.Address is not null
@@ -322,7 +322,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
 
         if (await HasDuplicateFacilityAsync(id, finalFacilityName, finalAddress, cancellationToken))
         {
-            return (false, false, new[] { "Medical facility with same facility name and address already exists." }, null);
+            return (false, false, new[] { "Cơ sở y tế cùng tên và địa chỉ đã tồn tại" }, null);
         }
 
         if (facilityNameFromRequest is not null)
@@ -398,18 +398,18 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid medical facility id." }, null);
+            return (false, false, new[] { "Id cơ sở y tế không hợp lệ" }, null);
         }
 
         if (request is null)
         {
-            return (false, false, new[] { "Request body is required." }, null);
+            return (false, false, new[] { "Request body là bắt buộc" }, null);
         }
 
         var entity = await _unitOfWork.MedicalFacilities.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Medical facility not found." }, null);
+            return (false, true, new[] { "Không tìm thấy cơ sở y tế" }, null);
         }
 
         entity.IsActive = request.IsActive;
@@ -429,13 +429,13 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid medical facility id." });
+            return (false, false, new[] { "Id cơ sở y tế không hợp lệ" });
         }
 
         var entity = await _unitOfWork.MedicalFacilities.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Medical facility not found." });
+            return (false, true, new[] { "Không tìm thấy cơ sở y tế" });
         }
 
         var utcNow = DateTime.UtcNow;
@@ -574,7 +574,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         var facilityName = NormalizeText(request.FacilityName);
         if (string.IsNullOrWhiteSpace(facilityName))
         {
-            errors.Add("Facility name is required.");
+            errors.Add("Tên cơ sở y tế là bắt buộc");
         }
 
         ValidateCoordinates(request.Latitude, request.Longitude, errors);
@@ -590,7 +590,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
 
         if (!IsValidFacilityType(request.FacilityType))
         {
-            errors.Add("FacilityType is invalid.");
+            errors.Add("FacilityType không hợp lệ");
         }
 
         return (errors, facilityName, website, imageUrl, departmentIds);
@@ -600,12 +600,12 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
     {
         if (latitude.HasValue && !IsLatitudeValid(latitude.Value))
         {
-            errors.Add("Latitude must be between -90 and 90.");
+            errors.Add("Latitude phải từ -90 đến 90");
         }
 
         if (longitude.HasValue && !IsLongitudeValid(longitude.Value))
         {
-            errors.Add("Longitude must be between -180 and 180.");
+            errors.Add("Longitude phải từ -180 đến 180");
         }
     }
 
@@ -613,7 +613,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
     {
         if (!string.IsNullOrWhiteSpace(website) && !IsValidAbsoluteUrl(website))
         {
-            errors.Add("Website must be a valid absolute URL.");
+            errors.Add("Website không hợp lệ");
         }
     }
 
@@ -626,12 +626,12 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
 
         if (imageUrl.Length > ImageUrlMaxLength)
         {
-            errors.Add("ImageUrl must be 2048 characters or fewer.");
+            errors.Add("ImageUrl không được vượt quá 2048 ký tự");
         }
 
         if (!IsValidHttpUrl(imageUrl))
         {
-            errors.Add("ImageUrl must be a valid absolute http or https URL.");
+            errors.Add("ImageUrl không hợp lệ");
         }
     }
 
@@ -639,12 +639,12 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
     {
         if (departmentIds.Any(x => x == Guid.Empty))
         {
-            errors.Add("DepartmentIds contains invalid empty guid.");
+            errors.Add("DepartmentIds chứa Guid rỗng");
         }
 
         if (departmentIds.Count != departmentIds.Distinct().Count())
         {
-            errors.Add("DepartmentIds must contain distinct values.");
+            errors.Add("DepartmentIds phải là các giá trị khác nhau");
         }
     }
 

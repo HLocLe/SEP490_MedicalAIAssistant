@@ -136,30 +136,30 @@ public sealed class DoctorService : IDoctorService
     {
         if (request is null)
         {
-            return (false, new[] { "Request body is required." }, null);
+            return (false, new[] { "Request body là bắt buộc" }, null);
         }
 
         var errors = new List<string>();
 
         if (request.UserId.HasValue && request.UserId.Value == Guid.Empty)
         {
-            errors.Add("UserId is invalid.");
+            errors.Add("UserId không hợp lệ");
         }
 
         if (request.FacilityDepartmentId == Guid.Empty)
         {
-            errors.Add("FacilityDepartmentId is required.");
+            errors.Add("FacilityDepartmentId là bắt buộc");
         }
 
         var fullName = NormalizeText(request.FullName);
         if (string.IsNullOrWhiteSpace(fullName))
         {
-            errors.Add("Full name is required.");
+            errors.Add("Họ tên là bắt buộc");
         }
 
         if (request.YearsOfExperience.HasValue && request.YearsOfExperience.Value < 0)
         {
-            errors.Add("YearsOfExperience must be greater than or equal to 0.");
+            errors.Add("Số năm kinh nghiệm phải ≥ 0");
         }
 
         var imageUrl = NormalizeText(request.ImageUrl);
@@ -167,18 +167,18 @@ public sealed class DoctorService : IDoctorService
         {
             if (imageUrl.Length > ImageUrlMaxLength)
             {
-                errors.Add("ImageUrl must be 2048 characters or fewer.");
+                errors.Add("ImageUrl không được vượt quá 2048 ký tự");
             }
 
             if (!IsValidHttpUrl(imageUrl))
             {
-                errors.Add("ImageUrl must be a valid absolute http or https URL.");
+                errors.Add("ImageUrl không hợp lệ");
             }
         }
 
         if (!IsValidDepartmentRole(request.DepartmentRole))
         {
-            errors.Add("DepartmentRole is invalid.");
+            errors.Add("DepartmentRole không hợp lệ");
         }
 
         if (errors.Count == 0)
@@ -189,7 +189,7 @@ public sealed class DoctorService : IDoctorService
 
             if (!isValidFacilityDepartment)
             {
-                errors.Add("FacilityDepartmentId is invalid, deleted, or belongs to inactive facility.");
+                errors.Add("FacilityDepartment không hợp lệ hoặc đã xóa");
             }
         }
 
@@ -203,7 +203,7 @@ public sealed class DoctorService : IDoctorService
 
             if (hasDuplicate)
             {
-                errors.Add("Doctor with same full name already exists in this facility department.");
+                errors.Add("Bác sĩ cùng họ tên đã tồn tại trong khoa này");
             }
         }
 
@@ -218,7 +218,7 @@ public sealed class DoctorService : IDoctorService
 
             if (existingDoctorForUser is not null)
             {
-                errors.Add("This user account is already linked to a doctor profile.");
+                errors.Add("Tài khoản đã gắn hồ sơ bác sĩ");
             }
         }
 
@@ -257,18 +257,18 @@ public sealed class DoctorService : IDoctorService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid doctor id." }, null);
+            return (false, false, new[] { "Id bác sĩ không hợp lệ" }, null);
         }
 
         if (request is null)
         {
-            return (false, false, new[] { "Request body is required." }, null);
+            return (false, false, new[] { "Request body là bắt buộc" }, null);
         }
 
         var entity = await _unitOfWork.Doctors.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Doctor not found." }, null);
+            return (false, true, new[] { "Không tìm thấy bác sĩ" }, null);
         }
 
         var errors = new List<string>();
@@ -280,13 +280,13 @@ public sealed class DoctorService : IDoctorService
             fullNameFromRequest = NormalizeText(request.FullName);
             if (string.IsNullOrWhiteSpace(fullNameFromRequest))
             {
-                errors.Add("Full name cannot be empty when provided.");
+                errors.Add("Họ tên không được để trống");
             }
         }
 
         if (request.YearsOfExperience.HasValue && request.YearsOfExperience.Value < 0)
         {
-            errors.Add("YearsOfExperience must be greater than or equal to 0.");
+            errors.Add("Số năm kinh nghiệm phải ≥ 0");
         }
 
         if (request.ImageUrl is not null)
@@ -296,19 +296,19 @@ public sealed class DoctorService : IDoctorService
             {
                 if (imageUrlFromRequest.Length > ImageUrlMaxLength)
                 {
-                    errors.Add("ImageUrl must be 2048 characters or fewer.");
+                    errors.Add("ImageUrl không được vượt quá 2048 ký tự");
                 }
 
                 if (!IsValidHttpUrl(imageUrlFromRequest))
                 {
-                    errors.Add("ImageUrl must be a valid absolute http or https URL.");
+                    errors.Add("ImageUrl không hợp lệ");
                 }
             }
         }
 
         if (request.DepartmentRole.HasValue && !IsValidDepartmentRole(request.DepartmentRole.Value))
         {
-            errors.Add("DepartmentRole is invalid.");
+            errors.Add("DepartmentRole không hợp lệ");
         }
 
         var finalFacilityDepartmentId = entity.FacilityDepartmentId;
@@ -316,7 +316,7 @@ public sealed class DoctorService : IDoctorService
         {
             if (request.FacilityDepartmentId.Value == Guid.Empty)
             {
-                errors.Add("FacilityDepartmentId is invalid.");
+                errors.Add("FacilityDepartmentId không hợp lệ");
             }
             else
             {
@@ -328,7 +328,7 @@ public sealed class DoctorService : IDoctorService
 
                 if (!isValidFacilityDepartment)
                 {
-                    errors.Add("FacilityDepartmentId is invalid, deleted, or belongs to inactive facility.");
+                    errors.Add("FacilityDepartment không hợp lệ hoặc đã xóa");
                 }
             }
         }
@@ -339,7 +339,7 @@ public sealed class DoctorService : IDoctorService
 
         if (string.IsNullOrWhiteSpace(finalFullName))
         {
-            errors.Add("Full name is required.");
+            errors.Add("Họ tên là bắt buộc");
         }
 
         if (errors.Count == 0 && finalFullName is not null)
@@ -352,7 +352,7 @@ public sealed class DoctorService : IDoctorService
 
             if (hasDuplicate)
             {
-                errors.Add("Doctor with same full name already exists in this facility department.");
+                errors.Add("Bác sĩ cùng họ tên đã tồn tại trong khoa này");
             }
         }
 
@@ -427,18 +427,18 @@ public sealed class DoctorService : IDoctorService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid doctor id." }, null);
+            return (false, false, new[] { "Id bác sĩ không hợp lệ" }, null);
         }
 
         if (request is null)
         {
-            return (false, false, new[] { "Request body is required." }, null);
+            return (false, false, new[] { "Request body là bắt buộc" }, null);
         }
 
         var entity = await _unitOfWork.Doctors.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Doctor not found." }, null);
+            return (false, true, new[] { "Không tìm thấy bác sĩ" }, null);
         }
 
         var realtimeAccessChanged = entity.IsActive != request.IsActive;
@@ -465,13 +465,13 @@ public sealed class DoctorService : IDoctorService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid doctor id." });
+            return (false, false, new[] { "Id bác sĩ không hợp lệ" });
         }
 
         var entity = await _unitOfWork.Doctors.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Doctor not found." });
+            return (false, true, new[] { "Không tìm thấy bác sĩ" });
         }
 
         var utcNow = DateTime.UtcNow;

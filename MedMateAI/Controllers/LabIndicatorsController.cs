@@ -2,16 +2,18 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.LabIndicators.Requests;
 using MedMateAI.Application.DTOs.LabIndicators.Responses;
 using MedMateAI.Application.IService;
-using Microsoft.AspNetCore.Authorization;
+using MedMateAI.Helpers;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
 
 [ApiController]
 [Route("api/lab-indicators")]
-
 public sealed class LabIndicatorsController : ControllerBase
 {
+    private const string InvalidIdMessage = "Id chỉ số xét nghiệm không hợp lệ";
+    private const string NotFoundMessage = "Không tìm thấy chỉ số xét nghiệm";
+
     private readonly ILabIndicatorService _labIndicatorService;
 
     public LabIndicatorsController(ILabIndicatorService labIndicatorService)
@@ -32,12 +34,7 @@ public sealed class LabIndicatorsController : ControllerBase
             search,
             cancellationToken);
 
-        return Ok(new ApiResponse<PagedResponse<LabIndicatorResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("{id:guid}")]
@@ -48,29 +45,16 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<LabIndicatorDetailResponse>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<LabIndicatorDetailResponse>(InvalidIdMessage));
         }
 
         var data = await _labIndicatorService.GetLabIndicatorByIdAsync(id, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<LabIndicatorDetailResponse>
-            {
-                Success = false,
-                Message = "Lab indicator not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<LabIndicatorDetailResponse>(NotFoundMessage));
         }
 
-        return Ok(new ApiResponse<LabIndicatorDetailResponse>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpPost]
@@ -83,20 +67,10 @@ public sealed class LabIndicatorsController : ControllerBase
         var (ok, errors, data) = await _labIndicatorService.CreateLabIndicatorAsync(request, cancellationToken);
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<LabIndicatorResponse>
-            {
-                Success = false,
-                Message = "Create lab indicator failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<LabIndicatorResponse>(errors, "Tạo chỉ số xét nghiệm thất bại"));
         }
 
-        return Ok(new ApiResponse<LabIndicatorResponse>
-        {
-            Success = true,
-            Message = "Lab indicator created.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Tạo chỉ số xét nghiệm thành công"));
     }
 
     [HttpPost("bulk")]
@@ -109,20 +83,12 @@ public sealed class LabIndicatorsController : ControllerBase
         var (ok, errors, data) = await _labIndicatorService.BulkCreateLabIndicatorsAsync(request, cancellationToken);
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<LabIndicatorResponse>>
-            {
-                Success = false,
-                Message = "Bulk create lab indicators failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<IReadOnlyList<LabIndicatorResponse>>(
+                errors,
+                "Bulk create lab indicators failed."));
         }
 
-        return Ok(new ApiResponse<IReadOnlyList<LabIndicatorResponse>>
-        {
-            Success = true,
-            Message = $"{data.Count} lab indicator(s) created.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, $"{data.Count} lab indicator(s) created."));
     }
 
     [HttpPut("{id:guid}")]
@@ -136,40 +102,22 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<LabIndicatorResponse>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<LabIndicatorResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _labIndicatorService.UpdateLabIndicatorAsync(id, request, cancellationToken);
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<LabIndicatorResponse>
-            {
-                Success = false,
-                Message = "Lab indicator not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<LabIndicatorResponse>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<LabIndicatorResponse>
-            {
-                Success = false,
-                Message = "Update lab indicator failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<LabIndicatorResponse>(errors, "Cập nhật chỉ số xét nghiệm thất bại"));
         }
 
-        return Ok(new ApiResponse<LabIndicatorResponse>
-        {
-            Success = true,
-            Message = "Lab indicator updated.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Cập nhật chỉ số xét nghiệm thành công"));
     }
 
     [HttpDelete("{id:guid}")]
@@ -180,39 +128,18 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail(InvalidIdMessage));
         }
 
         var (ok, notFound, errors) = await _labIndicatorService.SoftDeleteLabIndicatorAsync(id, cancellationToken);
-
-        if (notFound)
-        {
-            return NotFound(new ApiResponse
-            {
-                Success = false,
-                Message = "Lab indicator not found.",
-            });
-        }
-
-        if (!ok)
-        {
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = "Delete lab indicator failed.",
-                Errors = errors.ToList(),
-            });
-        }
-
-        return Ok(new ApiResponse
-        {
-            Success = true,
-            Message = "Lab indicator deleted (soft).",
-        });
+        return ApiResponseFactory.SoftDeleteResult(
+            this,
+            ok,
+            notFound,
+            errors,
+            NotFoundMessage,
+            "Xóa chỉ số xét nghiệm thất bại",
+            "Xóa chỉ số xét nghiệm thành công");
     }
 
     [HttpGet("{id:guid}/aliases")]
@@ -223,15 +150,11 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<LabIndicatorAliasResponse>>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<IReadOnlyList<LabIndicatorAliasResponse>>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _labIndicatorService.GetAliasesByIndicatorIdAsync(id, cancellationToken);
-        return ToChildMutationResult(ok, notFound, errors, data, "OK", "Get aliases failed.", "Lab indicator not found.");
+        return ToChildMutationResult(ok, notFound, errors, data, "OK", "Lấy danh sách alias thất bại", NotFoundMessage);
     }
 
     [HttpGet("{id:guid}/reference-ranges")]
@@ -242,15 +165,11 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<LabIndicatorReferenceRangeResponse>>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<IReadOnlyList<LabIndicatorReferenceRangeResponse>>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _labIndicatorService.GetReferenceRangesByIndicatorIdAsync(id, cancellationToken);
-        return ToChildMutationResult(ok, notFound, errors, data, "OK", "Get reference ranges failed.", "Lab indicator not found.");
+        return ToChildMutationResult(ok, notFound, errors, data, "OK", "Lấy khoảng tham chiếu thất bại", NotFoundMessage);
     }
 
     [HttpGet("{id:guid}/advice")]
@@ -261,15 +180,11 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<LabIndicatorAdviceCacheResponse>>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<IReadOnlyList<LabIndicatorAdviceCacheResponse>>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _labIndicatorService.GetAdviceCachesByIndicatorIdAsync(id, cancellationToken);
-        return ToChildMutationResult(ok, notFound, errors, data, "OK", "Get advice caches failed.", "Lab indicator not found.");
+        return ToChildMutationResult(ok, notFound, errors, data, "OK", "Lấy advice cache thất bại", NotFoundMessage);
     }
 
     [HttpPost("{id:guid}/aliases/bulk")]
@@ -283,40 +198,24 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<LabIndicatorAliasResponse>>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<IReadOnlyList<LabIndicatorAliasResponse>>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _labIndicatorService.BulkCreateAliasesAsync(id, request, cancellationToken);
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<IReadOnlyList<LabIndicatorAliasResponse>>
-            {
-                Success = false,
-                Message = "Lab indicator not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<IReadOnlyList<LabIndicatorAliasResponse>>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<LabIndicatorAliasResponse>>
-            {
-                Success = false,
-                Message = "Bulk create aliases failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<IReadOnlyList<LabIndicatorAliasResponse>>(
+                errors,
+                "Bulk create aliases failed."));
         }
 
-        return Ok(new ApiResponse<IReadOnlyList<LabIndicatorAliasResponse>>
-        {
-            Success = true,
-            Message = $"{data.Count} alias(es) created.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, $"{data.Count} alias(es) created."));
     }
 
     [HttpPost("{id:guid}/reference-ranges/bulk")]
@@ -330,40 +229,24 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<LabIndicatorReferenceRangeResponse>>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<IReadOnlyList<LabIndicatorReferenceRangeResponse>>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _labIndicatorService.BulkCreateReferenceRangesAsync(id, request, cancellationToken);
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<IReadOnlyList<LabIndicatorReferenceRangeResponse>>
-            {
-                Success = false,
-                Message = "Lab indicator not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<IReadOnlyList<LabIndicatorReferenceRangeResponse>>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<LabIndicatorReferenceRangeResponse>>
-            {
-                Success = false,
-                Message = "Bulk create reference ranges failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<IReadOnlyList<LabIndicatorReferenceRangeResponse>>(
+                errors,
+                "Bulk create reference ranges failed."));
         }
 
-        return Ok(new ApiResponse<IReadOnlyList<LabIndicatorReferenceRangeResponse>>
-        {
-            Success = true,
-            Message = $"{data.Count} reference range(s) created.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, $"{data.Count} reference range(s) created."));
     }
 
     [HttpPost("{id:guid}/advice/bulk")]
@@ -377,40 +260,24 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<LabIndicatorAdviceCacheResponse>>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<IReadOnlyList<LabIndicatorAdviceCacheResponse>>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _labIndicatorService.BulkCreateAdviceCachesAsync(id, request, cancellationToken);
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<IReadOnlyList<LabIndicatorAdviceCacheResponse>>
-            {
-                Success = false,
-                Message = "Lab indicator not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<IReadOnlyList<LabIndicatorAdviceCacheResponse>>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<LabIndicatorAdviceCacheResponse>>
-            {
-                Success = false,
-                Message = "Bulk create advice caches failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<IReadOnlyList<LabIndicatorAdviceCacheResponse>>(
+                errors,
+                "Bulk create advice caches failed."));
         }
 
-        return Ok(new ApiResponse<IReadOnlyList<LabIndicatorAdviceCacheResponse>>
-        {
-            Success = true,
-            Message = $"{data.Count} advice cache entry(ies) created.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, $"{data.Count} advice cache entry(ies) created."));
     }
 
     [HttpPost("{id:guid}/aliases")]
@@ -424,15 +291,18 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<LabIndicatorAliasResponse>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<LabIndicatorAliasResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _labIndicatorService.CreateAliasAsync(id, request, cancellationToken);
-        return ToChildMutationResult(ok, notFound, errors, data, "Alias created.", "Create alias failed.", "Lab indicator not found.");
+        return ToChildMutationResult(
+            ok,
+            notFound,
+            errors,
+            data,
+            "Tạo alias thành công",
+            "Tạo alias thất bại",
+            NotFoundMessage);
     }
 
     [HttpPut("{id:guid}/aliases/{aliasId:guid}")]
@@ -447,15 +317,18 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<LabIndicatorAliasResponse>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<LabIndicatorAliasResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _labIndicatorService.UpdateAliasAsync(id, aliasId, request, cancellationToken);
-        return ToChildMutationResult(ok, notFound, errors, data, "Alias updated.", "Update alias failed.", "Alias not found.");
+        return ToChildMutationResult(
+            ok,
+            notFound,
+            errors,
+            data,
+            "Cập nhật alias thành công",
+            "Cập nhật alias thất bại",
+            "Không tìm thấy alias");
     }
 
     [HttpDelete("{id:guid}/aliases/{aliasId:guid}")]
@@ -466,15 +339,18 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail(InvalidIdMessage));
         }
 
         var (ok, notFound, errors) = await _labIndicatorService.SoftDeleteAliasAsync(id, aliasId, cancellationToken);
-        return ToChildDeleteResult(ok, notFound, errors, "Alias deleted (soft).", "Delete alias failed.", "Alias not found.");
+        return ApiResponseFactory.SoftDeleteResult(
+            this,
+            ok,
+            notFound,
+            errors,
+            "Không tìm thấy alias",
+            "Xóa alias thất bại",
+            "Xóa alias thành công");
     }
 
     [HttpPost("{id:guid}/reference-ranges")]
@@ -488,15 +364,18 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<LabIndicatorReferenceRangeResponse>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<LabIndicatorReferenceRangeResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _labIndicatorService.CreateReferenceRangeAsync(id, request, cancellationToken);
-        return ToChildMutationResult(ok, notFound, errors, data, "Reference range created.", "Create reference range failed.", "Lab indicator not found.");
+        return ToChildMutationResult(
+            ok,
+            notFound,
+            errors,
+            data,
+            "Tạo khoảng tham chiếu thành công",
+            "Tạo khoảng tham chiếu thất bại",
+            NotFoundMessage);
     }
 
     [HttpPut("{id:guid}/reference-ranges/{rangeId:guid}")]
@@ -511,15 +390,18 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<LabIndicatorReferenceRangeResponse>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<LabIndicatorReferenceRangeResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _labIndicatorService.UpdateReferenceRangeAsync(id, rangeId, request, cancellationToken);
-        return ToChildMutationResult(ok, notFound, errors, data, "Reference range updated.", "Update reference range failed.", "Reference range not found.");
+        return ToChildMutationResult(
+            ok,
+            notFound,
+            errors,
+            data,
+            "Cập nhật khoảng tham chiếu thành công",
+            "Cập nhật khoảng tham chiếu thất bại",
+            "Không tìm thấy khoảng tham chiếu");
     }
 
     [HttpDelete("{id:guid}/reference-ranges/{rangeId:guid}")]
@@ -530,15 +412,18 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail(InvalidIdMessage));
         }
 
         var (ok, notFound, errors) = await _labIndicatorService.SoftDeleteReferenceRangeAsync(id, rangeId, cancellationToken);
-        return ToChildDeleteResult(ok, notFound, errors, "Reference range deleted (soft).", "Delete reference range failed.", "Reference range not found.");
+        return ApiResponseFactory.SoftDeleteResult(
+            this,
+            ok,
+            notFound,
+            errors,
+            "Không tìm thấy khoảng tham chiếu",
+            "Xóa khoảng tham chiếu thất bại",
+            "Xóa khoảng tham chiếu thành công");
     }
 
     [HttpPost("{id:guid}/advice")]
@@ -552,15 +437,18 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<LabIndicatorAdviceCacheResponse>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<LabIndicatorAdviceCacheResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _labIndicatorService.CreateAdviceCacheAsync(id, request, cancellationToken);
-        return ToChildMutationResult(ok, notFound, errors, data, "Advice cache created.", "Create advice cache failed.", "Lab indicator not found.");
+        return ToChildMutationResult(
+            ok,
+            notFound,
+            errors,
+            data,
+            "Tạo advice cache thành công",
+            "Tạo advice cache thất bại",
+            NotFoundMessage);
     }
 
     [HttpPut("{id:guid}/advice/{cacheId:guid}")]
@@ -575,15 +463,18 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<LabIndicatorAdviceCacheResponse>
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<LabIndicatorAdviceCacheResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _labIndicatorService.UpdateAdviceCacheAsync(id, cacheId, request, cancellationToken);
-        return ToChildMutationResult(ok, notFound, errors, data, "Advice cache updated.", "Update advice cache failed.", "Advice cache not found.");
+        return ToChildMutationResult(
+            ok,
+            notFound,
+            errors,
+            data,
+            "Cập nhật advice cache thành công",
+            "Cập nhật advice cache thất bại",
+            "Không tìm thấy advice cache");
     }
 
     [HttpDelete("{id:guid}/advice/{cacheId:guid}")]
@@ -594,15 +485,18 @@ public sealed class LabIndicatorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = "Invalid lab indicator id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail(InvalidIdMessage));
         }
 
         var (ok, notFound, errors) = await _labIndicatorService.SoftDeleteAdviceCacheAsync(id, cacheId, cancellationToken);
-        return ToChildDeleteResult(ok, notFound, errors, "Advice cache deleted (soft).", "Delete advice cache failed.", "Advice cache not found.");
+        return ApiResponseFactory.SoftDeleteResult(
+            this,
+            ok,
+            notFound,
+            errors,
+            "Không tìm thấy advice cache",
+            "Xóa advice cache thất bại",
+            "Xóa advice cache thành công");
     }
 
     private IActionResult ToChildMutationResult<T>(
@@ -611,67 +505,19 @@ public sealed class LabIndicatorsController : ControllerBase
         IEnumerable<string> errors,
         T? data,
         string successMessage,
-        string failureMessage,
+        string failureFallbackMessage,
         string notFoundMessage)
     {
         if (notFound)
         {
-            return NotFound(new ApiResponse<T>
-            {
-                Success = false,
-                Message = notFoundMessage,
-            });
+            return NotFound(ApiResponseFactory.Fail<T>(notFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<T>
-            {
-                Success = false,
-                Message = failureMessage,
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<T>(errors, failureFallbackMessage));
         }
 
-        return Ok(new ApiResponse<T>
-        {
-            Success = true,
-            Message = successMessage,
-            Data = data,
-        });
-    }
-
-    private IActionResult ToChildDeleteResult(
-        bool ok,
-        bool notFound,
-        IEnumerable<string> errors,
-        string successMessage,
-        string failureMessage,
-        string notFoundMessage)
-    {
-        if (notFound)
-        {
-            return NotFound(new ApiResponse
-            {
-                Success = false,
-                Message = notFoundMessage,
-            });
-        }
-
-        if (!ok)
-        {
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = failureMessage,
-                Errors = errors.ToList(),
-            });
-        }
-
-        return Ok(new ApiResponse
-        {
-            Success = true,
-            Message = successMessage,
-        });
+        return Ok(ApiResponseFactory.Success(data, successMessage));
     }
 }

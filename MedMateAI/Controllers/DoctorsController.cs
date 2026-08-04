@@ -3,6 +3,7 @@ using MedMateAI.Application.DTOs.Doctors.Requests;
 using MedMateAI.Application.DTOs.Doctors.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Enums;
+using MedMateAI.Helpers;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
@@ -11,6 +12,9 @@ namespace MedMateAI.Controllers;
 [Route("api/doctors")]
 public sealed class DoctorsController : ControllerBase
 {
+    private const string InvalidIdMessage = "Id bác sĩ không hợp lệ";
+    private const string NotFoundMessage = "Không tìm thấy bác sĩ";
+
     private readonly IDoctorService _doctorService;
 
     public DoctorsController(IDoctorService doctorService)
@@ -32,20 +36,12 @@ public sealed class DoctorsController : ControllerBase
     {
         if (facilityId.HasValue && facilityId.Value == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<PagedResponse<DoctorResponse>>
-            {
-                Success = false,
-                Message = "Invalid medical facility id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<PagedResponse<DoctorResponse>>("Id cơ sở y tế không hợp lệ"));
         }
 
         if (departmentId.HasValue && departmentId.Value == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<PagedResponse<DoctorResponse>>
-            {
-                Success = false,
-                Message = "Invalid medical department id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<PagedResponse<DoctorResponse>>("Id khoa không hợp lệ"));
         }
 
         var data = await _doctorService.ListDoctorsAsync(
@@ -58,12 +54,7 @@ public sealed class DoctorsController : ControllerBase
             departmentRole,
             cancellationToken);
 
-        return Ok(new ApiResponse<PagedResponse<DoctorResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("active")]
@@ -79,20 +70,12 @@ public sealed class DoctorsController : ControllerBase
     {
         if (facilityId.HasValue && facilityId.Value == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<PagedResponse<DoctorResponse>>
-            {
-                Success = false,
-                Message = "Invalid medical facility id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<PagedResponse<DoctorResponse>>("Id cơ sở y tế không hợp lệ"));
         }
 
         if (departmentId.HasValue && departmentId.Value == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<PagedResponse<DoctorResponse>>
-            {
-                Success = false,
-                Message = "Invalid medical department id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<PagedResponse<DoctorResponse>>("Id khoa không hợp lệ"));
         }
 
         var data = await _doctorService.ListActiveDoctorsAsync(
@@ -104,12 +87,7 @@ public sealed class DoctorsController : ControllerBase
             departmentRole,
             cancellationToken);
 
-        return Ok(new ApiResponse<PagedResponse<DoctorResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("{id:guid}")]
@@ -120,29 +98,16 @@ public sealed class DoctorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Invalid doctor id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<DoctorResponse>(InvalidIdMessage));
         }
 
         var data = await _doctorService.GetDoctorByIdAsync(id, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Doctor not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<DoctorResponse>(NotFoundMessage));
         }
 
-        return Ok(new ApiResponse<DoctorResponse>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpPost]
@@ -152,53 +117,13 @@ public sealed class DoctorsController : ControllerBase
         [FromBody] CreateDoctorRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (request is null)
-        {
-            return BadRequest(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Create doctor failed.",
-                Errors = new List<string> { "Request body is required." },
-            });
-        }
-
-        if (request.FacilityDepartmentId == Guid.Empty)
-        {
-            return BadRequest(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Create doctor failed.",
-                Errors = new List<string> { "FacilityDepartmentId is required." },
-            });
-        }
-
-        if (string.IsNullOrWhiteSpace(request.FullName))
-        {
-            return BadRequest(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Create doctor failed.",
-                Errors = new List<string> { "Full name is required." },
-            });
-        }
-
         var (ok, errors, data) = await _doctorService.CreateDoctorAsync(request, cancellationToken);
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Create doctor failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<DoctorResponse>(errors, "Tạo bác sĩ thất bại"));
         }
 
-        return Ok(new ApiResponse<DoctorResponse>
-        {
-            Success = true,
-            Message = "Doctor created.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Tạo bác sĩ thành công"));
     }
 
     [HttpPut("{id:guid}")]
@@ -212,41 +137,7 @@ public sealed class DoctorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Invalid doctor id.",
-            });
-        }
-
-        if (request is null)
-        {
-            return BadRequest(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Update doctor failed.",
-                Errors = new List<string> { "Request body is required." },
-            });
-        }
-
-        if (request.FullName is not null && string.IsNullOrWhiteSpace(request.FullName))
-        {
-            return BadRequest(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Update doctor failed.",
-                Errors = new List<string> { "Full name cannot be empty when provided." },
-            });
-        }
-
-        if (request.FacilityDepartmentId.HasValue && request.FacilityDepartmentId.Value == Guid.Empty)
-        {
-            return BadRequest(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Update doctor failed.",
-                Errors = new List<string> { "FacilityDepartmentId is invalid." },
-            });
+            return BadRequest(ApiResponseFactory.Fail<DoctorResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _doctorService.UpdateDoctorAsync(
@@ -256,29 +147,15 @@ public sealed class DoctorsController : ControllerBase
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Doctor not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<DoctorResponse>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Update doctor failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<DoctorResponse>(errors, "Cập nhật bác sĩ thất bại"));
         }
 
-        return Ok(new ApiResponse<DoctorResponse>
-        {
-            Success = true,
-            Message = "Doctor updated.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Cập nhật bác sĩ thành công"));
     }
 
     [HttpPatch("{id:guid}/status")]
@@ -292,21 +169,7 @@ public sealed class DoctorsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Invalid doctor id.",
-            });
-        }
-
-        if (request is null)
-        {
-            return BadRequest(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Update doctor status failed.",
-                Errors = new List<string> { "Request body is required." },
-            });
+            return BadRequest(ApiResponseFactory.Fail<DoctorResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _doctorService.UpdateDoctorStatusAsync(
@@ -316,74 +179,36 @@ public sealed class DoctorsController : ControllerBase
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Doctor not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<DoctorResponse>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<DoctorResponse>
-            {
-                Success = false,
-                Message = "Update doctor status failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<DoctorResponse>(errors, "Cập nhật trạng thái bác sĩ thất bại"));
         }
 
-        return Ok(new ApiResponse<DoctorResponse>
-        {
-            Success = true,
-            Message = "Doctor status updated.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Cập nhật trạng thái bác sĩ thành công"));
     }
 
     [HttpDelete("{id:guid}")]
-    [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> SoftDelete(Guid id, CancellationToken cancellationToken = default)
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<bool>
-            {
-                Success = false,
-                Message = "Invalid doctor id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail(InvalidIdMessage));
         }
 
         var (ok, notFound, errors) = await _doctorService.SoftDeleteDoctorAsync(id, cancellationToken);
-
-        if (notFound)
-        {
-            return NotFound(new ApiResponse<bool>
-            {
-                Success = false,
-                Message = "Doctor not found.",
-                Data = false,
-            });
-        }
-
-        if (!ok)
-        {
-            return BadRequest(new ApiResponse<bool>
-            {
-                Success = false,
-                Message = "Delete doctor failed.",
-                Errors = errors.ToList(),
-                Data = false,
-            });
-        }
-
-        return Ok(new ApiResponse<bool>
-        {
-            Success = true,
-            Message = "Doctor deleted (soft).",
-            Data = true,
-        });
+        return ApiResponseFactory.SoftDeleteResult(
+            this,
+            ok,
+            notFound,
+            errors,
+            NotFoundMessage,
+            "Xóa bác sĩ thất bại",
+            "Xóa bác sĩ thành công");
     }
 }
