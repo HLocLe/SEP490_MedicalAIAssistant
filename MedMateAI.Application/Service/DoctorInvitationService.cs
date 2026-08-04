@@ -15,7 +15,7 @@ namespace MedMateAI.Application.Service;
 
 public sealed class DoctorInvitationService : IDoctorInvitationService
 {
-    private const int InvitationLifetimeMinutes = 2;
+    private const int InvitationLifetimeMinutes = 10;
     private const string DoctorRoleName = "Doctor";
     private const string InvitationSubject = "Lời mời đăng ký tài khoản bác sĩ - MedicalMateAI";
 
@@ -509,7 +509,7 @@ public sealed class DoctorInvitationService : IDoctorInvitationService
                   Đăng ký tài khoản bác sĩ
                 </a>
               </p>
-              <p>Liên kết này chỉ có hiệu lực trong <strong>2 phút</strong>.</p>
+              <p>Liên kết này chỉ có hiệu lực trong <strong>10 phút</strong>.</p>
               <p>Nếu nút không hoạt động, hãy copy link này: {encodedRegisterUrl}</p>
               <p>Nếu bạn không liên quan đến lời mời này, vui lòng bỏ qua email.</p>
               <p>Trân trọng,<br/>MedicalMateAI Team</p>
