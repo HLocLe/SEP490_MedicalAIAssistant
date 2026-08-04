@@ -2,6 +2,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.IcdChapters.Requests;
 using MedMateAI.Application.DTOs.IcdChapters.Responses;
 using MedMateAI.Application.IService;
+using MedMateAI.Helpers;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
@@ -10,6 +11,9 @@ namespace MedMateAI.Controllers;
 [Route("api/icd-chapters")]
 public sealed class IcdChaptersController : ControllerBase
 {
+    private const string InvalidIdMessage = "Id ICD chapter không hợp lệ";
+    private const string NotFoundMessage = "Không tìm thấy ICD chapter";
+
     private readonly IIcdChapterService _icdChapterService;
 
     public IcdChaptersController(IIcdChapterService icdChapterService)
@@ -30,12 +34,7 @@ public sealed class IcdChaptersController : ControllerBase
             search,
             cancellationToken);
 
-        return Ok(new ApiResponse<PagedResponse<IcdChapterResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("{id}")]
@@ -46,29 +45,16 @@ public sealed class IcdChaptersController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IcdChapterResponse>
-            {
-                Success = false,
-                Message = "Invalid ICD chapter id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<IcdChapterResponse>(InvalidIdMessage));
         }
 
         var data = await _icdChapterService.GetIcdChapterByIdAsync(id, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<IcdChapterResponse>
-            {
-                Success = false,
-                Message = "ICD chapter not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<IcdChapterResponse>(NotFoundMessage));
         }
 
-        return Ok(new ApiResponse<IcdChapterResponse>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpPost]
@@ -81,20 +67,10 @@ public sealed class IcdChaptersController : ControllerBase
         var (ok, errors, data) = await _icdChapterService.CreateIcdChapterAsync(request, cancellationToken);
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<IcdChapterResponse>
-            {
-                Success = false,
-                Message = "Create ICD chapter failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<IcdChapterResponse>(errors, "Tạo ICD chapter thất bại"));
         }
 
-        return Ok(new ApiResponse<IcdChapterResponse>
-        {
-            Success = true,
-            Message = "ICD chapter created.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Tạo ICD chapter thành công"));
     }
 
     [HttpPost("bulk")]
@@ -107,20 +83,10 @@ public sealed class IcdChaptersController : ControllerBase
         var (ok, errors, data) = await _icdChapterService.BulkCreateIcdChaptersAsync(request, cancellationToken);
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<IcdChapterResponse>>
-            {
-                Success = false,
-                Message = "Bulk create ICD chapters failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<IReadOnlyList<IcdChapterResponse>>(errors, "Bulk create ICD chapters failed."));
         }
 
-        return Ok(new ApiResponse<IReadOnlyList<IcdChapterResponse>>
-        {
-            Success = true,
-            Message = $"{data.Count} ICD chapter(s) created.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, $"{data.Count} ICD chapter(s) created."));
     }
 
     [HttpPut("{id}")]
@@ -134,40 +100,22 @@ public sealed class IcdChaptersController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IcdChapterResponse>
-            {
-                Success = false,
-                Message = "Invalid ICD chapter id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<IcdChapterResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _icdChapterService.UpdateIcdChapterAsync(id, request, cancellationToken);
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<IcdChapterResponse>
-            {
-                Success = false,
-                Message = "ICD chapter not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<IcdChapterResponse>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<IcdChapterResponse>
-            {
-                Success = false,
-                Message = "Update ICD chapter failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<IcdChapterResponse>(errors, "Cập nhật ICD chapter thất bại"));
         }
 
-        return Ok(new ApiResponse<IcdChapterResponse>
-        {
-            Success = true,
-            Message = "ICD chapter updated.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Cập nhật ICD chapter thành công"));
     }
 
     [HttpDelete("{id}")]
@@ -178,38 +126,17 @@ public sealed class IcdChaptersController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = "Invalid ICD chapter id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail(InvalidIdMessage));
         }
 
         var (ok, notFound, errors) = await _icdChapterService.SoftDeleteIcdChapterAsync(id, cancellationToken);
-
-        if (notFound)
-        {
-            return NotFound(new ApiResponse
-            {
-                Success = false,
-                Message = "ICD chapter not found.",
-            });
-        }
-
-        if (!ok)
-        {
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = "Delete ICD chapter failed.",
-                Errors = errors.ToList(),
-            });
-        }
-
-        return Ok(new ApiResponse
-        {
-            Success = true,
-            Message = "ICD chapter deleted (soft).",
-        });
+        return ApiResponseFactory.SoftDeleteResult(
+            this,
+            ok,
+            notFound,
+            errors,
+            NotFoundMessage,
+            "Xóa ICD chapter thất bại",
+            "Xóa ICD chapter thành công");
     }
 }

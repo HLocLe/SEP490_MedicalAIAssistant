@@ -2,6 +2,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.MedicalDepartments.Requests;
 using MedMateAI.Application.DTOs.MedicalDepartments.Responses;
 using MedMateAI.Application.IService;
+using MedMateAI.Helpers;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
@@ -10,6 +11,9 @@ namespace MedMateAI.Controllers;
 [Route("api/medical-departments")]
 public sealed class MedicalDepartmentsController : ControllerBase
 {
+    private const string InvalidIdMessage = "Id khoa không hợp lệ";
+    private const string NotFoundMessage = "Không tìm thấy khoa";
+
     private readonly IMedicalDepartmentService _medicalDepartmentService;
 
     public MedicalDepartmentsController(IMedicalDepartmentService medicalDepartmentService)
@@ -22,12 +26,7 @@ public sealed class MedicalDepartmentsController : ControllerBase
     public async Task<IActionResult> List(CancellationToken cancellationToken = default)
     {
         var data = await _medicalDepartmentService.ListMedicalDepartmentsAsync(cancellationToken);
-        return Ok(new ApiResponse<IReadOnlyList<MedicalDepartmentResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("{id:guid}")]
@@ -38,29 +37,16 @@ public sealed class MedicalDepartmentsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Invalid medical department id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<MedicalDepartmentResponse>(InvalidIdMessage));
         }
 
         var data = await _medicalDepartmentService.GetMedicalDepartmentByIdAsync(id, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Medical department not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<MedicalDepartmentResponse>(NotFoundMessage));
         }
 
-        return Ok(new ApiResponse<MedicalDepartmentResponse>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpPost]
@@ -68,33 +54,13 @@ public sealed class MedicalDepartmentsController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<MedicalDepartmentResponse>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateMedicalDepartmentRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.DepartmentName))
-        {
-            return BadRequest(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Create medical department failed.",
-                Errors = new List<string> { "Department name is required." },
-            });
-        }
-
         var (ok, errors, data) = await _medicalDepartmentService.CreateMedicalDepartmentAsync(request, cancellationToken);
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Create medical department failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<MedicalDepartmentResponse>(errors, "Tạo khoa thất bại"));
         }
 
-        return Ok(new ApiResponse<MedicalDepartmentResponse>
-        {
-            Success = true,
-            Message = "Medical department created.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Tạo khoa thành công"));
     }
 
     [HttpPut("{id:guid}")]
@@ -108,50 +74,22 @@ public sealed class MedicalDepartmentsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Invalid medical department id.",
-            });
-        }
-
-        if (request.DepartmentName is not null && string.IsNullOrWhiteSpace(request.DepartmentName))
-        {
-            return BadRequest(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Update medical department failed.",
-                Errors = new List<string> { "Department name cannot be empty when provided." },
-            });
+            return BadRequest(ApiResponseFactory.Fail<MedicalDepartmentResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _medicalDepartmentService.UpdateMedicalDepartmentAsync(id, request, cancellationToken);
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Medical department not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<MedicalDepartmentResponse>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<MedicalDepartmentResponse>
-            {
-                Success = false,
-                Message = "Update medical department failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<MedicalDepartmentResponse>(errors, "Cập nhật khoa thất bại"));
         }
 
-        return Ok(new ApiResponse<MedicalDepartmentResponse>
-        {
-            Success = true,
-            Message = "Medical department updated.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Cập nhật khoa thành công"));
     }
 
     [HttpDelete("{id:guid}")]
@@ -162,38 +100,17 @@ public sealed class MedicalDepartmentsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = "Invalid medical department id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail(InvalidIdMessage));
         }
 
         var (ok, notFound, errors) = await _medicalDepartmentService.SoftDeleteMedicalDepartmentAsync(id, cancellationToken);
-
-        if (notFound)
-        {
-            return NotFound(new ApiResponse
-            {
-                Success = false,
-                Message = "Medical department not found.",
-            });
-        }
-
-        if (!ok)
-        {
-            return BadRequest(new ApiResponse
-            {
-                Success = false,
-                Message = "Delete medical department failed.",
-                Errors = errors.ToList(),
-            });
-        }
-
-        return Ok(new ApiResponse
-        {
-            Success = true,
-            Message = "Medical department deleted (soft).",
-        });
+        return ApiResponseFactory.SoftDeleteResult(
+            this,
+            ok,
+            notFound,
+            errors,
+            NotFoundMessage,
+            "Xóa khoa thất bại",
+            "Xóa khoa thành công");
     }
 }

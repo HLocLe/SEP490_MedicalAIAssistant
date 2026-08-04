@@ -130,13 +130,17 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
         CreateMedicalDepartmentRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (request is null)
+        {
+            return (false, new[] { "Request body là bắt buộc" }, null);
+        }
+
         if (string.IsNullOrWhiteSpace(request.DepartmentName))
         {
-            return (false, new[] { "Department name is required." }, null);
+            return (false, new[] { "DepartmentName là bắt buộc" }, null);
         }
 
         var chapterCode = NormalizeChapterCode(request.ChapterCode);
-        
 
         if (chapterCode is not null)
         {
@@ -146,7 +150,7 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
 
             if (chapterExists is null)
             {
-                return (false, new[] { $"ICD chapter '{chapterCode}' was not found." }, null);
+                return (false, new[] { "Không tìm thấy ICD chapter" }, null);
             }
         }
 
@@ -173,18 +177,30 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid medical department id." }, null);
+            return (false, false, new[] { "Id khoa không hợp lệ" }, null);
+        }
+
+        if (request is null)
+        {
+            return (false, false, new[] { "Request body là bắt buộc" }, null);
         }
 
         if (request.DepartmentName is not null && string.IsNullOrWhiteSpace(request.DepartmentName))
         {
-            return (false, false, new[] { "Department name cannot be empty when provided." }, null);
+            return (false, false, new[] { "DepartmentName không được để trống" }, null);
+        }
+
+        if (request.DepartmentName is null
+            && request.Description is null
+            && request.ChapterCode is null)
+        {
+            return (false, false, new[] { "Không có trường nào để cập nhật" }, null);
         }
 
         var entity = await _medicalDepartmentRepository.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Medical department not found." }, null);
+            return (false, true, new[] { "Không tìm thấy khoa" }, null);
         }
 
         if (request.DepartmentName is not null)
@@ -199,21 +215,22 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
 
         if (request.ChapterCode is not null)
         {
-           
-                var chapterCode = NormalizeChapterCode(request.ChapterCode);
-              
+            var chapterCode = NormalizeChapterCode(request.ChapterCode);
+
+            if (chapterCode is not null)
+            {
                 var chapterExists = await _icdChapterRepository.FirstOrDefaultAsync(
                     chapter => chapter.ChapterCode == chapterCode && !chapter.IsDeleted,
                     cancellationToken: cancellationToken);
 
                 if (chapterExists is null)
                 {
-                    return (false, false, new[] { $"ICD chapter '{chapterCode}' was not found." }, null);
+                    return (false, false, new[] { "Không tìm thấy ICD chapter" }, null);
                 }
-
-                entity.ChapterCode = chapterCode;
             }
-        
+
+            entity.ChapterCode = chapterCode;
+        }
 
         entity.UpdatedAt = DateTime.UtcNow;
 
@@ -230,13 +247,13 @@ public sealed class MedicalDepartmentService : IMedicalDepartmentService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid medical department id." });
+            return (false, false, new[] { "Id khoa không hợp lệ" });
         }
 
         var entity = await _medicalDepartmentRepository.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Medical department not found." });
+            return (false, true, new[] { "Không tìm thấy khoa" });
         }
 
         entity.IsDeleted = true;

@@ -74,7 +74,7 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
     {
         if (request is null)
         {
-            return (false, new[] { "Request body is required." }, null);
+            return (false, new[] { "Request body là bắt buộc" }, null);
         }
 
         var validationErrors = await ValidateCreateFieldsAsync(request, cancellationToken);
@@ -111,7 +111,7 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
 
         if (request is null || request.Questions is null || request.Questions.Count == 0)
         {
-            return (false, new[] { "At least one question is required." }, null);
+            return (false, new[] { "Cần ít nhất một câu hỏi" }, null);
         }
 
         var preparedQuestions = new List<(int RequestIndex, ClinicalQuestion Entity)>();
@@ -121,7 +121,7 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
             var questionRequest = request.Questions[index];
             if (questionRequest is null)
             {
-                errors.Add($"Questions[{index}]: Item is required.");
+                errors.Add($"Questions[{index}]: Mục câu hỏi là bắt buộc");
                 continue;
             }
 
@@ -186,7 +186,7 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
         var entity = await _unitOfWork.ClinicalQuestions.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Clinical question not found." }, null);
+            return (false, true, new[] { "Không tìm thấy câu hỏi lâm sàng" }, null);
         }
 
         var chapterErrors = await ApplyChapterIdUpdateAsync(entity, request!, cancellationToken);
@@ -219,13 +219,13 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid clinical question id." });
+            return (false, false, new[] { "Id câu hỏi không hợp lệ" });
         }
 
         var entity = await _unitOfWork.ClinicalQuestions.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Clinical question not found." });
+            return (false, true, new[] { "Không tìm thấy câu hỏi lâm sàng" });
         }
 
         entity.IsDeleted = true;
@@ -242,17 +242,17 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
     {
         if (id == Guid.Empty)
         {
-            return new[] { "Invalid clinical question id." };
+            return new[] { "Id câu hỏi không hợp lệ" };
         }
 
         if (request is null)
         {
-            return new[] { "Request body is required." };
+            return new[] { "Request body là bắt buộc" };
         }
 
         if (request.QuestionVi is not null && string.IsNullOrWhiteSpace(request.QuestionVi))
         {
-            return new[] { "Question text cannot be empty when provided." };
+            return new[] { "Nội dung câu hỏi không được để trống" };
         }
 
         if (request.ChapterId is null
@@ -261,7 +261,7 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
             && request.SortOrder is null
             && request.Answers is null)
         {
-            return new[] { "No fields to update." };
+            return new[] { "Không có trường nào để cập nhật" };
         }
 
         return null;
@@ -280,13 +280,13 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
 
         if (request.ChapterId.Value == Guid.Empty)
         {
-            return new[] { "Chapter id is invalid." };
+            return new[] { "ChapterId không hợp lệ" };
         }
 
         var chapter = await _unitOfWork.IcdChapters.GetByIdAsync(request.ChapterId.Value, cancellationToken);
         if (chapter is null || chapter.IsDeleted)
         {
-            return new[] { "ICD chapter not found." };
+            return new[] { "Không tìm thấy ICD chapter" };
         }
 
         entity.ChapterId = request.ChapterId.Value;
@@ -326,7 +326,7 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
 
         if (request.ChapterId == Guid.Empty)
         {
-            errors.Add("Chapter id is required.");
+            errors.Add("ChapterId là bắt buộc");
         }
         else
         {
@@ -336,13 +336,13 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
 
             if (!chapterExists)
             {
-                errors.Add("ICD chapter not found.");
+                errors.Add("Không tìm thấy ICD chapter");
             }
         }
 
         if (string.IsNullOrWhiteSpace(request.QuestionVi))
         {
-            errors.Add("Question text is required.");
+            errors.Add("Nội dung câu hỏi là bắt buộc");
         }
 
         errors.AddRange(ValidateAnswers(request.Answers));
@@ -363,12 +363,12 @@ public sealed class ClinicalQuestionService : IClinicalQuestionService
         {
             if (string.IsNullOrWhiteSpace(vietnameseLabel))
             {
-                errors.Add("Answer Vietnamese label cannot be empty.");
+                errors.Add("Nhãn câu trả lời tiếng Việt không được để trống");
             }
 
             if (string.IsNullOrWhiteSpace(englishLabel))
             {
-                errors.Add($"Answer '{vietnameseLabel}' must have an English label.");
+                errors.Add("Câu trả lời phải có nhãn tiếng Anh");
             }
         }
 

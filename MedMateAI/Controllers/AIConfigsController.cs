@@ -2,6 +2,7 @@ using MedMateAI.Application.DTOs.AIConfigs.Requests;
 using MedMateAI.Application.DTOs.AIConfigs.Responses;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.IService;
+using MedMateAI.Helpers;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
@@ -24,12 +25,7 @@ public sealed class AIConfigsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var data = await _aiConfigService.ListAIConfigsAsync(query.PageNumber, query.PageSize, cancellationToken);
-        return Ok(new ApiResponse<PagedResponse<AIConfigResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("active")]
@@ -37,12 +33,7 @@ public sealed class AIConfigsController : ControllerBase
     public async Task<IActionResult> ListActive(CancellationToken cancellationToken = default)
     {
         var data = await _aiConfigService.ListActiveAIConfigsAsync(cancellationToken);
-        return Ok(new ApiResponse<IReadOnlyList<AIConfigResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("by-task-type/{taskType}")]
@@ -53,29 +44,16 @@ public sealed class AIConfigsController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(taskType))
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Invalid task type.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<AIConfigResponse>("TaskType là bắt buộc"));
         }
 
         var data = await _aiConfigService.GetActiveAIConfigByTaskTypeAsync(taskType, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "AI config not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<AIConfigResponse>("Không tìm thấy AI config"));
         }
 
-        return Ok(new ApiResponse<AIConfigResponse>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("{id:guid}")]
@@ -86,29 +64,16 @@ public sealed class AIConfigsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Invalid AI config id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<AIConfigResponse>("Id AI config không hợp lệ"));
         }
 
         var data = await _aiConfigService.GetAIConfigByIdAsync(id, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "AI config not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<AIConfigResponse>("Không tìm thấy AI config"));
         }
 
-        return Ok(new ApiResponse<AIConfigResponse>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpPost]
@@ -120,41 +85,17 @@ public sealed class AIConfigsController : ControllerBase
     {
         if (request is null)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Create AI config failed.",
-                Errors = new List<string> { "Request body is required." },
-            });
+            return BadRequest(ApiResponseFactory.Fail<AIConfigResponse>("Request body là bắt buộc", includeInErrors: true));
         }
 
         try
         {
             var data = await _aiConfigService.CreateAIConfigAsync(request, cancellationToken);
-            return Ok(new ApiResponse<AIConfigResponse>
-            {
-                Success = true,
-                Message = "AI config created.",
-                Data = data,
-            });
+            return Ok(ApiResponseFactory.Success(data, "Tạo AI config thành công"));
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Create AI config failed.",
-                Errors = new List<string> { ex.Message },
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Create AI config failed.",
-                Errors = new List<string> { ex.Message },
-            });
+            return BadRequest(ApiResponseFactory.Fail<AIConfigResponse>(ex.Message, includeInErrors: true));
         }
     }
 
@@ -169,21 +110,12 @@ public sealed class AIConfigsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Invalid AI config id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<AIConfigResponse>("Id AI config không hợp lệ"));
         }
 
         if (request is null)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Update AI config failed.",
-                Errors = new List<string> { "Request body is required." },
-            });
+            return BadRequest(ApiResponseFactory.Fail<AIConfigResponse>("Request body là bắt buộc", includeInErrors: true));
         }
 
         try
@@ -191,37 +123,14 @@ public sealed class AIConfigsController : ControllerBase
             var data = await _aiConfigService.UpdateAIConfigAsync(id, request, cancellationToken);
             if (data is null)
             {
-                return NotFound(new ApiResponse<AIConfigResponse>
-                {
-                    Success = false,
-                    Message = "AI config not found.",
-                });
+                return NotFound(ApiResponseFactory.Fail<AIConfigResponse>("Không tìm thấy AI config"));
             }
 
-            return Ok(new ApiResponse<AIConfigResponse>
-            {
-                Success = true,
-                Message = "AI config updated.",
-                Data = data,
-            });
+            return Ok(ApiResponseFactory.Success(data, "Cập nhật AI config thành công"));
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Update AI config failed.",
-                Errors = new List<string> { ex.Message },
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Update AI config failed.",
-                Errors = new List<string> { ex.Message },
-            });
+            return BadRequest(ApiResponseFactory.Fail<AIConfigResponse>(ex.Message, includeInErrors: true));
         }
     }
 
@@ -236,39 +145,28 @@ public sealed class AIConfigsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Invalid AI config id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<AIConfigResponse>("Id AI config không hợp lệ"));
         }
 
         if (request is null)
         {
-            return BadRequest(new ApiResponse<AIConfigResponse>
-            {
-                Success = false,
-                Message = "Update AI config status failed.",
-                Errors = new List<string> { "Request body is required." },
-            });
+            return BadRequest(ApiResponseFactory.Fail<AIConfigResponse>("Request body là bắt buộc", includeInErrors: true));
         }
 
-        var data = await _aiConfigService.UpdateAIConfigStatusAsync(id, request, cancellationToken);
-        if (data is null)
+        try
         {
-            return NotFound(new ApiResponse<AIConfigResponse>
+            var data = await _aiConfigService.UpdateAIConfigStatusAsync(id, request, cancellationToken);
+            if (data is null)
             {
-                Success = false,
-                Message = "AI config not found.",
-            });
-        }
+                return NotFound(ApiResponseFactory.Fail<AIConfigResponse>("Không tìm thấy AI config"));
+            }
 
-        return Ok(new ApiResponse<AIConfigResponse>
+            return Ok(ApiResponseFactory.Success(data, "Cập nhật trạng thái AI config thành công"));
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
-            Success = true,
-            Message = "AI config status updated.",
-            Data = data,
-        });
+            return BadRequest(ApiResponseFactory.Fail<AIConfigResponse>(ex.Message, includeInErrors: true));
+        }
     }
 
     [HttpDelete("{id:guid}")]
@@ -279,29 +177,15 @@ public sealed class AIConfigsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<bool>
-            {
-                Success = false,
-                Message = "Invalid AI config id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<bool>("Id AI config không hợp lệ"));
         }
 
         var deleted = await _aiConfigService.DeleteAIConfigAsync(id, cancellationToken);
         if (!deleted)
         {
-            return NotFound(new ApiResponse<bool>
-            {
-                Success = false,
-                Message = "AI config not found.",
-                Data = false,
-            });
+            return NotFound(ApiResponseFactory.Fail<bool>("Không tìm thấy AI config"));
         }
 
-        return Ok(new ApiResponse<bool>
-        {
-            Success = true,
-            Message = "AI config deleted (soft).",
-            Data = true,
-        });
+        return Ok(ApiResponseFactory.Success(true, "Xóa AI config thành công"));
     }
 }

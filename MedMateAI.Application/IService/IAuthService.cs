@@ -31,4 +31,8 @@ public interface IAuthService
     Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors)> ChangePasswordWithOtpAsync(
         ChangePasswordWithOtpRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors)> ChangePasswordAsync(
+        ChangePasswordRequest request,
+        CancellationToken cancellationToken = default);
 }

@@ -174,7 +174,7 @@ public sealed class AuthController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordWithOtpRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> ChangePasswordWithOtp([FromBody] ChangePasswordWithOtpRequest request, CancellationToken cancellationToken)
     {
         var (succeeded, errorMessage, errors) = await _authService.ChangePasswordWithOtpAsync(request, cancellationToken);
         if (!succeeded)
@@ -183,6 +183,41 @@ public sealed class AuthController : ControllerBase
             {
                 Success = false,
                 Message = errorMessage ?? "Thay đổi mật khẩu thất bại",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse
+        {
+            Success = true,
+            Message = "Mật khẩu đã được thay đổi thành công.",
+        });
+    }
+
+    [HttpPost("update-password")]
+    [Authorize]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> UpdatePassword([FromBody] ChangePasswordRequest request, CancellationToken cancellationToken)
+    {
+        var (succeeded, errorMessage, errors) = await _authService.ChangePasswordAsync(request, cancellationToken);
+        if (!succeeded)
+        {
+            if (errorMessage is "Unauthorized")
+            {
+                return Unauthorized(new ApiResponse
+                {
+                    Success = false,
+                    Message = errorMessage,
+                    Errors = errors.ToList(),
+                });
+            }
+
+            return BadRequest(new ApiResponse
+            {
+                Success = false,
+                Message = errorMessage ?? "Đổi mật khẩu thất bại",
                 Errors = errors.ToList(),
             });
         }
