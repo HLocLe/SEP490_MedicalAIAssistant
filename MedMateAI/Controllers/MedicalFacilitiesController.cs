@@ -2,6 +2,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.MedicalFacilities.Requests;
 using MedMateAI.Application.DTOs.MedicalFacilities.Responses;
 using MedMateAI.Application.IService;
+using MedMateAI.Helpers;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
@@ -10,6 +11,9 @@ namespace MedMateAI.Controllers;
 [Route("api/medical-facilities")]
 public sealed class MedicalFacilitiesController : ControllerBase
 {
+    private const string InvalidIdMessage = "Id cơ sở y tế không hợp lệ";
+    private const string NotFoundMessage = "Không tìm thấy cơ sở y tế";
+
     private readonly IMedicalFacilityService _medicalFacilityService;
 
     public MedicalFacilitiesController(IMedicalFacilityService medicalFacilityService)
@@ -32,12 +36,7 @@ public sealed class MedicalFacilitiesController : ControllerBase
             isActive,
             cancellationToken);
 
-        return Ok(new ApiResponse<PagedResponse<MedicalFacilityResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("active")]
@@ -50,11 +49,7 @@ public sealed class MedicalFacilitiesController : ControllerBase
     {
         if (departmentId.HasValue && departmentId.Value == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<MedicalFacilityResponse>>
-            {
-                Success = false,
-                Message = "Invalid medical department id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<IReadOnlyList<MedicalFacilityResponse>>("Id khoa không hợp lệ"));
         }
 
         var data = await _medicalFacilityService.ListActiveMedicalFacilitiesAsync(
@@ -62,12 +57,7 @@ public sealed class MedicalFacilitiesController : ControllerBase
             search,
             cancellationToken);
 
-        return Ok(new ApiResponse<IReadOnlyList<MedicalFacilityResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("{id:guid}")]
@@ -78,29 +68,16 @@ public sealed class MedicalFacilitiesController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Invalid medical facility id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<MedicalFacilityResponse>(InvalidIdMessage));
         }
 
         var data = await _medicalFacilityService.GetMedicalFacilityByIdAsync(id, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Medical facility not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<MedicalFacilityResponse>(NotFoundMessage));
         }
 
-        return Ok(new ApiResponse<MedicalFacilityResponse>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpPost]
@@ -110,43 +87,13 @@ public sealed class MedicalFacilitiesController : ControllerBase
         [FromBody] CreateMedicalFacilityRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (request is null)
-        {
-            return BadRequest(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Create medical facility failed.",
-                Errors = new List<string> { "Request body is required." },
-            });
-        }
-
-        if (string.IsNullOrWhiteSpace(request.FacilityName))
-        {
-            return BadRequest(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Create medical facility failed.",
-                Errors = new List<string> { "Facility name is required." },
-            });
-        }
-
         var (ok, errors, data) = await _medicalFacilityService.CreateMedicalFacilityAsync(request, cancellationToken);
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Create medical facility failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<MedicalFacilityResponse>(errors, "Tạo cơ sở y tế thất bại"));
         }
 
-        return Ok(new ApiResponse<MedicalFacilityResponse>
-        {
-            Success = true,
-            Message = "Medical facility created.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Tạo cơ sở y tế thành công"));
     }
 
     [HttpPut("{id:guid}")]
@@ -160,60 +107,22 @@ public sealed class MedicalFacilitiesController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Invalid medical facility id.",
-            });
-        }
-
-        if (request is null)
-        {
-            return BadRequest(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Update medical facility failed.",
-                Errors = new List<string> { "Request body is required." },
-            });
-        }
-
-        if (request.FacilityName is not null && string.IsNullOrWhiteSpace(request.FacilityName))
-        {
-            return BadRequest(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Update medical facility failed.",
-                Errors = new List<string> { "Facility name cannot be empty when provided." },
-            });
+            return BadRequest(ApiResponseFactory.Fail<MedicalFacilityResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _medicalFacilityService.UpdateMedicalFacilityAsync(id, request, cancellationToken);
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Medical facility not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<MedicalFacilityResponse>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Update medical facility failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<MedicalFacilityResponse>(errors, "Cập nhật cơ sở y tế thất bại"));
         }
 
-        return Ok(new ApiResponse<MedicalFacilityResponse>
-        {
-            Success = true,
-            Message = "Medical facility updated.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Cập nhật cơ sở y tế thành công"));
     }
 
     [HttpPatch("{id:guid}/status")]
@@ -227,21 +136,7 @@ public sealed class MedicalFacilitiesController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Invalid medical facility id.",
-            });
-        }
-
-        if (request is null)
-        {
-            return BadRequest(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Update medical facility status failed.",
-                Errors = new List<string> { "Request body is required." },
-            });
+            return BadRequest(ApiResponseFactory.Fail<MedicalFacilityResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _medicalFacilityService.UpdateMedicalFacilityStatusAsync(
@@ -251,74 +146,36 @@ public sealed class MedicalFacilitiesController : ControllerBase
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Medical facility not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<MedicalFacilityResponse>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<MedicalFacilityResponse>
-            {
-                Success = false,
-                Message = "Update medical facility status failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<MedicalFacilityResponse>(errors, "Cập nhật trạng thái cơ sở y tế thất bại"));
         }
 
-        return Ok(new ApiResponse<MedicalFacilityResponse>
-        {
-            Success = true,
-            Message = "Medical facility status updated.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Cập nhật trạng thái cơ sở y tế thành công"));
     }
 
     [HttpDelete("{id:guid}")]
-    [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> SoftDelete(Guid id, CancellationToken cancellationToken = default)
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<bool>
-            {
-                Success = false,
-                Message = "Invalid medical facility id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail(InvalidIdMessage));
         }
 
         var (ok, notFound, errors) = await _medicalFacilityService.SoftDeleteMedicalFacilityAsync(id, cancellationToken);
-
-        if (notFound)
-        {
-            return NotFound(new ApiResponse<bool>
-            {
-                Success = false,
-                Message = "Medical facility not found.",
-                Data = false,
-            });
-        }
-
-        if (!ok)
-        {
-            return BadRequest(new ApiResponse<bool>
-            {
-                Success = false,
-                Message = "Delete medical facility failed.",
-                Errors = errors.ToList(),
-                Data = false,
-            });
-        }
-
-        return Ok(new ApiResponse<bool>
-        {
-            Success = true,
-            Message = "Medical facility deleted (soft).",
-            Data = true,
-        });
+        return ApiResponseFactory.SoftDeleteResult(
+            this,
+            ok,
+            notFound,
+            errors,
+            NotFoundMessage,
+            "Xóa cơ sở y tế thất bại",
+            "Xóa cơ sở y tế thành công");
     }
 }
