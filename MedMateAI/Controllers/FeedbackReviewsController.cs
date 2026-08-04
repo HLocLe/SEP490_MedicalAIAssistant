@@ -2,6 +2,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.FeedbackReviews.Requests;
 using MedMateAI.Application.DTOs.FeedbackReviews.Responses;
 using MedMateAI.Application.IService;
+using MedMateAI.Helpers;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
@@ -10,7 +11,9 @@ namespace MedMateAI.Controllers;
 [Route("api/feedback-reviews")]
 public sealed class FeedbackReviewsController : ControllerBase
 {
-    private const string UnauthenticatedError = "User is not authenticated.";
+    private const string InvalidIdMessage = "Id feedback không hợp lệ";
+    private const string NotFoundMessage = "Không tìm thấy feedback";
+    private const string UnauthenticatedError = "Người dùng chưa đăng nhập";
 
     private readonly IFeedbackReviewService _feedbackReviewService;
 
@@ -32,30 +35,19 @@ public sealed class FeedbackReviewsController : ControllerBase
     {
         if (facilityId.HasValue && facilityId.Value == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<PagedResponse<FeedbackReviewResponse>>
-            {
-                Success = false,
-                Message = "Invalid medical facility id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<PagedResponse<FeedbackReviewResponse>>("Id cơ sở y tế không hợp lệ"));
         }
 
         if (userId.HasValue && userId.Value == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<PagedResponse<FeedbackReviewResponse>>
-            {
-                Success = false,
-                Message = "Invalid user id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<PagedResponse<FeedbackReviewResponse>>("Id người dùng không hợp lệ"));
         }
 
         if (rating.HasValue && (rating.Value < 1 || rating.Value > 5))
         {
-            return BadRequest(new ApiResponse<PagedResponse<FeedbackReviewResponse>>
-            {
-                Success = false,
-                Message = "Invalid rating filter.",
-                Errors = new List<string> { "Rating filter must be between 1 and 5." },
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<PagedResponse<FeedbackReviewResponse>>(
+                new[] { "Bộ lọc rating phải từ 1 đến 5" },
+                "Bộ lọc rating không hợp lệ"));
         }
 
         var data = await _feedbackReviewService.ListFeedbackReviewsAsync(
@@ -67,12 +59,7 @@ public sealed class FeedbackReviewsController : ControllerBase
             rating,
             cancellationToken);
 
-        return Ok(new ApiResponse<PagedResponse<FeedbackReviewResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("facility/{facilityId:guid}")]
@@ -85,11 +72,7 @@ public sealed class FeedbackReviewsController : ControllerBase
     {
         if (facilityId == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<PagedResponse<FeedbackReviewResponse>>
-            {
-                Success = false,
-                Message = "Invalid medical facility id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<PagedResponse<FeedbackReviewResponse>>("Id cơ sở y tế không hợp lệ"));
         }
 
         var data = await _feedbackReviewService.ListApprovedFacilityReviewsAsync(
@@ -98,12 +81,7 @@ public sealed class FeedbackReviewsController : ControllerBase
             query.PageSize,
             cancellationToken);
 
-        return Ok(new ApiResponse<PagedResponse<FeedbackReviewResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("{id:guid}")]
@@ -114,29 +92,16 @@ public sealed class FeedbackReviewsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<FeedbackReviewResponse>
-            {
-                Success = false,
-                Message = "Invalid feedback review id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<FeedbackReviewResponse>(InvalidIdMessage));
         }
 
         var data = await _feedbackReviewService.GetFeedbackReviewByIdAsync(id, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<FeedbackReviewResponse>
-            {
-                Success = false,
-                Message = "Feedback review not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<FeedbackReviewResponse>(NotFoundMessage));
         }
 
-        return Ok(new ApiResponse<FeedbackReviewResponse>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpPost]
@@ -147,26 +112,6 @@ public sealed class FeedbackReviewsController : ControllerBase
         [FromBody] CreateFeedbackReviewRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (request is null)
-        {
-            return BadRequest(new ApiResponse<FeedbackReviewResponse>
-            {
-                Success = false,
-                Message = "Create feedback review failed.",
-                Errors = new List<string> { "Request body is required." },
-            });
-        }
-
-        if (request.FacilityId == Guid.Empty)
-        {
-            return BadRequest(new ApiResponse<FeedbackReviewResponse>
-            {
-                Success = false,
-                Message = "Create feedback review failed.",
-                Errors = new List<string> { "FacilityId is required." },
-            });
-        }
-
         var (ok, errors, data) = await _feedbackReviewService.CreateFeedbackReviewAsync(request, cancellationToken);
         if (!ok || data is null)
         {
@@ -174,28 +119,17 @@ public sealed class FeedbackReviewsController : ControllerBase
 
             if (errorList.Contains(UnauthenticatedError, StringComparer.Ordinal))
             {
-                return Unauthorized(new ApiResponse<FeedbackReviewResponse>
-                {
-                    Success = false,
-                    Message = "Unauthorized",
-                    Errors = errorList,
-                });
+                return Unauthorized(ApiResponseFactory.FailFromErrors<FeedbackReviewResponse>(
+                    errorList,
+                    "Chưa đăng nhập"));
             }
 
-            return BadRequest(new ApiResponse<FeedbackReviewResponse>
-            {
-                Success = false,
-                Message = "Create feedback review failed.",
-                Errors = errorList,
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<FeedbackReviewResponse>(
+                errorList,
+                "Tạo feedback thất bại"));
         }
 
-        return Ok(new ApiResponse<FeedbackReviewResponse>
-        {
-            Success = true,
-            Message = "Feedback review created.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Tạo feedback thành công"));
     }
 
     [HttpPut("{id:guid}")]
@@ -209,21 +143,7 @@ public sealed class FeedbackReviewsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<FeedbackReviewResponse>
-            {
-                Success = false,
-                Message = "Invalid feedback review id.",
-            });
-        }
-
-        if (request is null)
-        {
-            return BadRequest(new ApiResponse<FeedbackReviewResponse>
-            {
-                Success = false,
-                Message = "Update feedback review failed.",
-                Errors = new List<string> { "Request body is required." },
-            });
+            return BadRequest(ApiResponseFactory.Fail<FeedbackReviewResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _feedbackReviewService.UpdateFeedbackReviewAsync(
@@ -233,29 +153,17 @@ public sealed class FeedbackReviewsController : ControllerBase
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<FeedbackReviewResponse>
-            {
-                Success = false,
-                Message = "Feedback review not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<FeedbackReviewResponse>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<FeedbackReviewResponse>
-            {
-                Success = false,
-                Message = "Update feedback review failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<FeedbackReviewResponse>(
+                errors,
+                "Cập nhật feedback thất bại"));
         }
 
-        return Ok(new ApiResponse<FeedbackReviewResponse>
-        {
-            Success = true,
-            Message = "Feedback review updated.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Cập nhật feedback thành công"));
     }
 
     [HttpPatch("{id:guid}/status")]
@@ -269,21 +177,7 @@ public sealed class FeedbackReviewsController : ControllerBase
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<FeedbackReviewResponse>
-            {
-                Success = false,
-                Message = "Invalid feedback review id.",
-            });
-        }
-
-        if (request is null)
-        {
-            return BadRequest(new ApiResponse<FeedbackReviewResponse>
-            {
-                Success = false,
-                Message = "Update feedback review status failed.",
-                Errors = new List<string> { "Request body is required." },
-            });
+            return BadRequest(ApiResponseFactory.Fail<FeedbackReviewResponse>(InvalidIdMessage));
         }
 
         var (ok, notFound, errors, data) = await _feedbackReviewService.UpdateFeedbackReviewStatusAsync(
@@ -293,76 +187,41 @@ public sealed class FeedbackReviewsController : ControllerBase
 
         if (notFound)
         {
-            return NotFound(new ApiResponse<FeedbackReviewResponse>
-            {
-                Success = false,
-                Message = "Feedback review not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<FeedbackReviewResponse>(NotFoundMessage));
         }
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<FeedbackReviewResponse>
-            {
-                Success = false,
-                Message = "Update feedback review status failed.",
-                Errors = errors.ToList(),
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<FeedbackReviewResponse>(
+                errors,
+                "Cập nhật trạng thái feedback thất bại"));
         }
 
-        return Ok(new ApiResponse<FeedbackReviewResponse>
-        {
-            Success = true,
-            Message = "Feedback review status updated.",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "Cập nhật trạng thái feedback thành công"));
     }
 
     [HttpDelete("{id:guid}")]
-    [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> SoftDelete(Guid id, CancellationToken cancellationToken = default)
     {
         if (id == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<bool>
-            {
-                Success = false,
-                Message = "Invalid feedback review id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail(InvalidIdMessage));
         }
 
         var (ok, notFound, errors) = await _feedbackReviewService.SoftDeleteFeedbackReviewAsync(
             id,
             cancellationToken);
 
-        if (notFound)
-        {
-            return NotFound(new ApiResponse<bool>
-            {
-                Success = false,
-                Message = "Feedback review not found.",
-                Data = false,
-            });
-        }
-
-        if (!ok)
-        {
-            return BadRequest(new ApiResponse<bool>
-            {
-                Success = false,
-                Message = "Delete feedback review failed.",
-                Errors = errors.ToList(),
-                Data = false,
-            });
-        }
-
-        return Ok(new ApiResponse<bool>
-        {
-            Success = true,
-            Message = "Feedback review deleted (soft).",
-            Data = true,
-        });
+        return ApiResponseFactory.SoftDeleteResult(
+            this,
+            ok,
+            notFound,
+            errors,
+            NotFoundMessage,
+            "Xóa feedback thất bại",
+            "Xóa feedback thành công");
     }
 }
