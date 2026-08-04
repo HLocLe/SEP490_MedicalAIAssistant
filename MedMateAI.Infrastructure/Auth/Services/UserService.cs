@@ -4,7 +4,6 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Users.Requests;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.DTOs.Users.Responses;
-using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Repository;
 using MedMateAI.Infrastructure;
 using MedMateAI.Infrastructure.Identity;
@@ -243,54 +242,6 @@ public sealed class UserService : IUserService
         }
 
         return (true, Array.Empty<string>());
-    }
-
-    public async Task<(bool Succeeded, IEnumerable<string> Errors, ApproveUserResponse? DataData)> ApproveUserAsync(
-        Guid userId,
-        CancellationToken cancellationToken = default)
-    {
-        if (userId == Guid.Empty)
-        {
-            return (false, new[] { "Invalid user id." }, null);
-        }
-
-        var user = await _userManager.FindByIdAsync(userId.ToString());
-        if (user is null)
-        {
-            return (false, new[] { "User not found." }, null);
-        }
-
-        if (user.IsDeleted)
-        {
-            return (false, new[] { "Cannot approve a deleted user." }, null);
-        }
-
-        if (user.Status != UserStatus.Pending)
-        {
-            return (false, new[] { "Only pending accounts can be approved." }, null);
-        }
-
-        var hasLinkedDoctor = await HasLinkedDoctorAsync(user.Id, cancellationToken);
-        var utcNow = DateTime.UtcNow;
-        user.Status = UserStatus.Confirmed;
-        var updateResult = await _userManager.UpdateAsync(user);
-        if (!updateResult.Succeeded)
-        {
-            return (false, updateResult.Errors.Select(e => e.Description), null);
-        }
-
-        if (hasLinkedDoctor)
-        {
-            await _realtimeNotifier.TryNotifyDoctorRealtimeAccessChangedAsync(
-                user.Id,
-                utcNow,
-                CancellationToken.None);
-        }
-
-        return (
-            true,
-            Array.Empty<string>(),
-            new ApproveUserResponse { UserId = user.Id, Status = user.Status });
     }
 
     public async Task<(bool Succeeded, IEnumerable<string> Errors)> MarkPatientProfileCompletedAsync(

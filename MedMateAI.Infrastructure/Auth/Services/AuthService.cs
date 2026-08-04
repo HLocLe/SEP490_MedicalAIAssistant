@@ -1,5 +1,6 @@
 using MedMateAI.Application.DTOs.Auth.Requests;
 using MedMateAI.Application.DTOs.Auth.Responses;
+using MedMateAI.Application.DTOs.Users.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Infrastructure.Auth.Providers;
 using MedMateAI.Infrastructure.Auth.Security;
@@ -11,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using MedMateAI.Domain.Enums;
+using AutoMapper;
 
 namespace MedMateAI.Infrastructure.Auth.Services;
 
@@ -25,6 +27,7 @@ public sealed class AuthService : IAuthService
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ApplicationDbContext _db;
     private readonly IConfiguration _configuration;
+    private readonly IMapper _mapper;
 
     public AuthService(
         UserManager<ApplicationUser> userManager,
@@ -33,7 +36,8 @@ public sealed class AuthService : IAuthService
         IEmailOtpSender emailOtpSender,
         IHttpContextAccessor httpContextAccessor,
         ApplicationDbContext db,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IMapper mapper)
     {
         _userManager = userManager;
         _jwtTokenGenerator = jwtTokenGenerator;
@@ -42,56 +46,35 @@ public sealed class AuthService : IAuthService
         _httpContextAccessor = httpContextAccessor;
         _db = db;
         _configuration = configuration;
+        _mapper = mapper;
     }
     
     //
-    public async Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors, AuthResponse? Result)> RegisterAsync(
+    public async Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors, ApplicationUserResponse? Result)> RegisterAsync(
         RegisterRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (!string.Equals(request.Password, request.confirmPassword, StringComparison.Ordinal))
+        var (succeeded, errorMessage, errors, user) = await CreateRegisteredUserAsync(
+            request,
+            UserStatus.Confirmed,
+            "User");
+
+        if (!succeeded || user is null)
         {
-            const string message = "Mật khẩu xác nhận không khớp";
-            return (false, message, new[] { message }, null);
-        }
-
-        var userName = string.IsNullOrWhiteSpace(request.UserName) ? request.Email : request.UserName;
-
-        var user = new ApplicationUser
-        {
-            UserName = userName,
-            Email = request.Email,
-            DisplayName = request.DisplayName,
-            Address = request.Address,
-            Gender = request.Gender,
-            DateOfBirth = request.DateOfBirth,
-            Status = UserStatus.Confirmed,
-            IsFirstLogin = true,
-        };
-
-        var identityResult = await _userManager.CreateAsync(user, request.Password);
-
-        if (!identityResult.Succeeded)
-        {
-            var (errorMessage, errors) = MapIdentityRegisterErrors(identityResult.Errors);
             return (false, errorMessage, errors, null);
         }
 
-        var addRoleResult = await _userManager.AddToRoleAsync(user, "User");
-        
-        if (!addRoleResult.Succeeded)
-        {
-            var errors = addRoleResult.Errors.Select(e => e.Description).ToArray();
-            return (false, null, errors, null);
-        }
+        var roles = await _userManager.GetRolesAsync(user);
+        var result = _mapper.Map<ApplicationUserResponse>(user);
+        result.Roles = roles.ToList();
 
-        var result = await GenerateAuthResponseAsync(user, cancellationToken);
         return (true, null, Array.Empty<string>(), result);
     }
-    //
-     public async Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors, AuthResponse? Result)> RegisterForStaffAsync(
+
+    private async Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors, ApplicationUser? User)> CreateRegisteredUserAsync(
         RegisterRequest request,
-        CancellationToken cancellationToken = default)
+        UserStatus status,
+        string role)
     {
         if (!string.Equals(request.Password, request.confirmPassword, StringComparison.Ordinal))
         {
@@ -107,35 +90,27 @@ public sealed class AuthService : IAuthService
             Email = request.Email,
             DisplayName = request.DisplayName,
             Address = request.Address,
-            Status = UserStatus.Pending,
             Gender = request.Gender,
             DateOfBirth = request.DateOfBirth,
+            Status = status,
             IsFirstLogin = true,
         };
 
         var identityResult = await _userManager.CreateAsync(user, request.Password);
-
         if (!identityResult.Succeeded)
         {
             var (errorMessage, errors) = MapIdentityRegisterErrors(identityResult.Errors);
             return (false, errorMessage, errors, null);
         }
 
-        var addRoleResult = await _userManager.AddToRoleAsync(user, "Doctor");
-        
+        var addRoleResult = await _userManager.AddToRoleAsync(user, role);
         if (!addRoleResult.Succeeded)
         {
             var errors = addRoleResult.Errors.Select(e => e.Description).ToArray();
             return (false, null, errors, null);
         }
 
-        return (true, null, Array.Empty<string>(), new AuthResponse
-        {
-            Email = user.Email ?? string.Empty,
-            UserId = user.Id,
-            ExpiresAtUtc = default,
-            FirstLogin = true,
-        });
+        return (true, null, Array.Empty<string>(), user);
     }
 
     //
@@ -175,19 +150,21 @@ public sealed class AuthService : IAuthService
     }
 
     //
-    public async Task<(bool Succeeded, IEnumerable<string> Errors, AuthResponse? Result)> LoginWithGoogleAsync(
+    public async Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors, AuthResponse? Result)> LoginWithGoogleAsync(
         GoogleLoginRequest request,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.Credential))
         {
-            return (false, new[] { "Credential is required." }, null);
+            const string message = "Credential Google là bắt buộc";
+            return (false, message, new[] { message }, null);
         }
 
         var clientId = _configuration["Google:ClientId"];
         if (string.IsNullOrWhiteSpace(clientId))
         {
-            return (false, new[] { "Google ClientId is not configured." }, null);
+            const string message = "Google chưa được cấu hình";
+            return (false, message, new[] { message }, null);
         }
 
         var credential = request.Credential.Trim().Trim('"');
@@ -203,15 +180,16 @@ public sealed class AuthService : IAuthService
                     Audience = new[] { clientId },
                 });
         }
-
         catch
         {
-            return (false, Array.Empty<string>(), null);
+            const string message = "Credential Google không hợp lệ";
+            return (false, message, new[] { message }, null);
         }
 
         if (string.IsNullOrWhiteSpace(payload.Email))
         {
-            return (false, new[] { "Google account does not provide an email." }, null);
+            const string message = "Tài khoản Google không có email";
+            return (false, message, new[] { message }, null);
         }
 
         var email = payload.Email.Trim();
@@ -233,21 +211,23 @@ public sealed class AuthService : IAuthService
             var createResult = await _userManager.CreateAsync(user);
             if (!createResult.Succeeded)
             {
-                return (false, createResult.Errors.Select(e => e.Description), null);
+                return (false, null, createResult.Errors.Select(e => e.Description), null);
             }
 
             var addRoleResult = await _userManager.AddToRoleAsync(user, "User");
             if (!addRoleResult.Succeeded)
             {
-                return (false, addRoleResult.Errors.Select(e => e.Description), null);
+                return (false, null, addRoleResult.Errors.Select(e => e.Description), null);
             }
         }
 
-    
-        var result=await GenerateAuthResponseAsync(user, cancellationToken);
-        return (true, Array.Empty<string>(), result);
+        if (await _userManager.IsLockedOutAsync(user))
+        {
+            return (false, "Tài khoản của bạn đã bị lock", Array.Empty<string>(), null);
+        }
 
-
+        var result = await GenerateAuthResponseAsync(user, cancellationToken);
+        return (true, null, Array.Empty<string>(), result);
     }
     
     //
@@ -329,6 +309,7 @@ public sealed class AuthService : IAuthService
             AccessToken = accessToken,
             Email = user.Email ?? string.Empty,
             UserId = user.Id,
+            Roles = roles.ToArray(),
             ExpiresAtUtc = accessExpires,
             FirstLogin = user.IsFirstLogin,
         });
@@ -367,13 +348,14 @@ public sealed class AuthService : IAuthService
     }
 
     //
-    public async Task<(bool Succeeded, IEnumerable<string> Errors)> ForgotPasswordAsync(
+    public async Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors)> ForgotPasswordAsync(
         ForgotPasswordRequest request,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.Email))
         {
-            return (false, new[] { "Email is required." });
+            const string message = "Email là bắt buộc";
+            return (false, message, new[] { message });
         }
 
         var email = request.Email.Trim();
@@ -383,7 +365,7 @@ public sealed class AuthService : IAuthService
         var user = await _userManager.FindByEmailAsync(email);
         if (user is null)
         {
-            return (true, Array.Empty<string>());
+            return (true, null, Array.Empty<string>());
         }
 
         var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
@@ -391,7 +373,8 @@ public sealed class AuthService : IAuthService
         var (sent, otp) = await _emailOtpSender.SendOtpEmailAsync(email, cancellationToken);
         if (!sent || otp is null)
         {
-            return (false, new[] { "Unable to send OTP email. Please try again later." });
+            const string message = "Không thể gửi email OTP. Vui lòng thử lại sau.";
+            return (false, message, new[] { message });
         }
 
         var entry = new PasswordResetOtpCacheEntry
@@ -405,61 +388,68 @@ public sealed class AuthService : IAuthService
             AbsoluteExpirationRelativeToNow = PasswordResetOtpLifetime,
         });
 
-        return (true, Array.Empty<string>());
+        return (true, null, Array.Empty<string>());
     }
 
     //
-    public async Task<(bool Succeeded, IEnumerable<string> Errors)> ChangePasswordWithOtpAsync(
+    public async Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors)> ChangePasswordWithOtpAsync(
         ChangePasswordWithOtpRequest request,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.Email))
         {
-            return (false, new[] { "Email is required." });
+            const string message = "Email là bắt buộc";
+            return (false, message, new[] { message });
         }
 
         if (string.IsNullOrWhiteSpace(request.Otp))
         {
-            return (false, new[] { "OTP is required." });
+            const string message = "Mã OTP là bắt buộc";
+            return (false, message, new[] { message });
         }
 
         if (string.IsNullOrWhiteSpace(request.NewPassword))
         {
-            return (false, new[] { "New password is required." });
+            const string message = "Mật khẩu mới là bắt buộc";
+            return (false, message, new[] { message });
         }
 
         if (!string.Equals(request.NewPassword, request.ConfirmNewPassword, StringComparison.Ordinal))
         {
-            return (false, new[] { "New password and confirmation do not match." });
+            const string message = "Mật khẩu xác nhận không khớp";
+            return (false, message, new[] { message });
         }
 
-        
         var cacheKey = GetPasswordResetCacheKey(request.Email);
 
         if (!_cache.TryGetValue(cacheKey, out PasswordResetOtpCacheEntry? entry) || entry is null)
         {
-            return (false, new[] { "OTP is invalid or expired." });
+            const string message = "Mã OTP không hợp lệ hoặc đã hết hạn";
+            return (false, message, new[] { message });
         }
 
         if (!string.Equals(entry.Otp, request.Otp.Trim(), StringComparison.Ordinal))
         {
-            return (false, new[] { "OTP is invalid or expired." });
+            const string message = "Mã OTP không hợp lệ hoặc đã hết hạn";
+            return (false, message, new[] { message });
         }
 
         var user = await _userManager.FindByEmailAsync(request.Email);
         if (user is null)
         {
-            return (false, new[] { "OTP is invalid or expired." });
+            const string message = "Mã OTP không hợp lệ hoặc đã hết hạn";
+            return (false, message, new[] { message });
         }
 
         var resetResult = await _userManager.ResetPasswordAsync(user, entry.ResetToken, request.NewPassword);
         if (!resetResult.Succeeded)
         {
-            return (false, resetResult.Errors.Select(e => e.Description));
+            const string message = "Đặt lại mật khẩu thất bại";
+            return (false, message, resetResult.Errors.Select(e => e.Description));
         }
 
         _cache.Remove(cacheKey);
-        return (true, Array.Empty<string>());
+        return (true, null, Array.Empty<string>());
     }
 
     //

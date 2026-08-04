@@ -1,15 +1,12 @@
 using MedMateAI.Application.DTOs.Auth.Requests;
 using MedMateAI.Application.DTOs.Auth.Responses;
+using MedMateAI.Application.DTOs.Users.Responses;
 
 namespace MedMateAI.Application.IService;
 
 public interface IAuthService
 {
-    Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors, AuthResponse? Result)> RegisterAsync(
-        RegisterRequest request,
-        CancellationToken cancellationToken = default);
-
-    Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors, AuthResponse? Result)> RegisterForStaffAsync(
+    Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors, ApplicationUserResponse? Result)> RegisterAsync(
         RegisterRequest request,
         CancellationToken cancellationToken = default);
 
@@ -23,15 +20,15 @@ public interface IAuthService
 
     Task LogoutAsync(CancellationToken cancellationToken = default);
 
-    Task<(bool Succeeded, IEnumerable<string> Errors, AuthResponse? Result)> LoginWithGoogleAsync(
+    Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors, AuthResponse? Result)> LoginWithGoogleAsync(
         GoogleLoginRequest request,
         CancellationToken cancellationToken = default);
 
-    Task<(bool Succeeded, IEnumerable<string> Errors)> ForgotPasswordAsync(
+    Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors)> ForgotPasswordAsync(
         ForgotPasswordRequest request,
         CancellationToken cancellationToken = default);
 
-    Task<(bool Succeeded, IEnumerable<string> Errors)> ChangePasswordWithOtpAsync(
+    Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors)> ChangePasswordWithOtpAsync(
         ChangePasswordWithOtpRequest request,
         CancellationToken cancellationToken = default);
 }
