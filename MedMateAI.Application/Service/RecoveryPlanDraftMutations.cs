@@ -57,7 +57,7 @@ internal static class RecoveryPlanDraftMutations
         return RecoveryPlanOperationResult<bool>.Ok(true);
     }
 
-    public static RecoveryPlanOperationResult<RecoveryPlanPhaseResponse> CreatePhase(
+    public static RecoveryPlanOperationResult<RecoveryPlanPhase> CreatePhase(
         RecoveryPlan plan,
         UpsertRecoveryPlanPhaseRequest request,
         DateTime utcNow)
@@ -72,19 +72,18 @@ internal static class RecoveryPlanDraftMutations
 
         if (error != RecoveryPlanErrorCode.None)
         {
-            return RecoveryPlanOperationResult<RecoveryPlanPhaseResponse>.Fail(error);
+            return RecoveryPlanOperationResult<RecoveryPlanPhase>.Fail(error);
         }
 
         if (HasPhaseSortOrderConflict(plan, request.SortOrder, null)
             || HasPhaseOverlap(plan, request.StartDay, request.EndDay, null))
         {
-            return RecoveryPlanOperationResult<RecoveryPlanPhaseResponse>.Fail(
+            return RecoveryPlanOperationResult<RecoveryPlanPhase>.Fail(
                 RecoveryPlanErrorCode.InvalidPlanStructure);
         }
 
         var phase = new RecoveryPlanPhase
         {
-            Id = Guid.NewGuid(),
             RecoveryPlanId = plan.Id,
             PhaseName = phaseName,
             StartDay = request.StartDay,
@@ -99,8 +98,7 @@ internal static class RecoveryPlanDraftMutations
         plan.Phases.Add(phase);
         plan.UpdatedAt = utcNow;
 
-        return RecoveryPlanOperationResult<RecoveryPlanPhaseResponse>.Ok(
-            RecoveryPlanMapping.ToPhase(phase));
+        return RecoveryPlanOperationResult<RecoveryPlanPhase>.Ok(phase);
     }
 
     public static RecoveryPlanOperationResult<RecoveryPlanPhaseResponse> UpdatePhase(
@@ -166,7 +164,7 @@ internal static class RecoveryPlanDraftMutations
         return RecoveryPlanOperationResult<bool>.Ok(true);
     }
 
-    public static RecoveryPlanOperationResult<RecoveryPlanNutrientTargetResponse>
+    public static RecoveryPlanOperationResult<RecoveryPlanNutrientTarget>
         CreateNutrient(
             RecoveryPlan plan,
             Guid phaseId,
@@ -176,7 +174,7 @@ internal static class RecoveryPlanDraftMutations
         var phase = FindPhase(plan, phaseId);
         if (phase is null)
         {
-            return RecoveryPlanOperationResult<RecoveryPlanNutrientTargetResponse>.Fail(
+            return RecoveryPlanOperationResult<RecoveryPlanNutrientTarget>.Fail(
                 RecoveryPlanErrorCode.NotFound);
         }
 
@@ -191,20 +189,19 @@ internal static class RecoveryPlanDraftMutations
 
         if (error != RecoveryPlanErrorCode.None)
         {
-            return RecoveryPlanOperationResult<RecoveryPlanNutrientTargetResponse>.Fail(error);
+            return RecoveryPlanOperationResult<RecoveryPlanNutrientTarget>.Fail(error);
         }
 
         if (phase.NutrientTargets.Any(nutrient =>
                 !nutrient.IsDeleted
                 && nutrient.SortOrder == request.SortOrder))
         {
-            return RecoveryPlanOperationResult<RecoveryPlanNutrientTargetResponse>.Fail(
+            return RecoveryPlanOperationResult<RecoveryPlanNutrientTarget>.Fail(
                 RecoveryPlanErrorCode.InvalidPlanStructure);
         }
 
         var nutrient = new RecoveryPlanNutrientTarget
         {
-            Id = Guid.NewGuid(),
             RecoveryPlanPhaseId = phase.Id,
             NutrientName = nutrientName,
             AmountPerDay = request.AmountPerDay,
@@ -218,8 +215,7 @@ internal static class RecoveryPlanDraftMutations
         phase.UpdatedAt = utcNow;
         plan.UpdatedAt = utcNow;
 
-        return RecoveryPlanOperationResult<RecoveryPlanNutrientTargetResponse>.Ok(
-            RecoveryPlanMapping.ToNutrient(nutrient));
+        return RecoveryPlanOperationResult<RecoveryPlanNutrientTarget>.Ok(nutrient);
     }
 
     public static RecoveryPlanOperationResult<RecoveryPlanNutrientTargetResponse>
@@ -293,7 +289,7 @@ internal static class RecoveryPlanDraftMutations
         return RecoveryPlanOperationResult<bool>.Ok(true);
     }
 
-    public static RecoveryPlanOperationResult<RecoveryPlanFoodSourceResponse> CreateFood(
+    public static RecoveryPlanOperationResult<RecoveryPlanFoodSource> CreateFood(
         RecoveryPlan plan,
         Guid phaseId,
         Guid nutrientId,
@@ -304,7 +300,7 @@ internal static class RecoveryPlanDraftMutations
         var nutrient = FindNutrient(phase, nutrientId);
         if (phase is null || nutrient is null)
         {
-            return RecoveryPlanOperationResult<RecoveryPlanFoodSourceResponse>.Fail(
+            return RecoveryPlanOperationResult<RecoveryPlanFoodSource>.Fail(
                 RecoveryPlanErrorCode.NotFound);
         }
 
@@ -320,20 +316,19 @@ internal static class RecoveryPlanDraftMutations
 
         if (error != RecoveryPlanErrorCode.None)
         {
-            return RecoveryPlanOperationResult<RecoveryPlanFoodSourceResponse>.Fail(error);
+            return RecoveryPlanOperationResult<RecoveryPlanFoodSource>.Fail(error);
         }
 
         if (nutrient.FoodSources.Any(food =>
                 !food.IsDeleted
                 && food.SortOrder == request.SortOrder))
         {
-            return RecoveryPlanOperationResult<RecoveryPlanFoodSourceResponse>.Fail(
+            return RecoveryPlanOperationResult<RecoveryPlanFoodSource>.Fail(
                 RecoveryPlanErrorCode.InvalidPlanStructure);
         }
 
         var foodSource = new RecoveryPlanFoodSource
         {
-            Id = Guid.NewGuid(),
             RecoveryPlanNutrientTargetId = nutrient.Id,
             FoodName = foodName,
             SuggestedServing = suggestedServing,
@@ -347,8 +342,7 @@ internal static class RecoveryPlanDraftMutations
         phase.UpdatedAt = utcNow;
         plan.UpdatedAt = utcNow;
 
-        return RecoveryPlanOperationResult<RecoveryPlanFoodSourceResponse>.Ok(
-            RecoveryPlanMapping.ToFood(foodSource));
+        return RecoveryPlanOperationResult<RecoveryPlanFoodSource>.Ok(foodSource);
     }
 
     public static RecoveryPlanOperationResult<RecoveryPlanFoodSourceResponse> UpdateFood(
