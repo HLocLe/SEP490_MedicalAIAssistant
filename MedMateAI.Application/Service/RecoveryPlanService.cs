@@ -206,10 +206,11 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
         UpsertRecoveryPlanPhaseRequest request,
         CancellationToken cancellationToken)
     {
-        return ExecuteDraftWriteAsync(
+        return ExecuteDraftWriteAsync<RecoveryPlanPhase, RecoveryPlanPhaseResponse>(
             doctorUserId,
             planId,
             (plan, utcNow) => RecoveryPlanDraftMutations.CreatePhase(plan, request, utcNow),
+            RecoveryPlanMapping.ToPhase,
             cancellationToken);
     }
 
@@ -255,7 +256,9 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
             UpsertRecoveryPlanNutrientTargetRequest request,
             CancellationToken cancellationToken)
     {
-        return ExecuteDraftWriteAsync(
+        return ExecuteDraftWriteAsync<
+            RecoveryPlanNutrientTarget,
+            RecoveryPlanNutrientTargetResponse>(
             doctorUserId,
             planId,
             (plan, utcNow) => RecoveryPlanDraftMutations.CreateNutrient(
@@ -263,6 +266,7 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
                 phaseId,
                 request,
                 utcNow),
+            RecoveryPlanMapping.ToNutrient,
             cancellationToken);
     }
 
@@ -313,7 +317,7 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
         UpsertRecoveryPlanFoodSourceRequest request,
         CancellationToken cancellationToken)
     {
-        return ExecuteDraftWriteAsync(
+        return ExecuteDraftWriteAsync<RecoveryPlanFoodSource, RecoveryPlanFoodSourceResponse>(
             doctorUserId,
             planId,
             (plan, utcNow) => RecoveryPlanDraftMutations.CreateFood(
@@ -322,6 +326,7 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
                 nutrientId,
                 request,
                 utcNow),
+            RecoveryPlanMapping.ToFood,
             cancellationToken);
     }
 
@@ -704,6 +709,23 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
         Func<RecoveryPlan, DateTime, RecoveryPlanOperationResult<TResponse>> mutation,
         CancellationToken cancellationToken)
     {
+        return await ExecuteDraftWriteAsync(
+            doctorUserId,
+            planId,
+            mutation,
+            static response => response,
+            cancellationToken);
+    }
+
+    private async Task<RecoveryPlanOperationResult<TResponse>> ExecuteDraftWriteAsync<
+        TMutation,
+        TResponse>(
+        Guid doctorUserId,
+        Guid planId,
+        Func<RecoveryPlan, DateTime, RecoveryPlanOperationResult<TMutation>> mutation,
+        Func<TMutation, TResponse> mapResponse,
+        CancellationToken cancellationToken)
+    {
         var doctorResult = await GetActiveDoctorAsync(doctorUserId, cancellationToken);
         if (doctorResult.Error != RecoveryPlanErrorCode.None)
         {
@@ -769,8 +791,11 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
             }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+            var response = mapResponse(mutationResult.Data!);
             await _unitOfWork.CommitTransactionAsync(cancellationToken);
-            return mutationResult;
+            return RecoveryPlanOperationResult<TResponse>.Ok(
+                response,
+                mutationResult.IsReplay);
         }
         catch
         {
