@@ -1,6 +1,8 @@
 name: Deploy MediPath AI via Docker Hub
 
 on:
+  workflow_dispatch:
+  
   push:
     branches:
       - main
