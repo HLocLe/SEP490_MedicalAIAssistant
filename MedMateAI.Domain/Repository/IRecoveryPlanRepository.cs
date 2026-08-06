@@ -30,6 +30,11 @@ public interface IRecoveryPlanRepository
         Guid planId,
         CancellationToken cancellationToken = default);
 
+    Task<bool> HasBlockingPlanForUserAsync(
+        Guid userId,
+        Guid? excludedPlanId,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<RecoveryPlanCompletionCandidate>>
         GetActiveCompletionCandidatesAsync(
             DateOnly maximumEndDate,

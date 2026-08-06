@@ -90,6 +90,39 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         await _uow.BeginTransactionAsync(cancellationToken);
         try
         {
+            var userLocked = await _uow.RecoveryPlanRequests
+                .LockUserRecoveryPlanWorkflowAsync(userId, cancellationToken);
+            if (!userLocked)
+            {
+                return await RollbackFailureAsync(
+                    RecoveryPlanErrorCode.Unauthenticated);
+            }
+
+            replay = await LoadIdempotentReplayAsync(
+                userId,
+                scopedIdempotencyKey,
+                cancellationToken);
+            if (replay is not null)
+            {
+                await RollbackAsync();
+                return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(
+                    Map(replay),
+                    true);
+            }
+
+            var hasOpenRequest = await _uow.RecoveryPlanRequests
+                .HasOpenRequestForUserAsync(userId, cancellationToken);
+            var hasBlockingPlan = await _uow.RecoveryPlans.HasBlockingPlanForUserAsync(
+                userId,
+                null,
+                cancellationToken);
+            if (hasOpenRequest || hasBlockingPlan)
+            {
+                return await RollbackFailureAsync(
+                    RecoveryPlanErrorCode.RecoveryPlanWorkflowAlreadyActive,
+                    "You already have a recovery plan request or plan in progress.");
+            }
+
             var utcNow = DateTime.UtcNow;
             var usageResult = await _quota.ResolveUsageAsync(userId, utcNow, cancellationToken);
             if (!usageResult.Success || usageResult.Data is null)
@@ -1222,10 +1255,11 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(RecoveryPlanErrorCode.NotFound);
 
     private async Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> RollbackFailureAsync(
-        RecoveryPlanErrorCode error)
+        RecoveryPlanErrorCode error,
+        string? message = null)
     {
         await RollbackAsync();
-        return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(error);
+        return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(error, message);
     }
 
     private Task RollbackAsync() =>

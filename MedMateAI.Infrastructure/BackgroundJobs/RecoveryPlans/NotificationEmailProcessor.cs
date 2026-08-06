@@ -198,6 +198,11 @@ public sealed class NotificationEmailProcessor : INotificationEmailProcessor
                     _renderer.RenderRecoveryPlanCompleted,
                     cancellationToken);
 
+            case NotificationTypes.RecoveryPlanCancelled:
+                return await PrepareRecoveryPlanCancelledEmailAsync(
+                    notification,
+                    cancellationToken);
+
             case NotificationTypes.MedicationReminder:
                 return await PrepareMedicationReminderEmailAsync(
                     notification,
@@ -234,6 +239,40 @@ public sealed class NotificationEmailProcessor : INotificationEmailProcessor
         }
 
         return DeliveryPreparation.Ready(render());
+    }
+
+    private async Task<DeliveryPreparation> PrepareRecoveryPlanCancelledEmailAsync(
+        NotificationProcessingItem notification,
+        CancellationToken cancellationToken)
+    {
+        if (notification.ReferenceType != NotificationReferenceTypes.RecoveryPlan
+            || !notification.ReferenceId.HasValue)
+        {
+            return DeliveryPreparation.Cancelled(ReferenceIneligibleError);
+        }
+
+        var plan = await _notificationRepository.GetRecoveryPlanReferenceAsync(
+            notification.ReferenceId.Value,
+            cancellationToken);
+
+        if (plan is null
+            || plan.UserId != notification.UserId
+            || plan.Status != RecoveryPlanStatus.Cancelled
+            || !plan.CancelledAt.HasValue
+            || !RecoveryPlanCancellationReasons.TryNormalize(
+                plan.CancellationReasonCode,
+                plan.CancellationReason,
+                out var cancellationReasonCode,
+                out var cancellationReason))
+        {
+            return DeliveryPreparation.Cancelled(ReferenceIneligibleError);
+        }
+
+        return DeliveryPreparation.Ready(
+            _renderer.RenderRecoveryPlanCancelled(
+                plan.PlanName,
+                cancellationReasonCode,
+                cancellationReason));
     }
 
     private async Task<DeliveryPreparation> PrepareMedicationReminderEmailAsync(

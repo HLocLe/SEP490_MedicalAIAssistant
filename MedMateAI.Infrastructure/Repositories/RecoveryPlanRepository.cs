@@ -89,7 +89,7 @@ public sealed class RecoveryPlanRepository : IRecoveryPlanRepository
     {
         EnsureActiveTransaction();
 
-        // Plan lifecycle and aggregate writes require a row lock after the request lock.
+        // Plan writes lock this row after the workflow user or request lock.
         var plans = await _context.RecoveryPlans
             .FromSqlInterpolated($"""
                 SELECT *
@@ -103,6 +103,26 @@ public sealed class RecoveryPlanRepository : IRecoveryPlanRepository
             .ToListAsync(cancellationToken);
 
         return plans.SingleOrDefault();
+    }
+
+    public Task<bool> HasBlockingPlanForUserAsync(
+        Guid userId,
+        Guid? excludedPlanId,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureActiveTransaction();
+
+        return _context.RecoveryPlans
+            .AsNoTracking()
+            .AnyAsync(
+                plan =>
+                    plan.UserId == userId
+                    && !plan.IsDeleted
+                    && plan.RecoveryPlanRequestId.HasValue
+                    && (!excludedPlanId.HasValue || plan.Id != excludedPlanId.Value)
+                    && (plan.Status == RecoveryPlanStatus.ReadyToStart
+                        || plan.Status == RecoveryPlanStatus.Active),
+                cancellationToken);
     }
 
     public async Task<IReadOnlyList<RecoveryPlanCompletionCandidate>>

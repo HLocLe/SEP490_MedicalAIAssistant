@@ -6,4 +6,5 @@ public static class RecoveryPlanLifecycleOutboxEventTypes
     public const string Ready = "RecoveryPlanReady";
     public const string Activated = "RecoveryPlanActivated";
     public const string Completed = "RecoveryPlanCompleted";
+    public const string Cancelled = "RecoveryPlanCancelled";
 }

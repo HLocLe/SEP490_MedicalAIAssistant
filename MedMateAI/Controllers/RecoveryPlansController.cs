@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using MedMateAI.Application.DTOs.Common;
+using MedMateAI.Application.DTOs.RecoveryPlans;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models;
 using MedMateAI.Domain.Enums;
@@ -40,6 +41,14 @@ public sealed class RecoveryPlansController : ControllerBase
         CancellationToken cancellationToken) =>
         await WithUser(userId =>
             _service.StartAsync(userId, planId, cancellationToken));
+
+    [HttpPost("{planId:guid}/cancel")]
+    public async Task<IActionResult> Cancel(
+        Guid planId,
+        [FromBody] CancelRecoveryPlanRequest request,
+        CancellationToken cancellationToken) =>
+        await WithUser(userId =>
+            _service.CancelAsync(userId, planId, request, cancellationToken));
 
     private async Task<IActionResult> WithUser<T>(
         Func<Guid, Task<RecoveryPlanOperationResult<T>>> action)

@@ -17,7 +17,8 @@ internal static class RecoveryPlanHttpResultMapper
             return controller.Ok(new ApiResponse<T>
             {
                 Success = true,
-                Message = result.IsReplay ? "Idempotent replay." : "OK",
+                Message = result.Message
+                    ?? (result.IsReplay ? "Idempotent replay." : "OK"),
                 Data = result.Data
             });
         }
@@ -69,6 +70,9 @@ internal static class RecoveryPlanHttpResultMapper
             or RecoveryPlanErrorCode.IdempotencyKeyInvalid
             or RecoveryPlanErrorCode.RecoveryPlanIncomplete
             or RecoveryPlanErrorCode.InvalidPlanStructure => StatusCodes.Status400BadRequest,
+        RecoveryPlanErrorCode.RecoveryPlanWorkflowAlreadyActive
+            or RecoveryPlanErrorCode.RecoveryPlanNotCancellable =>
+            StatusCodes.Status409Conflict,
         _ => StatusCodes.Status409Conflict
     };
 

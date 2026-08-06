@@ -16,13 +16,17 @@ public enum RecoveryPlanErrorCode
     DoctorProfileNotFound, DoctorNotActive, DoctorNotAcceptingRequests,
     DoctorCapacityReached, AssignmentExpired, QuotaMutationFailed, Conflict,
     RecoveryPlanIncomplete, InvalidPlanStructure, RecoveryPlanNotEditable,
-    InvalidUserTimeZone
+    InvalidUserTimeZone, RecoveryPlanWorkflowAlreadyActive,
+    RecoveryPlanNotCancellable
 }
 
 public sealed record RecoveryPlanOperationResult<T>(
     bool Success, T? Data, RecoveryPlanErrorCode Error = RecoveryPlanErrorCode.None,
     bool IsReplay = false, string? Message = null)
 {
-    public static RecoveryPlanOperationResult<T> Ok(T data, bool replay = false) => new(true, data, IsReplay: replay);
+    public static RecoveryPlanOperationResult<T> Ok(
+        T data,
+        bool replay = false,
+        string? message = null) => new(true, data, IsReplay: replay, Message: message);
     public static RecoveryPlanOperationResult<T> Fail(RecoveryPlanErrorCode error, string? message = null) => new(false, default, error, Message: message);
 }

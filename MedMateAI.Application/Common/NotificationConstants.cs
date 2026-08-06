@@ -18,6 +18,7 @@ public static class NotificationTypes
 {
     public const string RecoveryPlanReady = "RecoveryPlanReady";
     public const string RecoveryPlanCompleted = "RecoveryPlanCompleted";
+    public const string RecoveryPlanCancelled = "RecoveryPlanCancelled";
     public const string MedicationReminder = "MedicationReminder";
 }
 
@@ -35,6 +36,13 @@ public static class RecoveryPlanNotificationContent
     public const string CompletedTitle = "Kế hoạch hồi phục đã kết thúc";
     public const string CompletedMessage =
         "Kế hoạch hồi phục của bạn đã kết thúc. Vui lòng đăng nhập để xem hướng dẫn tái kiểm tra sức khỏe.";
+}
+
+public static class RecoveryPlanCancellationNotificationContent
+{
+    public const string Title = "Xác nhận hủy kế hoạch hồi phục";
+    public const string Message =
+        "Kế hoạch hồi phục đã được hủy theo yêu cầu và vẫn được lưu trong lịch sử của bạn.";
 }
 
 public static class MedicationReminderNotificationContent

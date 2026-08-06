@@ -14,6 +14,14 @@ public interface IRecoveryPlanRequestRepository
         Guid requestId,
         CancellationToken cancellationToken = default);
 
+    Task<bool> LockUserRecoveryPlanWorkflowAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> HasOpenRequestForUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<Guid>> GetExpiredAssignmentIdsAsync(
         DateTime utcNow,
         int batchSize,

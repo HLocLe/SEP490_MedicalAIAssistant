@@ -21,6 +21,7 @@ internal static class RecoveryPlanMapping
             Status = plan.Status,
             PublishedAt = plan.PublishedAt,
             ActivatedAt = plan.ActivatedAt,
+            CancelledAt = plan.CancelledAt,
             StartDate = plan.StartDate,
             EndDate = plan.EndDate,
             IsCurrent = plan.IsCurrent
@@ -44,6 +45,9 @@ internal static class RecoveryPlanMapping
             StartDate = plan.StartDate,
             EndDate = plan.EndDate,
             CompletedAt = plan.CompletedAt,
+            CancelledAt = plan.CancelledAt,
+            CancellationReasonCode = plan.CancellationReasonCode,
+            CancellationReason = plan.CancellationReason,
             RecheckInstruction = plan.RecheckInstruction,
             IsCurrent = plan.IsCurrent,
             Phases = plan.Phases
