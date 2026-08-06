@@ -66,15 +66,7 @@ internal static class RecoveryPlanValidation
             return RecoveryPlanErrorCode.InvalidRequest;
         }
 
-        if (!IsValidHours(request.SleepHoursPerDay)
-            || !IsValidHours(request.RestHoursPerDay))
-        {
-            return RecoveryPlanErrorCode.InvalidRequest;
-        }
-
-        if (request.SleepHoursPerDay.HasValue
-            && request.RestHoursPerDay.HasValue
-            && request.SleepHoursPerDay.Value + request.RestHoursPerDay.Value > 24)
+        if (!IsValidDailyHours(request.SleepAndRestHoursPerDay))
         {
             return RecoveryPlanErrorCode.InvalidRequest;
         }
@@ -202,8 +194,7 @@ internal static class RecoveryPlanValidation
         int expectedStart)
     {
         if (string.IsNullOrWhiteSpace(phase.PhaseName)
-            || !phase.SleepHoursPerDay.HasValue
-            || !phase.RestHoursPerDay.HasValue)
+            || !phase.SleepAndRestHoursPerDay.HasValue)
         {
             return RecoveryPlanErrorCode.RecoveryPlanIncomplete;
         }
@@ -215,9 +206,7 @@ internal static class RecoveryPlanValidation
             || phase.StartDay < 1
             || phase.EndDay < phase.StartDay
             || phase.EndDay > durationDays
-            || !IsValidHours(phase.SleepHoursPerDay)
-            || !IsValidHours(phase.RestHoursPerDay)
-            || phase.SleepHoursPerDay.Value + phase.RestHoursPerDay.Value > 24)
+            || !IsValidDailyHours(phase.SleepAndRestHoursPerDay))
         {
             return RecoveryPlanErrorCode.InvalidPlanStructure;
         }
@@ -299,7 +288,7 @@ internal static class RecoveryPlanValidation
         return RecoveryPlanErrorCode.None;
     }
 
-    private static bool IsValidHours(decimal? hours)
+    private static bool IsValidDailyHours(decimal? hours)
     {
         if (!hours.HasValue)
         {

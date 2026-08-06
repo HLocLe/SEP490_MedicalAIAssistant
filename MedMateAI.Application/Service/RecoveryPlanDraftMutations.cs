@@ -88,8 +88,7 @@ internal static class RecoveryPlanDraftMutations
             PhaseName = phaseName,
             StartDay = request.StartDay,
             EndDay = request.EndDay,
-            SleepHoursPerDay = request.SleepHoursPerDay,
-            RestHoursPerDay = request.RestHoursPerDay,
+            SleepAndRestHoursPerDay = request.SleepAndRestHoursPerDay,
             Instruction = instruction,
             SortOrder = request.SortOrder,
             CreatedAt = utcNow
@@ -137,8 +136,7 @@ internal static class RecoveryPlanDraftMutations
         phase.PhaseName = phaseName;
         phase.StartDay = request.StartDay;
         phase.EndDay = request.EndDay;
-        phase.SleepHoursPerDay = request.SleepHoursPerDay;
-        phase.RestHoursPerDay = request.RestHoursPerDay;
+        phase.SleepAndRestHoursPerDay = request.SleepAndRestHoursPerDay;
         phase.Instruction = instruction;
         phase.SortOrder = request.SortOrder;
         phase.UpdatedAt = utcNow;

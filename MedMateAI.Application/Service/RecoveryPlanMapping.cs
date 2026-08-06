@@ -221,8 +221,7 @@ internal static class RecoveryPlanMapping
             PhaseName = phase.PhaseName,
             StartDay = phase.StartDay,
             EndDay = phase.EndDay,
-            SleepHoursPerDay = phase.SleepHoursPerDay,
-            RestHoursPerDay = phase.RestHoursPerDay,
+            SleepAndRestHoursPerDay = phase.SleepAndRestHoursPerDay,
             Instruction = phase.Instruction,
             SortOrder = phase.SortOrder,
             NutrientTargets = phase.NutrientTargets
