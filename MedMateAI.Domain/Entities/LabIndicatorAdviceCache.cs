@@ -24,10 +24,6 @@ public sealed class LabIndicatorAdviceCache : BaseEntity
 
     public string? WarningSigns { get; set; }
 
-    public string? FollowUpSuggestion { get; set; }
-
-    public string? DoctorQuestions { get; set; }
-
     public LabIndicatorMaster Indicator { get; set; } = null!;
 
     public ICollection<LabTestResultDetail> LabTestResultDetails { get; set; } = new List<LabTestResultDetail>();

@@ -3,6 +3,7 @@ using System;
 using MedMateAI.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MedMateAI.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260806182919_FilterLabIndicatorUniqueIndexesByIsDeleted")]
+    partial class FilterLabIndicatorUniqueIndexesByIsDeleted
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1636,20 +1639,6 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.Property<DateTime?>("ActivatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("CancellationReason")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<string>("CancellationReasonCode")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<DateTime?>("CancelledAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("CancelledByUserId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("ClinicalSnapshotJson")
                         .HasColumnType("jsonb");
 
@@ -1720,8 +1709,6 @@ namespace MedMateAI.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CancelledByUserId");
 
                     b.HasIndex("DoctorId");
 
@@ -1877,7 +1864,11 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.Property<Guid>("RecoveryPlanId")
                         .HasColumnType("uuid");
 
-                    b.Property<decimal?>("SleepAndRestHoursPerDay")
+                    b.Property<decimal?>("RestHoursPerDay")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("numeric(4,2)");
+
+                    b.Property<decimal?>("SleepHoursPerDay")
                         .HasPrecision(4, 2)
                         .HasColumnType("numeric(4,2)");
 
@@ -1902,7 +1893,11 @@ namespace MedMateAI.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("CK_RecoveryPlanPhase_Days", "\"StartDay\" >= 1 AND \"EndDay\" >= \"StartDay\"");
 
-                            t.HasCheckConstraint("CK_RecoveryPlanPhase_SleepAndRest", "\"SleepAndRestHoursPerDay\" IS NULL OR (\"SleepAndRestHoursPerDay\" >= 0 AND \"SleepAndRestHoursPerDay\" <= 24)");
+                            t.HasCheckConstraint("CK_RecoveryPlanPhase_Rest", "\"RestHoursPerDay\" IS NULL OR (\"RestHoursPerDay\" >= 0 AND \"RestHoursPerDay\" <= 24)");
+
+                            t.HasCheckConstraint("CK_RecoveryPlanPhase_Sleep", "\"SleepHoursPerDay\" IS NULL OR (\"SleepHoursPerDay\" >= 0 AND \"SleepHoursPerDay\" <= 24)");
+
+                            t.HasCheckConstraint("CK_RecoveryPlanPhase_TotalHours", "\"SleepHoursPerDay\" IS NULL OR \"RestHoursPerDay\" IS NULL OR \"SleepHoursPerDay\" + \"RestHoursPerDay\" <= 24");
                         });
                 });
 
@@ -3379,11 +3374,6 @@ namespace MedMateAI.Infrastructure.Migrations
 
             modelBuilder.Entity("MedMateAI.Domain.Entities.RecoveryPlan", b =>
                 {
-                    b.HasOne("MedMateAI.Infrastructure.Identity.ApplicationUser", null)
-                        .WithMany()
-                        .HasForeignKey("CancelledByUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("MedMateAI.Domain.Entities.Doctor", "Doctor")
                         .WithMany("RecoveryPlans")
                         .HasForeignKey("DoctorId")

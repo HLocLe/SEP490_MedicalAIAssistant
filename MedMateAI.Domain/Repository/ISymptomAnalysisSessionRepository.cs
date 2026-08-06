@@ -12,4 +12,12 @@ public interface ISymptomAnalysisSessionRepository : IGenericRepository<SymptomA
         int pageNumber,
         int pageSize,
         CancellationToken cancellationToken = default);
+
+    Task<PagedResult<SymptomAnalysisSession>> GetPagedAllAsync(
+        SymptomAnalysisSessionType? sessionType,
+        SymptomAnalysisSessionStatus? status,
+        Guid? userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default);
 }

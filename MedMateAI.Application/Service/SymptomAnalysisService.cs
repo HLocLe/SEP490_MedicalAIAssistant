@@ -9,9 +9,11 @@ using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.MedGemma;
 using MedMateAI.Application.IService;
+using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Persistence;
+using Microsoft.Extensions.Logging;
 
 namespace MedMateAI.Application.Service;
 
@@ -30,6 +32,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
     private readonly IMedGemmaChatService _medGemmaChatService;
     private readonly IIcdLookupService _icdLookupService;
     private readonly IMapper _mapper;
+    private readonly ILogger<SymptomAnalysisService> _logger;
 
     public SymptomAnalysisService(
         IUnitOfWork unitOfWork,
@@ -37,7 +40,8 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         ITranslationService translationService,
         IMedGemmaChatService medGemmaChatService,
         IIcdLookupService icdLookupService,
-        IMapper mapper)
+        IMapper mapper,
+        ILogger<SymptomAnalysisService> logger)
     {
         _unitOfWork = unitOfWork;
         _userService = userService;
@@ -45,6 +49,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         _medGemmaChatService = medGemmaChatService;
         _icdLookupService = icdLookupService;
         _mapper = mapper;
+        _logger = logger;
     }
 
     // 
@@ -86,24 +91,26 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             pageSize,
             cancellationToken);
 
-        return new PagedResponse<SymptomAnalysisSessionSummaryResponse>
-        {
-            PageNumber = paged.PageNumber,
-            PageSize = paged.PageSize,
-            TotalCount = paged.TotalCount,
-            TotalPages = paged.TotalPages,
-            Items = paged.Items
-                .Select(session => new SymptomAnalysisSessionSummaryResponse
-                {
-                    SessionId = session.Id,
-                    InputText = session.InputText,
-                    SeverityLevel = session.SeverityLevel,
-                    Status = session.Status,
-                    SessionType = session.SessionType,
-                    CreatedAt = session.CreatedAt,
-                })
-                .ToList(),
-        };
+        return PagedResponse<SymptomAnalysisSessionSummaryResponse>.From(paged, MapToSessionSummary);
+    }
+
+    public async Task<PagedResponse<SymptomAnalysisSessionSummaryResponse>> GetAllSessionsAsync(
+        SymptomAnalysisSessionType? sessionType,
+        SymptomAnalysisSessionStatus? status,
+        Guid? userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var paged = await _unitOfWork.SymptomAnalysisSessions.GetPagedAllAsync(
+            sessionType,
+            status,
+            userId,
+            pageNumber,
+            pageSize,
+            cancellationToken);
+
+        return PagedResponse<SymptomAnalysisSessionSummaryResponse>.From(paged, MapToSessionSummary);
     }
 
     // 
@@ -113,14 +120,14 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
     {
         if (request is null || string.IsNullOrWhiteSpace(request.UserInput))
         {
-            return new SuggestClinicalQuestionsResponse();
+            throw new ArgumentException("Nội dung triệu chứng là bắt buộc");
         }
 
         var trimmedInput = request.UserInput.Trim();
 
         if (trimmedInput.Length > MaxMessageLength)
         {
-            throw new ArgumentException($"User input must be {MaxMessageLength} characters or fewer.");
+            throw new ArgumentException($"Nội dung triệu chứng không được vượt quá {MaxMessageLength} ký tự");
         }
 
         var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
@@ -323,23 +330,23 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
 
     {
     if (request is null)
-        throw new ArgumentException("Request is required.");
+        throw new ArgumentException("Request body là bắt buộc");
 
     if (request.SessionId == Guid.Empty)
-        throw new ArgumentException("Session id is required.");
+        throw new ArgumentException("Id phiên phân tích triệu chứng là bắt buộc");
 
     var session = await _unitOfWork.SymptomAnalysisSessions.GetByIdAsync(request.SessionId, cancellationToken);
     if (session is null || session.IsDeleted)
-        throw new ArgumentException("Symptom analysis session not found.");
+        throw new ArgumentException("Không tìm thấy phiên phân tích triệu chứng");
 
     if (string.IsNullOrWhiteSpace(session.InputText))
-        throw new ArgumentException("Session input text is missing.");
+        throw new ArgumentException("Nội dung triệu chứng của phiên không tồn tại");
 
     var existingAnswers = await _unitOfWork.SessionClinicalQuestionAnswers
         .GetTrackedBySessionIdAsync(session.Id, cancellationToken);
 
     if (existingAnswers.Count == 0)
-        throw new ArgumentException("No clinical questions found for this session.");
+        throw new ArgumentException("Không tìm thấy câu hỏi lâm sàng cho phiên này");
 
     var submittedByQuestionId = (request.Answers ?? [])
         .Where(a => a.QuestionId != Guid.Empty)
@@ -429,8 +436,13 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         {
             aiResult = await _medGemmaChatService.GenerateAsync(bayesianPrompt, cancellationToken);
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            _logger.LogWarning(
+                ex,
+                "MedGemma analysis failed for session {SessionId}; category {ErrorCategory}.",
+                session.Id,
+                ex.GetType().Name);
             session.Status = SymptomAnalysisSessionStatus.Failed;
             session.UpdatedAt = DateTime.UtcNow;
             await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -439,11 +451,14 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
 
         if (!TryParseDiagnosesJson(aiResult.Content, out var parsedDiagnoses))
         {
+            _logger.LogWarning(
+                "MedGemma diagnoses JSON parse failed for session {SessionId}.",
+                session.Id);
             session.Status = SymptomAnalysisSessionStatus.Failed;
             session.UpdatedAt = DateTime.UtcNow;
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            throw new InvalidOperationException("Failed to parse MedGemma diagnoses JSON response.");
+            throw new InvalidOperationException("Không thể phân tích phản hồi JSON từ MedGemma");
         }
 
         var pB = parsedDiagnoses.Sum(d => d.PA * d.PBGivenA);
@@ -476,7 +491,20 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         return new MedGemmaAnalysisCoreResult(diagnoses, aiResult.Model);
     }
 
-    //
+    private static SymptomAnalysisSessionSummaryResponse MapToSessionSummary(SymptomAnalysisSession session)
+    {
+        return new SymptomAnalysisSessionSummaryResponse
+        {
+            UserId = session.UserId,
+            SessionId = session.Id,
+            InputText = session.InputText,
+            SeverityLevel = session.SeverityLevel,
+            Status = session.Status,
+            SessionType = session.SessionType,
+            CreatedAt = session.CreatedAt,
+        };
+    }
+
     private static BayesianDiagnosisResponse? SelectPrimaryDiagnosisByPluralityChapter(
     IReadOnlyList<BayesianDiagnosisResponse> diagnoses)
     {

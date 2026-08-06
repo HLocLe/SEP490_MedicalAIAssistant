@@ -30,46 +30,54 @@ public sealed class LabTestSessionRepository
             .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted, cancellationToken);
     }
 
-    public async Task<PagedResult<LabTestSession>> GetPagedByUserIdAsync(
+    public Task<PagedResult<LabTestSession>> GetPagedByUserIdAsync(
         Guid userId,
         LabTestSessionStatus? status,
         int pageNumber,
         int pageSize,
         CancellationToken cancellationToken = default)
     {
-        var normalizedPageNumber = pageNumber < 1 ? 1 : pageNumber;
-        var normalizedPageSize = pageSize < 1 ? 10 : pageSize;
-        normalizedPageSize = normalizedPageSize > 100 ? 100 : normalizedPageSize;
+        return GetPagedAsync(
+            pageNumber,
+            pageSize,
+            session =>
+                !session.IsDeleted
+                && session.UserId == userId
+                && (!status.HasValue || session.Status == status.Value),
+            query => query
+                .OrderByDescending(session => session.CreatedAt)
+                .ThenByDescending(session => session.Id),
+            asNoTracking: true,
+            cancellationToken);
+    }
 
-        var query = _context.LabTestSessions
-            .AsNoTracking()
-            .Where(session => !session.IsDeleted && session.UserId == userId);
-
-        if (status.HasValue)
+    public Task<PagedResult<LabTestSession>> GetPagedAllAsync(
+        LabTestSessionStatus? status,
+        Guid? userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId.HasValue && userId.Value == Guid.Empty)
         {
-            query = query.Where(session => session.Status == status.Value);
+            return GetPagedAsync(
+                pageNumber,
+                pageSize,
+                session => false,
+                cancellationToken: cancellationToken);
         }
 
-        var totalCount = await query.CountAsync(cancellationToken);
-
-        var items = await query
-            .OrderByDescending(session => session.CreatedAt)
-            .ThenByDescending(session => session.Id)
-            .Skip((normalizedPageNumber - 1) * normalizedPageSize)
-            .Take(normalizedPageSize)
-            .ToListAsync(cancellationToken);
-
-        var totalPages = totalCount == 0
-            ? 0
-            : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
-
-        return new PagedResult<LabTestSession>
-        {
-            PageNumber = normalizedPageNumber,
-            PageSize = normalizedPageSize,
-            TotalCount = totalCount,
-            TotalPages = totalPages,
-            Items = items,
-        };
+        return GetPagedAsync(
+            pageNumber,
+            pageSize,
+            session =>
+                !session.IsDeleted
+                && (!status.HasValue || session.Status == status.Value)
+                && (!userId.HasValue || session.UserId == userId.Value),
+            query => query
+                .OrderByDescending(session => session.CreatedAt)
+                .ThenByDescending(session => session.Id),
+            asNoTracking: true,
+            cancellationToken);
     }
 }

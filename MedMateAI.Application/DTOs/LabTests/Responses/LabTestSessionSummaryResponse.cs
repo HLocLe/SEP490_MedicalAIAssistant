@@ -4,6 +4,8 @@ namespace MedMateAI.Application.DTOs.LabTests.Responses;
 
 public sealed class LabTestSessionSummaryResponse
 {
+    public Guid UserId { get; set; }
+
     public Guid SessionId { get; set; }
 
     public string? DocumentUrl { get; set; }

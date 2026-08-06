@@ -17,6 +17,8 @@ public sealed class LabIndicatorAliasConfiguration : IEntityTypeConfiguration<La
         builder.Property(x => x.Language).HasMaxLength(10);
 
         builder.HasIndex(x => x.AliasText);
-        builder.HasIndex(x => new { x.IndicatorId, x.AliasText }).IsUnique();
+        builder.HasIndex(x => new { x.IndicatorId, x.AliasText })
+            .IsUnique()
+            .HasFilter("\"IsDeleted\" = false");
     }
 }

@@ -21,8 +21,4 @@ public sealed class CreateLabIndicatorAdviceCacheRequest
     public LabAdviceSeverityLevel SeverityLevel { get; set; } = LabAdviceSeverityLevel.Info;
 
     public string? WarningSigns { get; set; }
-
-    public string? FollowUpSuggestion { get; set; }
-
-    public string? DoctorQuestions { get; set; }
 }

@@ -24,6 +24,13 @@ public interface ILabTestService
         int pageSize,
         CancellationToken cancellationToken = default);
 
+    Task<PagedResponse<LabTestSessionSummaryResponse>> GetAllSessionsAsync(
+        LabTestSessionStatus? status,
+        Guid? userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<LabTestOcrExtractResponse>?> GetOcrExtractsBySessionIdAsync(
         Guid userId,
         Guid sessionId,

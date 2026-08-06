@@ -17,4 +17,11 @@ public interface ILabTestSessionRepository : IGenericRepository<LabTestSession>
         int pageNumber,
         int pageSize,
         CancellationToken cancellationToken = default);
+
+    Task<PagedResult<LabTestSession>> GetPagedAllAsync(
+        LabTestSessionStatus? status,
+        Guid? userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default);
 }
