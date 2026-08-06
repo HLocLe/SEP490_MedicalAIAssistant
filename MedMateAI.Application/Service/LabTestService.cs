@@ -44,10 +44,15 @@ public sealed class LabTestService : ILabTestService
     {
         if (userId == Guid.Empty)
         {
-            return (false, new[] { "User id is required." }, null);
+            return (false, new[] { "Id người dùng là bắt buộc" }, null);
         }
 
-        var documentUrl = request.DocumentUrl.Trim();
+        if (request is null)
+        {
+            return (false, new[] { "Request body là bắt buộc" }, null);
+        }
+
+        var documentUrl = request.DocumentUrl?.Trim() ?? string.Empty;
         var validationErrors = ValidateDocumentUrl(documentUrl);
         if (validationErrors.Count > 0)
         {
@@ -56,7 +61,7 @@ public sealed class LabTestService : ILabTestService
 
         if (request.PatientAgeAtTest is < 0 or > 150)
         {
-            return (false, new[] { "PatientAgeAtTest is invalid." }, null);
+            return (false, new[] { "PatientAgeAtTest không hợp lệ" }, null);
         }
 
         var sessionId = Guid.NewGuid();
@@ -139,6 +144,45 @@ public sealed class LabTestService : ILabTestService
             Items = paged.Items
                 .Select(session => new LabTestSessionSummaryResponse
                 {
+                    UserId = session.UserId,
+                    SessionId = session.Id,
+                    DocumentUrl = session.DocumentUrl,
+                    Status = session.Status,
+                    TestDate = session.TestDate,
+                    PatientGenderAtTest = session.PatientGenderAtTest,
+                    PatientAgeAtTest = session.PatientAgeAtTest,
+                    FacilityName = session.FacilityName,
+                    ProcessedAt = session.ProcessedAt,
+                    CreatedAt = session.CreatedAt,
+                })
+                .ToList(),
+        };
+    }
+
+    public async Task<PagedResponse<LabTestSessionSummaryResponse>> GetAllSessionsAsync(
+        LabTestSessionStatus? status,
+        Guid? userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var paged = await _unitOfWork.LabTestSessionDetails.GetPagedAllAsync(
+            status,
+            userId,
+            pageNumber,
+            pageSize,
+            cancellationToken);
+
+        return new PagedResponse<LabTestSessionSummaryResponse>
+        {
+            PageNumber = paged.PageNumber,
+            PageSize = paged.PageSize,
+            TotalCount = paged.TotalCount,
+            TotalPages = paged.TotalPages,
+            Items = paged.Items
+                .Select(session => new LabTestSessionSummaryResponse
+                {
+                    UserId = session.UserId,
                     SessionId = session.Id,
                     DocumentUrl = session.DocumentUrl,
                     Status = session.Status,
@@ -279,8 +323,6 @@ public sealed class LabTestService : ILabTestService
             UrgencyLevel = advice.UrgencyLevel,
             SeverityLevel = advice.SeverityLevel,
             WarningSigns = advice.WarningSigns,
-            FollowUpSuggestion = advice.FollowUpSuggestion,
-            DoctorQuestions = advice.DoctorQuestions,
         };
     }
 
@@ -290,21 +332,21 @@ public sealed class LabTestService : ILabTestService
 
         if (string.IsNullOrWhiteSpace(documentUrl))
         {
-            errors.Add("DocumentUrl is required.");
+            errors.Add("DocumentUrl là bắt buộc");
             return errors;
         }
 
         if (!Uri.TryCreate(documentUrl, UriKind.Absolute, out var uri)
             || uri.Scheme is not ("http" or "https"))
         {
-            errors.Add("DocumentUrl must be a valid absolute http or https URL.");
+            errors.Add("DocumentUrl không hợp lệ");
             return errors;
         }
 
         var extension = Path.GetExtension(uri.AbsolutePath);
         if (string.IsNullOrWhiteSpace(extension) || !AllowedExtensions.Contains(extension))
         {
-            errors.Add("Unsupported document URL extension. Allowed: jpg, jpeg, png, bmp, tif, tiff, pdf.");
+            errors.Add("Định dạng file không được hỗ trợ. Cho phép: jpg, jpeg, png, bmp, tif, tiff, pdf.");
         }
 
         return errors;

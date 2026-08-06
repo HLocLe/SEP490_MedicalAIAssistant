@@ -16,6 +16,8 @@ public sealed class LabIndicatorAdviceCacheConfiguration : IEntityTypeConfigurat
         builder.Property(x => x.DisplayTitle).HasMaxLength(255);
         builder.Property(x => x.UrgencyLevel).HasMaxLength(50);
 
-        builder.HasIndex(x => new { x.IndicatorId, x.Status }).IsUnique();
+        builder.HasIndex(x => new { x.IndicatorId, x.Status })
+            .IsUnique()
+            .HasFilter("\"IsDeleted\" = false");
     }
 }

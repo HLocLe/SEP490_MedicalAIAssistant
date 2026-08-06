@@ -4,6 +4,8 @@ namespace MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
 
 public sealed class SymptomAnalysisSessionSummaryResponse
 {
+    public Guid? UserId { get; set; }
+
     public Guid SessionId { get; set; }
 
     public string? InputText { get; set; }

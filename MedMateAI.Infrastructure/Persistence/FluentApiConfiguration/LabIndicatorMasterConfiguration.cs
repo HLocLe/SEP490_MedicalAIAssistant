@@ -14,7 +14,9 @@ public sealed class LabIndicatorMasterConfiguration : IEntityTypeConfiguration<L
         builder.Property(x => x.Id).HasColumnName("IndicatorId").ValueGeneratedOnAdd();
 
         builder.Property(x => x.Symbol).HasMaxLength(50).IsRequired();
-        builder.HasIndex(x => x.Symbol).IsUnique();
+        builder.HasIndex(x => x.Symbol)
+            .IsUnique()
+            .HasFilter("\"IsDeleted\" = false");
 
         builder.Property(x => x.FullName).HasMaxLength(255);
         builder.Property(x => x.Unit).HasMaxLength(50);

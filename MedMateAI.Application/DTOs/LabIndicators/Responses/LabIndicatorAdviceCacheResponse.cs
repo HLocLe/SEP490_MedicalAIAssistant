@@ -25,8 +25,4 @@ public sealed class LabIndicatorAdviceCacheResponse
     public LabAdviceSeverityLevel SeverityLevel { get; set; }
 
     public string? WarningSigns { get; set; }
-
-    public string? FollowUpSuggestion { get; set; }
-
-    public string? DoctorQuestions { get; set; }
 }

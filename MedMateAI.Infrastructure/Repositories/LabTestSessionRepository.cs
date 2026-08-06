@@ -72,4 +72,64 @@ public sealed class LabTestSessionRepository
             Items = items,
         };
     }
+
+    public async Task<PagedResult<LabTestSession>> GetPagedAllAsync(
+        LabTestSessionStatus? status,
+        Guid? userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedPageNumber = pageNumber < 1 ? 1 : pageNumber;
+        var normalizedPageSize = pageSize < 1 ? 10 : pageSize;
+        normalizedPageSize = normalizedPageSize > 100 ? 100 : normalizedPageSize;
+
+        var query = _context.LabTestSessions
+            .AsNoTracking()
+            .Where(session => !session.IsDeleted);
+
+        if (status.HasValue)
+        {
+            query = query.Where(session => session.Status == status.Value);
+        }
+
+        if (userId.HasValue)
+        {
+            if (userId.Value == Guid.Empty)
+            {
+                return new PagedResult<LabTestSession>
+                {
+                    PageNumber = normalizedPageNumber,
+                    PageSize = normalizedPageSize,
+                    TotalCount = 0,
+                    TotalPages = 0,
+                    Items = Array.Empty<LabTestSession>(),
+                };
+            }
+
+            query = query.Where(session => session.UserId == userId.Value);
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var items = await query
+            .OrderByDescending(session => session.CreatedAt)
+            .ThenByDescending(session => session.Id)
+            .Skip((normalizedPageNumber - 1) * normalizedPageSize)
+            .Take(normalizedPageSize)
+            .ToListAsync(cancellationToken);
+
+        var totalPages = totalCount == 0
+            ? 0
+            : (int)Math.Ceiling(totalCount / (double)normalizedPageSize);
+
+        return new PagedResult<LabTestSession>
+        {
+            PageNumber = normalizedPageNumber,
+            PageSize = normalizedPageSize,
+            TotalCount = totalCount,
+            TotalPages = totalPages,
+            Items = items,
+        };
+    }
 }

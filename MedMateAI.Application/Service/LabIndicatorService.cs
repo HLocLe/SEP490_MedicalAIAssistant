@@ -91,6 +91,188 @@ public sealed class LabIndicatorService : ILabIndicatorService
         return (true, Array.Empty<string>(), _mapper.Map<LabIndicatorResponse>(entity));
     }
 
+    public async Task<(bool Succeeded, IEnumerable<string> Errors, LabIndicatorDetailResponse? Data)> CreateLabIndicatorWithDetailsAsync(
+        CreateLabIndicatorWithDetailsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request is null || request.Indicator is null)
+        {
+            return (false, new[] { "Request body là bắt buộc" }, null);
+        }
+
+        var indicatorRequest = request.Indicator;
+        var aliases = request.Aliases ?? new List<CreateLabIndicatorAliasRequest>();
+        var referenceRanges = request.ReferenceRanges ?? new List<CreateLabIndicatorReferenceRangeRequest>();
+        var adviceCaches = request.AdviceCaches ?? new List<CreateLabIndicatorAdviceCacheRequest>();
+
+        var errors = new List<string>();
+
+        var masterErrors = ValidateIndicatorFields(
+            indicatorRequest.Symbol,
+            indicatorRequest.MinReference,
+            indicatorRequest.MaxReference);
+        errors.AddRange(masterErrors);
+
+        string? symbol = null;
+        if (masterErrors.Count == 0)
+        {
+            symbol = NormalizeSymbol(indicatorRequest.Symbol)!;
+            if (await _unitOfWork.LabIndicators.SymbolExistsAsync(symbol, cancellationToken: cancellationToken))
+            {
+                errors.Add("Ký hiệu chỉ số đã tồn tại");
+            }
+        }
+
+        var normalizedAliases = new List<(string AliasText, string? Language, bool IsPrimary)>();
+        for (var index = 0; index < aliases.Count; index++)
+        {
+            var alias = aliases[index];
+            if (string.IsNullOrWhiteSpace(alias.AliasText))
+            {
+                errors.Add($"Aliases[{index}]: AliasText là bắt buộc");
+                continue;
+            }
+
+            normalizedAliases.Add((
+                alias.AliasText.Trim(),
+                NormalizeOptionalText(alias.Language),
+                alias.IsPrimary));
+        }
+
+        var duplicateAliases = normalizedAliases
+            .GroupBy(x => x.AliasText, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+        foreach (var duplicateAlias in duplicateAliases)
+        {
+            errors.Add($"Aliases: trùng AliasText trong request: {duplicateAlias}");
+        }
+
+        var preparedRanges = new List<CreateLabIndicatorReferenceRangeRequest>();
+        for (var index = 0; index < referenceRanges.Count; index++)
+        {
+            var range = referenceRanges[index];
+            var rangeErrors = ValidateReferenceRange(range);
+            foreach (var rangeError in rangeErrors)
+            {
+                errors.Add($"ReferenceRanges[{index}]: {rangeError}");
+            }
+
+            if (rangeErrors.Count > 0)
+            {
+                continue;
+            }
+
+            var uniquenessErrors = ValidateReferenceRangeUniqueness(
+                range.Gender,
+                range.AgeGroup,
+                preparedRanges
+                    .Select(r => new LabIndicatorReferenceRange
+                    {
+                        Gender = r.Gender,
+                        AgeGroup = r.AgeGroup,
+                    })
+                    .ToList());
+            foreach (var uniquenessError in uniquenessErrors)
+            {
+                errors.Add($"ReferenceRanges[{index}]: {uniquenessError}");
+            }
+
+            if (uniquenessErrors.Count == 0)
+            {
+                preparedRanges.Add(range);
+            }
+        }
+
+        var preparedAdvice = new List<CreateLabIndicatorAdviceCacheRequest>();
+        for (var index = 0; index < adviceCaches.Count; index++)
+        {
+            var advice = adviceCaches[index];
+            if (advice.Status == LabResultStatus.Unknown)
+            {
+                errors.Add($"AdviceCaches[{index}]: Status không được là Unknown");
+                continue;
+            }
+
+            if (preparedAdvice.Any(x => x.Status == advice.Status))
+            {
+                errors.Add($"AdviceCaches[{index}]: trùng Status trong request: {advice.Status}");
+                continue;
+            }
+
+            preparedAdvice.Add(advice);
+        }
+
+        if (errors.Count > 0 || symbol is null)
+        {
+            return (false, errors, null);
+        }
+
+        var utcNow = DateTime.UtcNow;
+        var master = MapToMasterEntity(indicatorRequest, symbol);
+        master.CreatedAt = utcNow;
+        _unitOfWork.LabIndicators.Add(master);
+
+        foreach (var alias in normalizedAliases)
+        {
+            _unitOfWork.LabIndicatorAliases.Add(new LabIndicatorAlias
+            {
+                Id = Guid.NewGuid(),
+                IndicatorId = master.Id,
+                AliasText = alias.AliasText,
+                Language = alias.Language,
+                IsPrimary = alias.IsPrimary,
+                CreatedAt = utcNow,
+            });
+        }
+
+        foreach (var range in preparedRanges)
+        {
+            _unitOfWork.LabIndicatorReferenceRanges.Add(new LabIndicatorReferenceRange
+            {
+                Id = Guid.NewGuid(),
+                IndicatorId = master.Id,
+                Gender = range.Gender,
+                AgeGroup = range.AgeGroup,
+                ComparisonType = range.ComparisonType,
+                MinValue = range.MinValue,
+                MaxValue = range.MaxValue,
+                Unit = NormalizeOptionalText(range.Unit),
+                CreatedAt = utcNow,
+            });
+        }
+
+        foreach (var advice in preparedAdvice)
+        {
+            _unitOfWork.LabIndicatorAdviceCaches.Add(new LabIndicatorAdviceCache
+            {
+                Id = Guid.NewGuid(),
+                IndicatorId = master.Id,
+                Status = advice.Status,
+                DisplayTitle = NormalizeOptionalText(advice.DisplayTitle),
+                Summary = NormalizeOptionalText(advice.Summary),
+                PossibleCauses = NormalizeOptionalText(advice.PossibleCauses),
+                LifestyleAdvice = NormalizeOptionalText(advice.LifestyleAdvice),
+                NutritionalAdvice = NormalizeOptionalText(advice.NutritionalAdvice),
+                UrgencyLevel = NormalizeOptionalText(advice.UrgencyLevel),
+                SeverityLevel = advice.SeverityLevel,
+                WarningSigns = NormalizeOptionalText(advice.WarningSigns),
+                CreatedAt = utcNow,
+            });
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var created = await _unitOfWork.LabIndicators.GetByIdWithDetailsAsync(master.Id, cancellationToken);
+        if (created is null)
+        {
+            return (false, new[] { "Tạo chỉ số xét nghiệm kèm chi tiết thất bại" }, null);
+        }
+
+        return (true, Array.Empty<string>(), _mapper.Map<LabIndicatorDetailResponse>(created));
+    }
+
     public async Task<(bool Succeeded, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorResponse>? Data)> BulkCreateLabIndicatorsAsync(
         BulkCreateLabIndicatorsRequest request,
         CancellationToken cancellationToken = default)
@@ -830,8 +1012,6 @@ public sealed class LabIndicatorService : ILabIndicatorService
                 UrgencyLevel = NormalizeOptionalText(advice.UrgencyLevel),
                 SeverityLevel = advice.SeverityLevel,
                 WarningSigns = NormalizeOptionalText(advice.WarningSigns),
-                FollowUpSuggestion = NormalizeOptionalText(advice.FollowUpSuggestion),
-                DoctorQuestions = NormalizeOptionalText(advice.DoctorQuestions),
                 CreatedAt = utcNow,
             });
         }
@@ -894,8 +1074,6 @@ public sealed class LabIndicatorService : ILabIndicatorService
             UrgencyLevel = NormalizeOptionalText(request.UrgencyLevel),
             SeverityLevel = request.SeverityLevel,
             WarningSigns = NormalizeOptionalText(request.WarningSigns),
-            FollowUpSuggestion = NormalizeOptionalText(request.FollowUpSuggestion),
-            DoctorQuestions = NormalizeOptionalText(request.DoctorQuestions),
             CreatedAt = DateTime.UtcNow,
         };
 
@@ -959,8 +1137,6 @@ public sealed class LabIndicatorService : ILabIndicatorService
         advice.UrgencyLevel = NormalizeOptionalText(request.UrgencyLevel);
         advice.SeverityLevel = request.SeverityLevel;
         advice.WarningSigns = NormalizeOptionalText(request.WarningSigns);
-        advice.FollowUpSuggestion = NormalizeOptionalText(request.FollowUpSuggestion);
-        advice.DoctorQuestions = NormalizeOptionalText(request.DoctorQuestions);
         advice.UpdatedAt = DateTime.UtcNow;
 
         _unitOfWork.LabIndicatorAdviceCaches.Update(advice);

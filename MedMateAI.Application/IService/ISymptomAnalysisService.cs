@@ -19,6 +19,14 @@ public interface ISymptomAnalysisService
         int pageSize,
         CancellationToken cancellationToken = default);
 
+    Task<PagedResponse<SymptomAnalysisSessionSummaryResponse>> GetAllSessionsAsync(
+        SymptomAnalysisSessionType? sessionType,
+        SymptomAnalysisSessionStatus? status,
+        Guid? userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default);
+
     Task<SuggestClinicalQuestionsResponse> SuggestClinicalQuestionAsync(
         SuggestClinicalQuestionRequest request,
         CancellationToken cancellationToken = default);

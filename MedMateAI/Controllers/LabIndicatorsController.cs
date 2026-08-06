@@ -73,6 +73,27 @@ public sealed class LabIndicatorsController : ControllerBase
         return Ok(ApiResponseFactory.Success(data, "Tạo chỉ số xét nghiệm thành công"));
     }
 
+    [HttpPost("with-details")]
+    [ProducesResponseType(typeof(ApiResponse<LabIndicatorDetailResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<LabIndicatorDetailResponse>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> CreateWithDetails(
+        [FromBody] CreateLabIndicatorWithDetailsRequest request,
+        CancellationToken cancellationToken)
+    {
+        var (ok, errors, data) = await _labIndicatorService.CreateLabIndicatorWithDetailsAsync(
+            request,
+            cancellationToken);
+
+        if (!ok || data is null)
+        {
+            return BadRequest(ApiResponseFactory.FailFromErrors<LabIndicatorDetailResponse>(
+                errors,
+                "Tạo chỉ số xét nghiệm kèm chi tiết thất bại"));
+        }
+
+        return Ok(ApiResponseFactory.Success(data, "Tạo chỉ số xét nghiệm kèm chi tiết thành công"));
+    }
+
     [HttpPost("bulk")]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabIndicatorResponse>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabIndicatorResponse>>), StatusCodes.Status400BadRequest)]

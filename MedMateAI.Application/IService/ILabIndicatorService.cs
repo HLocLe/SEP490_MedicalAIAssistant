@@ -20,6 +20,10 @@ public interface ILabIndicatorService
         CreateLabIndicatorRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<(bool Succeeded, IEnumerable<string> Errors, LabIndicatorDetailResponse? Data)> CreateLabIndicatorWithDetailsAsync(
+        CreateLabIndicatorWithDetailsRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<(bool Succeeded, IEnumerable<string> Errors, IReadOnlyList<LabIndicatorResponse>? Data)> BulkCreateLabIndicatorsAsync(
         BulkCreateLabIndicatorsRequest request,
         CancellationToken cancellationToken = default);

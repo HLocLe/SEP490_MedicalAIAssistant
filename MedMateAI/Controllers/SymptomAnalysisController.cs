@@ -4,6 +4,7 @@ using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Enums;
+using MedMateAI.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,6 +15,8 @@ namespace MedMateAI.Controllers;
 public sealed class SymptomAnalysisController : ControllerBase
 {
     private const int MaxMessageLength = 2000;
+    private const string NotFoundMessage = "Không tìm thấy phiên phân tích triệu chứng";
+    private const string UnauthenticatedError = "Người dùng chưa đăng nhập";
 
     private readonly ISymptomAnalysisService _symptomAnalysisService;
     private readonly IUserService _userService;
@@ -33,44 +36,16 @@ public sealed class SymptomAnalysisController : ControllerBase
         [FromBody] SuggestClinicalQuestionRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (request is null || string.IsNullOrWhiteSpace(request.UserInput))
-        {
-            return BadRequest(new ApiResponse<SuggestClinicalQuestionsResponse>
-            {
-                Success = false,
-                Message = "Suggest clinical questions failed.",
-                Errors = new List<string> { "User input is required." },
-            });
-        }
-
-        if (request.UserInput.Trim().Length > MaxMessageLength)
-        {
-            return BadRequest(new ApiResponse<SuggestClinicalQuestionsResponse>
-            {
-                Success = false,
-                Message = "Suggest clinical questions failed.",
-                Errors = new List<string> { $"User input must be {MaxMessageLength} characters or fewer." },
-            });
-        }
-
         try
         {
             var data = await _symptomAnalysisService.SuggestClinicalQuestionAsync(request, cancellationToken);
-            return Ok(new ApiResponse<SuggestClinicalQuestionsResponse>
-            {
-                Success = true,
-                Message = "OK",
-                Data = data,
-            });
+            return Ok(ApiResponseFactory.Success(data, "OK"));
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new ApiResponse<SuggestClinicalQuestionsResponse>
-            {
-                Success = false,
-                Message = "Suggest clinical questions failed.",
-                Errors = new List<string> { ex.Message },
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<SuggestClinicalQuestionsResponse>(
+                new[] { ex.Message },
+                "Gợi ý câu hỏi lâm sàng thất bại"));
         }
     }
 
@@ -82,43 +57,24 @@ public sealed class SymptomAnalysisController : ControllerBase
         [FromBody] SubmitClinicalQuestionAnswersRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (request is null || request.SessionId == Guid.Empty)
-        {
-            return BadRequest(new ApiResponse<ClinicalQuestionAnswersResponse>
-            {
-                Success = false,
-                Message = "Submit clinical question answers failed.",
-                Errors = new List<string> { "Session id is required." },
-            });
-        }
-
         try
         {
             var data = await _symptomAnalysisService.SubmitClinicalQuestionAnswersAsync(request, cancellationToken);
-            return Ok(new ApiResponse<ClinicalQuestionAnswersResponse>
-            {
-                Success = true,
-                Message = "OK",
-                Data = data,
-            });
+            return Ok(ApiResponseFactory.Success(data, "OK"));
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new ApiResponse<ClinicalQuestionAnswersResponse>
-            {
-                Success = false,
-                Message = "Submit clinical question answers failed.",
-                Errors = new List<string> { ex.Message },
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<ClinicalQuestionAnswersResponse>(
+                new[] { ex.Message },
+                "Gửi câu trả lời lâm sàng thất bại"));
         }
         catch (InvalidOperationException ex)
         {
-            return StatusCode(StatusCodes.Status502BadGateway, new ApiResponse<ClinicalQuestionAnswersResponse>
-            {
-                Success = false,
-                Message = "MedGemma analysis failed.",
-                Errors = new List<string> { ex.Message },
-            });
+            return StatusCode(
+                StatusCodes.Status502BadGateway,
+                ApiResponseFactory.FailFromErrors<ClinicalQuestionAnswersResponse>(
+                    new[] { ex.Message },
+                    "Phân tích MedGemma thất bại"));
         }
     }
 
@@ -134,11 +90,9 @@ public sealed class SymptomAnalysisController : ControllerBase
         var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
         if (currentUser is null)
         {
-            return Unauthorized(new ApiResponse<PagedResponse<SymptomAnalysisSessionSummaryResponse>>
-            {
-                Success = false,
-                Message = "Unauthorized",
-            });
+            return Unauthorized(ApiResponseFactory.FailFromErrors<PagedResponse<SymptomAnalysisSessionSummaryResponse>>(
+                new[] { UnauthenticatedError },
+                "Chưa đăng nhập"));
         }
 
         var data = await _symptomAnalysisService.GetSessionsByUserIdAsync(
@@ -148,12 +102,36 @@ public sealed class SymptomAnalysisController : ControllerBase
             query.PageSize,
             cancellationToken);
 
-        return Ok(new ApiResponse<PagedResponse<SymptomAnalysisSessionSummaryResponse>>
+        return Ok(ApiResponseFactory.Success(data, "OK"));
+    }
+
+    [HttpGet("sessions")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<SymptomAnalysisSessionSummaryResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<SymptomAnalysisSessionSummaryResponse>>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<SymptomAnalysisSessionSummaryResponse>>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<SymptomAnalysisSessionSummaryResponse>>), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetAllSessions(
+        [FromQuery] PaginationQuery query,
+        [FromQuery] SymptomAnalysisSessionType? sessionType,
+        [FromQuery] SymptomAnalysisSessionStatus? status,
+        [FromQuery] Guid? userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId.HasValue && userId.Value == Guid.Empty)
         {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+            return BadRequest(ApiResponseFactory.Fail<PagedResponse<SymptomAnalysisSessionSummaryResponse>>("Id người dùng không hợp lệ"));
+        }
+
+        var data = await _symptomAnalysisService.GetAllSessionsAsync(
+            sessionType,
+            status,
+            userId,
+            query.PageNumber,
+            query.PageSize,
+            cancellationToken);
+
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("{sessionId}")]
@@ -163,21 +141,17 @@ public sealed class SymptomAnalysisController : ControllerBase
         Guid sessionId,
         CancellationToken cancellationToken = default)
     {
+        if (sessionId == Guid.Empty)
+        {
+            return BadRequest(ApiResponseFactory.Fail<SymptomAnalysisResponse>("Id phiên phân tích triệu chứng không hợp lệ"));
+        }
+
         var data = await _symptomAnalysisService.GetSessionByIdAsync(sessionId, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<SymptomAnalysisResponse>
-            {
-                Success = false,
-                Message = "Symptom analysis session not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<SymptomAnalysisResponse>(NotFoundMessage));
         }
 
-        return Ok(new ApiResponse<SymptomAnalysisResponse>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 }

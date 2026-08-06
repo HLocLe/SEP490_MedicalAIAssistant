@@ -3,6 +3,7 @@ using MedMateAI.Application.DTOs.LabTests.Requests;
 using MedMateAI.Application.DTOs.LabTests.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Enums;
+using MedMateAI.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,9 +11,12 @@ namespace MedMateAI.Controllers;
 
 [ApiController]
 [Route("api/lab-tests")]
-
 public sealed class LabTestsController : ControllerBase
 {
+    private const string InvalidSessionIdMessage = "Id phiên xét nghiệm không hợp lệ";
+    private const string NotFoundMessage = "Không tìm thấy phiên xét nghiệm";
+    private const string UnauthenticatedError = "Người dùng chưa đăng nhập";
+
     private readonly ILabTestService _labTestService;
     private readonly IUserService _userService;
 
@@ -33,11 +37,9 @@ public sealed class LabTestsController : ControllerBase
         var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
         if (currentUser is null)
         {
-            return Unauthorized(new ApiResponse<LabTestUploadResponse>
-            {
-                Success = false,
-                Message = "Unauthorized.",
-            });
+            return Unauthorized(ApiResponseFactory.FailFromErrors<LabTestUploadResponse>(
+                new[] { UnauthenticatedError },
+                "Chưa đăng nhập"));
         }
 
         var (ok, errors, data) = await _labTestService.AnalyzeFromDocumentUrlAsync(
@@ -47,21 +49,12 @@ public sealed class LabTestsController : ControllerBase
 
         if (!ok || data is null)
         {
-            return BadRequest(new ApiResponse<LabTestUploadResponse>
-            {
-                Success = false,
-                Message = "Lab test analyze request failed.",
-                Errors = errors.ToList(),
-                Data = data,
-            });
+            return BadRequest(ApiResponseFactory.FailFromErrors<LabTestUploadResponse>(
+                errors,
+                "Yêu cầu phân tích xét nghiệm thất bại"));
         }
 
-        return Accepted(new ApiResponse<LabTestUploadResponse>
-        {
-            Success = true,
-            Message = "Lab test OCR queued.",
-            Data = data,
-        });
+        return Accepted(ApiResponseFactory.Success(data, "Đã xếp hàng OCR xét nghiệm"));
     }
 
     [HttpGet("my-sessions")]
@@ -75,11 +68,9 @@ public sealed class LabTestsController : ControllerBase
         var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
         if (currentUser is null)
         {
-            return Unauthorized(new ApiResponse<PagedResponse<LabTestSessionSummaryResponse>>
-            {
-                Success = false,
-                Message = "Unauthorized.",
-            });
+            return Unauthorized(ApiResponseFactory.FailFromErrors<PagedResponse<LabTestSessionSummaryResponse>>(
+                new[] { UnauthenticatedError },
+                "Chưa đăng nhập"));
         }
 
         var data = await _labTestService.GetSessionsByUserIdAsync(
@@ -89,16 +80,39 @@ public sealed class LabTestsController : ControllerBase
             query.PageSize,
             cancellationToken);
 
-        return Ok(new ApiResponse<PagedResponse<LabTestSessionSummaryResponse>>
+        return Ok(ApiResponseFactory.Success(data, "OK"));
+    }
+
+    [HttpGet("sessions")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<LabTestSessionSummaryResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<LabTestSessionSummaryResponse>>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<LabTestSessionSummaryResponse>>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<LabTestSessionSummaryResponse>>), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetAllSessions(
+        [FromQuery] PaginationQuery query,
+        [FromQuery] LabTestSessionStatus? status,
+        [FromQuery] Guid? userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId.HasValue && userId.Value == Guid.Empty)
         {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+            return BadRequest(ApiResponseFactory.Fail<PagedResponse<LabTestSessionSummaryResponse>>("Id người dùng không hợp lệ"));
+        }
+
+        var data = await _labTestService.GetAllSessionsAsync(
+            status,
+            userId,
+            query.PageNumber,
+            query.PageSize,
+            cancellationToken);
+
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("{sessionId:guid}/ocr-extracts")]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetOcrExtracts(Guid sessionId, CancellationToken cancellationToken = default)
@@ -106,20 +120,14 @@ public sealed class LabTestsController : ControllerBase
         var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
         if (currentUser is null)
         {
-            return Unauthorized(new ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>
-            {
-                Success = false,
-                Message = "Unauthorized.",
-            });
+            return Unauthorized(ApiResponseFactory.FailFromErrors<IReadOnlyList<LabTestOcrExtractResponse>>(
+                new[] { UnauthenticatedError },
+                "Chưa đăng nhập"));
         }
 
         if (sessionId == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>
-            {
-                Success = false,
-                Message = "Invalid session id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<IReadOnlyList<LabTestOcrExtractResponse>>(InvalidSessionIdMessage));
         }
 
         var data = await _labTestService.GetOcrExtractsBySessionIdAsync(
@@ -129,23 +137,15 @@ public sealed class LabTestsController : ControllerBase
 
         if (data is null)
         {
-            return NotFound(new ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>
-            {
-                Success = false,
-                Message = "Lab test session not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<IReadOnlyList<LabTestOcrExtractResponse>>(NotFoundMessage));
         }
 
-        return Ok(new ApiResponse<IReadOnlyList<LabTestOcrExtractResponse>>
-        {
-            Success = true,
-            Message = "OK",
-            Data = data,
-        });
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("{sessionId:guid}")]
     [ProducesResponseType(typeof(ApiResponse<LabTestUploadResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<LabTestUploadResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<LabTestUploadResponse>), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiResponse<LabTestUploadResponse>), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetSession(Guid sessionId, CancellationToken cancellationToken = default)
@@ -153,43 +153,30 @@ public sealed class LabTestsController : ControllerBase
         var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
         if (currentUser is null)
         {
-            return Unauthorized(new ApiResponse<LabTestUploadResponse>
-            {
-                Success = false,
-                Message = "Unauthorized.",
-            });
+            return Unauthorized(ApiResponseFactory.FailFromErrors<LabTestUploadResponse>(
+                new[] { UnauthenticatedError },
+                "Chưa đăng nhập"));
         }
 
         if (sessionId == Guid.Empty)
         {
-            return BadRequest(new ApiResponse<LabTestUploadResponse>
-            {
-                Success = false,
-                Message = "Invalid session id.",
-            });
+            return BadRequest(ApiResponseFactory.Fail<LabTestUploadResponse>(InvalidSessionIdMessage));
         }
 
         var data = await _labTestService.GetSessionAsync(currentUser.Id, sessionId, cancellationToken);
         if (data is null)
         {
-            return NotFound(new ApiResponse<LabTestUploadResponse>
-            {
-                Success = false,
-                Message = "Lab test session not found.",
-            });
+            return NotFound(ApiResponseFactory.Fail<LabTestUploadResponse>(NotFoundMessage));
         }
 
-        return Ok(new ApiResponse<LabTestUploadResponse>
+        var message = data.Status switch
         {
-            Success = true,
-            Message = data.Status switch
-            {
-                LabTestSessionStatus.Processing => "Lab test OCR is processing.",
-                LabTestSessionStatus.Completed => "Lab test OCR completed.",
-                LabTestSessionStatus.Failed => "Lab test OCR failed.",
-                _ => "OK",
-            },
-            Data = data,
-        });
+            LabTestSessionStatus.Processing => "Đang xử lý OCR xét nghiệm",
+            LabTestSessionStatus.Completed => "OCR xét nghiệm hoàn tất",
+            LabTestSessionStatus.Failed => "OCR xét nghiệm thất bại",
+            _ => "OK",
+        };
+
+        return Ok(ApiResponseFactory.Success(data, message));
     }
 }
