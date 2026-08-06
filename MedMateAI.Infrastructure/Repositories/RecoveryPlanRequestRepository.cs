@@ -46,6 +46,47 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
         return requests.SingleOrDefault();
     }
 
+    public async Task<bool> LockUserRecoveryPlanWorkflowAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureActiveTransaction();
+
+        // The Identity user row is the cross-instance mutex for this user's workflow.
+        var users = await _context.Users
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM "AspNetUsers"
+                WHERE "Id" = {userId}
+                  AND "IsDeleted" = FALSE
+                FOR UPDATE
+                """)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        return users.Count == 1;
+    }
+
+    public Task<bool> HasOpenRequestForUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureActiveTransaction();
+
+        return _context.RecoveryPlanRequests
+            .AsNoTracking()
+            .AnyAsync(
+                request =>
+                    request.UserId == userId
+                    && !request.IsDeleted
+                    && (request.Status == RecoveryPlanRequestStatus.WaitingForDoctor
+                        || request.Status == RecoveryPlanRequestStatus.Assigned
+                        || request.Status == RecoveryPlanRequestStatus.InReview
+                        || request.Status
+                            == RecoveryPlanRequestStatus.NeedMoreInformation),
+                cancellationToken);
+    }
+
     public async Task<IReadOnlyList<Guid>> GetExpiredAssignmentIdsAsync(
         DateTime utcNow,
         int batchSize,

@@ -34,6 +34,48 @@ public sealed class NotificationEmailRenderer : INotificationEmailRenderer
                 RecoveryPlanNotificationContent.CompletedMessage));
     }
 
+    public NotificationEmailContent RenderRecoveryPlanCancelled(
+        string? planName,
+        string cancellationReasonCode,
+        string? cancellationReason)
+    {
+        var planParagraph = string.Empty;
+        if (!string.IsNullOrWhiteSpace(planName))
+        {
+            var encodedPlanName = HtmlEncoder.Default.Encode(planName);
+            planParagraph = $"<p>Kế hoạch: <strong>{encodedPlanName}</strong>.</p>";
+        }
+
+        var reasonLabel = RecoveryPlanCancellationReasons.GetDisplayLabel(
+            cancellationReasonCode) ?? "Không xác định";
+        var encodedReasonLabel = HtmlEncoder.Default.Encode(reasonLabel);
+        var reasonParagraph = $"<p>Lý do: <strong>{encodedReasonLabel}</strong>.</p>";
+
+        var noteParagraph = string.Empty;
+        if (!string.IsNullOrWhiteSpace(cancellationReason))
+        {
+            var encodedReason = HtmlEncoder.Default.Encode(cancellationReason);
+            noteParagraph = $"<p>Ghi chú của bạn: {encodedReason}</p>";
+        }
+
+        var html =
+            $"""
+            <div style="font-family:Arial,sans-serif;line-height:1.6">
+              <h2>{RecoveryPlanCancellationNotificationContent.Title}</h2>
+              <p>{RecoveryPlanCancellationNotificationContent.Message}</p>
+              {planParagraph}
+              {reasonParagraph}
+              {noteParagraph}
+              <p>Bạn có thể yêu cầu kế hoạch mới nếu hạn mức còn lại cho phép.</p>
+              {BuildLoginAction()}
+            </div>
+            """;
+
+        return new NotificationEmailContent(
+            RecoveryPlanCancellationNotificationContent.Title,
+            html);
+    }
+
     public NotificationEmailContent RenderMedicationReminder(
         string medicineName,
         string? dosageInstruction)
@@ -66,23 +108,25 @@ public sealed class NotificationEmailRenderer : INotificationEmailRenderer
 
     private string BuildRecoveryPlanHtml(string heading, string message)
     {
-        var loginAction = "<p>Vui lòng mở ứng dụng và đăng nhập để xem chi tiết.</p>";
-
-        if (_loginUrl is not null)
-        {
-            var encodedUrl = HtmlEncoder.Default.Encode(_loginUrl);
-            loginAction =
-                $"""<p><a href="{encodedUrl}">Đăng nhập để xem kế hoạch hồi phục</a></p>""";
-        }
-
         return
             $"""
             <div style="font-family:Arial,sans-serif;line-height:1.6">
               <h2>{heading}</h2>
               <p>{message}</p>
-              {loginAction}
+              {BuildLoginAction()}
             </div>
             """;
+    }
+
+    private string BuildLoginAction()
+    {
+        if (_loginUrl is null)
+        {
+            return "<p>Vui lòng mở ứng dụng và đăng nhập để xem chi tiết.</p>";
+        }
+
+        var encodedUrl = HtmlEncoder.Default.Encode(_loginUrl);
+        return $"""<p><a href="{encodedUrl}">Đăng nhập để xem kế hoạch hồi phục</a></p>""";
     }
 
     private static string? BuildLoginUrl(string? baseUrl)

@@ -116,6 +116,12 @@ public interface IRecoveryPlanService
         Guid userId,
         Guid planId,
         CancellationToken cancellationToken);
+
+    Task<RecoveryPlanOperationResult<RecoveryPlanDetailResponse>> CancelAsync(
+        Guid userId,
+        Guid planId,
+        CancelRecoveryPlanRequest request,
+        CancellationToken cancellationToken);
 }
 
 public interface IRecoveryPlanClinicalContextService

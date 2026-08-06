@@ -161,6 +161,16 @@ public sealed class RecoveryPlanOutboxProcessor : IOutboxMessageProcessor
                     $"recovery-plan-completed:{message.AggregateId:N}",
                     cancellationToken);
 
+            case RecoveryPlanLifecycleOutboxEventTypes.Cancelled:
+                return await HandleRecoveryPlanNotificationAsync(
+                    message,
+                    RecoveryPlanStatus.Cancelled,
+                    NotificationTypes.RecoveryPlanCancelled,
+                    RecoveryPlanCancellationNotificationContent.Title,
+                    RecoveryPlanCancellationNotificationContent.Message,
+                    $"recovery-plan-cancelled:{message.AggregateId:N}",
+                    cancellationToken);
+
             case RecoveryPlanLifecycleOutboxEventTypes.Activated:
                 return HandleRecognizedNoOp(
                     message,

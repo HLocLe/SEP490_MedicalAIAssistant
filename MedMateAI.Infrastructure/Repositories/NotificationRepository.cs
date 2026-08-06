@@ -65,6 +65,7 @@ public sealed class NotificationRepository : INotificationRepository
         var processingStatus = NotificationStatuses.Processing;
         var readyType = NotificationTypes.RecoveryPlanReady;
         var completedType = NotificationTypes.RecoveryPlanCompleted;
+        var cancelledType = NotificationTypes.RecoveryPlanCancelled;
         var medicationReminderType = NotificationTypes.MedicationReminder;
 
         await using var transaction =
@@ -82,6 +83,7 @@ public sealed class NotificationRepository : INotificationRepository
                       AND "NotificationType" IN (
                           {readyType},
                           {completedType},
+                          {cancelledType},
                           {medicationReminderType})
                       AND (
                           ("Status" = {pendingStatus}
@@ -157,7 +159,11 @@ public sealed class NotificationRepository : INotificationRepository
             .Select(plan => new RecoveryPlanNotificationReferenceData(
                 plan.Id,
                 plan.UserId,
-                plan.Status))
+                plan.Status,
+                plan.PlanName,
+                plan.CancelledAt,
+                plan.CancellationReasonCode,
+                plan.CancellationReason))
             .SingleOrDefaultAsync(cancellationToken);
     }
 

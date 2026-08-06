@@ -33,7 +33,11 @@ public sealed record NotificationRecipientData(
 public sealed record RecoveryPlanNotificationReferenceData(
     Guid PlanId,
     Guid UserId,
-    RecoveryPlanStatus Status);
+    RecoveryPlanStatus Status,
+    string? PlanName,
+    DateTime? CancelledAt,
+    string? CancellationReasonCode,
+    string? CancellationReason);
 
 public sealed record MedicationReminderNotificationData(
     Guid ReminderTimeId,

@@ -609,6 +609,14 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
+            var userLocked = await _unitOfWork.RecoveryPlanRequests
+                .LockUserRecoveryPlanWorkflowAsync(userId, cancellationToken);
+            if (!userLocked)
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                    RecoveryPlanErrorCode.NotFound);
+            }
+
             var lockedPlan = await _unitOfWork.RecoveryPlans.GetByIdForUpdateAsync(
                 planId,
                 cancellationToken);
@@ -659,6 +667,15 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
                     RecoveryPlanErrorCode.InvalidPlanStructure);
             }
 
+            var hasBlockingPlan = await _unitOfWork.RecoveryPlans
+                .HasBlockingPlanForUserAsync(userId, plan.Id, cancellationToken);
+            if (hasBlockingPlan)
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                    RecoveryPlanErrorCode.RecoveryPlanWorkflowAlreadyActive,
+                    "You already have a recovery plan request or plan in progress.");
+            }
+
             var timeZoneId = await _unitOfWork.RecoveryPlans.GetUserTimeZoneIdAsync(
                 userId,
                 cancellationToken);
@@ -695,6 +712,103 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
 
             return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Ok(
                 RecoveryPlanMapping.ToDetail(plan));
+        }
+        catch
+        {
+            await RollbackAsync();
+            throw;
+        }
+    }
+
+    public async Task<RecoveryPlanOperationResult<RecoveryPlanDetailResponse>> CancelAsync(
+        Guid userId,
+        Guid planId,
+        CancelRecoveryPlanRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!RecoveryPlanCancellationReasons.TryNormalize(
+                request.CancellationReasonCode,
+                request.CancellationReason,
+                out var cancellationReasonCode,
+                out var cancellationReason))
+        {
+            return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Fail(
+                RecoveryPlanErrorCode.InvalidRequest);
+        }
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var userLocked = await _unitOfWork.RecoveryPlanRequests
+                .LockUserRecoveryPlanWorkflowAsync(userId, cancellationToken);
+            if (!userLocked)
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                    RecoveryPlanErrorCode.NotFound);
+            }
+
+            var lockedPlan = await _unitOfWork.RecoveryPlans.GetByIdForUpdateAsync(
+                planId,
+                cancellationToken);
+            if (lockedPlan is null
+                || lockedPlan.UserId != userId
+                || lockedPlan.Status == RecoveryPlanStatus.Draft)
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                    RecoveryPlanErrorCode.NotFound);
+            }
+
+            var plan = await _unitOfWork.RecoveryPlans.GetTrackedDetailAsync(
+                planId,
+                cancellationToken);
+            if (plan is null)
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                    RecoveryPlanErrorCode.NotFound);
+            }
+
+            if (plan.Status == RecoveryPlanStatus.Cancelled)
+            {
+                await RollbackAsync();
+                return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Ok(
+                    RecoveryPlanMapping.ToDetail(plan),
+                    true,
+                    "Recovery plan was already cancelled.");
+            }
+
+            if (plan.Status is not (RecoveryPlanStatus.ReadyToStart
+                or RecoveryPlanStatus.Active))
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                    RecoveryPlanErrorCode.RecoveryPlanNotCancellable,
+                    "Only ReadyToStart or Active recovery plans can be cancelled.");
+            }
+
+            var utcNow = DateTime.UtcNow;
+            plan.Status = RecoveryPlanStatus.Cancelled;
+            plan.IsCurrent = false;
+            plan.CancelledAt = utcNow;
+            plan.CancelledByUserId = userId;
+            plan.CancellationReasonCode = cancellationReasonCode;
+            plan.CancellationReason = cancellationReason;
+            plan.UpdatedAt = utcNow;
+
+            AddCancelledOutbox(plan, utcNow);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            var response = RecoveryPlanMapping.ToDetail(plan);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            await _realtimeNotifier.TryNotifyPlanChangedAsync(
+                RecoveryPlanRealtimeNotificationFactory.CreatePlanNotification(
+                    plan,
+                    RecoveryPlanLifecycleOutboxEventTypes.Cancelled,
+                    utcNow),
+                CancellationToken.None);
+
+            return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Ok(
+                response,
+                message: "Recovery plan cancelled.");
         }
         catch
         {
@@ -990,6 +1104,33 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
                 plan.ActivatedAt,
                 plan.StartDate,
                 plan.EndDate
+            })
+        });
+    }
+
+    private void AddCancelledOutbox(RecoveryPlan plan, DateTime utcNow)
+    {
+        if (!plan.RecoveryPlanRequestId.HasValue)
+        {
+            throw new InvalidOperationException(
+                "A request-based recovery plan is required before cancellation.");
+        }
+
+        _unitOfWork.RecoveryPlans.AddOutbox(new OutboxMessage
+        {
+            Id = Guid.NewGuid(),
+            EventType = RecoveryPlanLifecycleOutboxEventTypes.Cancelled,
+            AggregateType = RecoveryPlanLifecycleOutboxEventTypes.AggregateType,
+            AggregateId = plan.Id,
+            Status = OutboxMessageStatus.Pending,
+            CreatedAt = utcNow,
+            PayloadJson = JsonSerializer.Serialize(new
+            {
+                PlanId = plan.Id,
+                RequestId = plan.RecoveryPlanRequestId.Value,
+                plan.UserId,
+                Status = plan.Status.ToString(),
+                plan.CancelledAt
             })
         });
     }
