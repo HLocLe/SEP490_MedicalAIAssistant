@@ -4,6 +4,7 @@ using MedMateAI.Application.DTOs.LabTests.Requests;
 using MedMateAI.Application.DTOs.LabTests.Responses;
 using MedMateAI.Application.Helpers;
 using MedMateAI.Application.IService;
+using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Persistence;
@@ -135,28 +136,7 @@ public sealed class LabTestService : ILabTestService
             pageSize,
             cancellationToken);
 
-        return new PagedResponse<LabTestSessionSummaryResponse>
-        {
-            PageNumber = paged.PageNumber,
-            PageSize = paged.PageSize,
-            TotalCount = paged.TotalCount,
-            TotalPages = paged.TotalPages,
-            Items = paged.Items
-                .Select(session => new LabTestSessionSummaryResponse
-                {
-                    UserId = session.UserId,
-                    SessionId = session.Id,
-                    DocumentUrl = session.DocumentUrl,
-                    Status = session.Status,
-                    TestDate = session.TestDate,
-                    PatientGenderAtTest = session.PatientGenderAtTest,
-                    PatientAgeAtTest = session.PatientAgeAtTest,
-                    FacilityName = session.FacilityName,
-                    ProcessedAt = session.ProcessedAt,
-                    CreatedAt = session.CreatedAt,
-                })
-                .ToList(),
-        };
+        return PagedResponse<LabTestSessionSummaryResponse>.From(paged, MapToSessionSummary);
     }
 
     public async Task<PagedResponse<LabTestSessionSummaryResponse>> GetAllSessionsAsync(
@@ -173,28 +153,7 @@ public sealed class LabTestService : ILabTestService
             pageSize,
             cancellationToken);
 
-        return new PagedResponse<LabTestSessionSummaryResponse>
-        {
-            PageNumber = paged.PageNumber,
-            PageSize = paged.PageSize,
-            TotalCount = paged.TotalCount,
-            TotalPages = paged.TotalPages,
-            Items = paged.Items
-                .Select(session => new LabTestSessionSummaryResponse
-                {
-                    UserId = session.UserId,
-                    SessionId = session.Id,
-                    DocumentUrl = session.DocumentUrl,
-                    Status = session.Status,
-                    TestDate = session.TestDate,
-                    PatientGenderAtTest = session.PatientGenderAtTest,
-                    PatientAgeAtTest = session.PatientAgeAtTest,
-                    FacilityName = session.FacilityName,
-                    ProcessedAt = session.ProcessedAt,
-                    CreatedAt = session.CreatedAt,
-                })
-                .ToList(),
-        };
+        return PagedResponse<LabTestSessionSummaryResponse>.From(paged, MapToSessionSummary);
     }
 
     public async Task<IReadOnlyList<LabTestOcrExtractResponse>?> GetOcrExtractsBySessionIdAsync(
@@ -249,6 +208,23 @@ public sealed class LabTestService : ILabTestService
                 .OrderBy(x => x.CreatedAt)
                 .Select(MapResultItem)
                 .ToList(),
+        };
+    }
+
+    private static LabTestSessionSummaryResponse MapToSessionSummary(LabTestSession session)
+    {
+        return new LabTestSessionSummaryResponse
+        {
+            UserId = session.UserId,
+            SessionId = session.Id,
+            DocumentUrl = session.DocumentUrl,
+            Status = session.Status,
+            TestDate = session.TestDate,
+            PatientGenderAtTest = session.PatientGenderAtTest,
+            PatientAgeAtTest = session.PatientAgeAtTest,
+            FacilityName = session.FacilityName,
+            ProcessedAt = session.ProcessedAt,
+            CreatedAt = session.CreatedAt,
         };
     }
 

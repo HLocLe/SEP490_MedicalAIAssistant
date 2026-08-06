@@ -9,6 +9,7 @@ using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.MedGemma;
 using MedMateAI.Application.IService;
+using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Persistence;
@@ -90,25 +91,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             pageSize,
             cancellationToken);
 
-        return new PagedResponse<SymptomAnalysisSessionSummaryResponse>
-        {
-            PageNumber = paged.PageNumber,
-            PageSize = paged.PageSize,
-            TotalCount = paged.TotalCount,
-            TotalPages = paged.TotalPages,
-            Items = paged.Items
-                .Select(session => new SymptomAnalysisSessionSummaryResponse
-                {
-                    UserId = session.UserId,
-                    SessionId = session.Id,
-                    InputText = session.InputText,
-                    SeverityLevel = session.SeverityLevel,
-                    Status = session.Status,
-                    SessionType = session.SessionType,
-                    CreatedAt = session.CreatedAt,
-                })
-                .ToList(),
-        };
+        return PagedResponse<SymptomAnalysisSessionSummaryResponse>.From(paged, MapToSessionSummary);
     }
 
     public async Task<PagedResponse<SymptomAnalysisSessionSummaryResponse>> GetAllSessionsAsync(
@@ -127,25 +110,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             pageSize,
             cancellationToken);
 
-        return new PagedResponse<SymptomAnalysisSessionSummaryResponse>
-        {
-            PageNumber = paged.PageNumber,
-            PageSize = paged.PageSize,
-            TotalCount = paged.TotalCount,
-            TotalPages = paged.TotalPages,
-            Items = paged.Items
-                .Select(session => new SymptomAnalysisSessionSummaryResponse
-                {
-                    UserId = session.UserId,
-                    SessionId = session.Id,
-                    InputText = session.InputText,
-                    SeverityLevel = session.SeverityLevel,
-                    Status = session.Status,
-                    SessionType = session.SessionType,
-                    CreatedAt = session.CreatedAt,
-                })
-                .ToList(),
-        };
+        return PagedResponse<SymptomAnalysisSessionSummaryResponse>.From(paged, MapToSessionSummary);
     }
 
     // 
@@ -526,7 +491,20 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         return new MedGemmaAnalysisCoreResult(diagnoses, aiResult.Model);
     }
 
-    //
+    private static SymptomAnalysisSessionSummaryResponse MapToSessionSummary(SymptomAnalysisSession session)
+    {
+        return new SymptomAnalysisSessionSummaryResponse
+        {
+            UserId = session.UserId,
+            SessionId = session.Id,
+            InputText = session.InputText,
+            SeverityLevel = session.SeverityLevel,
+            Status = session.Status,
+            SessionType = session.SessionType,
+            CreatedAt = session.CreatedAt,
+        };
+    }
+
     private static BayesianDiagnosisResponse? SelectPrimaryDiagnosisByPluralityChapter(
     IReadOnlyList<BayesianDiagnosisResponse> diagnoses)
     {
