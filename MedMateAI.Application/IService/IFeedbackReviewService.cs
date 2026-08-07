@@ -21,6 +21,12 @@ public interface IFeedbackReviewService
         int pageSize,
         CancellationToken cancellationToken = default);
 
+    Task<PagedResponse<FeedbackReviewResponse>> ListFeedbackReviewsByUserIdAsync(
+        Guid userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default);
+
     Task<FeedbackReviewResponse?> GetFeedbackReviewByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default);

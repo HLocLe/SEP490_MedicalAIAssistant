@@ -83,6 +83,7 @@ public sealed class DoctorAccountRegistrationService : IDoctorAccountRegistratio
             Status = UserStatus.Confirmed,
             IsFirstLogin = true,
             IsProfileCompleted = true,
+            CreatedAt = DateTime.UtcNow,
         };
 
         var createUserResult = await _userManager.CreateAsync(user, password);

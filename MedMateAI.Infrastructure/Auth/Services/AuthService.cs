@@ -131,6 +131,7 @@ public sealed class AuthService : IAuthService
             DateOfBirth = request.DateOfBirth,
             Status = status,
             IsFirstLogin = true,
+            CreatedAt = DateTime.UtcNow,
         };
 
         var identityResult = await _userManager.CreateAsync(user, request.Password);
@@ -309,6 +310,7 @@ public sealed class AuthService : IAuthService
                 DisplayName = payload.Name,
                 Status = UserStatus.Confirmed,
                 IsFirstLogin = true,
+                CreatedAt = DateTime.UtcNow,
             };
 
             var createResult = await _userManager.CreateAsync(user);
