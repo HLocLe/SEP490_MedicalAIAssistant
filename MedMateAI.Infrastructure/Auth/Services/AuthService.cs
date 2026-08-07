@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using MedMateAI.Application.Common.Time;
+using MedMateAI.Application.Common.Validation;
 using MedMateAI.Application.DTOs.Auth.Requests;
 using MedMateAI.Application.DTOs.Auth.Responses;
 using MedMateAI.Application.DTOs.Users.Responses;
@@ -80,6 +82,15 @@ public sealed class AuthService : IAuthService
         if (!string.Equals(request.Password, request.confirmPassword, StringComparison.Ordinal))
         {
             const string message = "Mật khẩu xác nhận không khớp";
+            return (false, message, new[] { message }, null);
+        }
+
+        var dateOfBirthValidation = DateOfBirthValidationPolicy.ValidateForRegistration(
+            request.DateOfBirth,
+            VietnamBusinessDate.GetToday(DateTimeOffset.UtcNow));
+        if (!dateOfBirthValidation.IsValid)
+        {
+            var message = dateOfBirthValidation.ErrorMessage!;
             return (false, message, new[] { message }, null);
         }
 

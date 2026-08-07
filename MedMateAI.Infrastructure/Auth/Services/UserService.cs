@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using AutoMapper;
+using MedMateAI.Application.Common.Time;
+using MedMateAI.Application.Common.Validation;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Users.Requests;
 using MedMateAI.Application.IService;
@@ -170,6 +172,14 @@ public sealed class UserService : IUserService
         if (user is null || user.IsDeleted)
         {
             return (false, new[] { "User not found." });
+        }
+
+        var dateOfBirthValidation = DateOfBirthValidationPolicy.ValidateForProfileUpdate(
+            request.DateOfBirth,
+            VietnamBusinessDate.GetToday(DateTimeOffset.UtcNow));
+        if (!dateOfBirthValidation.IsValid)
+        {
+            return (false, new[] { dateOfBirthValidation.ErrorMessage! });
         }
 
         if (request.DisplayName is not null)
