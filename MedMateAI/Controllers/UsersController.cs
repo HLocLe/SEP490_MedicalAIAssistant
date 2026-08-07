@@ -95,7 +95,7 @@ public sealed class UsersController : ControllerBase
             return BadRequest(new ApiResponse
             {
                 Success = false,
-                Message = "Delete user failed.",
+                Message = "Xóa người dùng thất bại",
                 Errors = errors.ToList(),
             });
         }
@@ -103,9 +103,31 @@ public sealed class UsersController : ControllerBase
         return Ok(new ApiResponse
         {
             Success = true,
-            Message = "User deleted (soft).",
+            Message = "Đã xóa người dùng (soft delete)",
         });
     }
 
-   
+    [HttpPost("{userId}/restore")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Restore(Guid userId, CancellationToken cancellationToken)
+    {
+        var (ok, errors) = await _userService.RestoreUserAsync(userId, cancellationToken);
+        if (!ok)
+        {
+            return BadRequest(new ApiResponse
+            {
+                Success = false,
+                Message = "Khôi phục người dùng thất bại",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse
+        {
+            Success = true,
+            Message = "Đã khôi phục người dùng",
+        });
     }
+}

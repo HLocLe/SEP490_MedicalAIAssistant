@@ -22,6 +22,8 @@ namespace MedMateAI.Infrastructure.Auth.Services;
 public sealed class AuthService : IAuthService
 {
     private static readonly TimeSpan PasswordResetOtpLifetime = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan RegisterOtpLifetime = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan RegisterOtpResendCooldown = TimeSpan.FromSeconds(60);
 
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
@@ -79,12 +81,20 @@ public sealed class AuthService : IAuthService
         UserStatus status,
         string role)
     {
+        if (string.IsNullOrWhiteSpace(request.Otp))
+        {
+            const string message = "Mã OTP là bắt buộc";
+            return (false, message, new[] { message }, null);
+        }
+
         if (!string.Equals(request.Password, request.confirmPassword, StringComparison.Ordinal))
         {
             const string message = "Mật khẩu xác nhận không khớp";
             return (false, message, new[] { message }, null);
         }
 
+        var email = request.Email.Trim();
+        var cacheKey = GetRegisterOtpCacheKey(email);
         var dateOfBirthValidation = DateOfBirthValidationPolicy.ValidateForRegistration(
             request.DateOfBirth,
             VietnamBusinessDate.GetToday(DateTimeOffset.UtcNow));
@@ -94,12 +104,27 @@ public sealed class AuthService : IAuthService
             return (false, message, new[] { message }, null);
         }
 
-        var userName = string.IsNullOrWhiteSpace(request.UserName) ? request.Email : request.UserName;
+        
+
+        if (!_cache.TryGetValue(cacheKey, out RegisterOtpCacheEntry? otpEntry) || otpEntry is null)
+        {
+            const string message = "Mã OTP không hợp lệ hoặc đã hết hạn";
+            return (false, message, new[] { message }, null);
+        }
+
+        if (!string.Equals(otpEntry.Otp, request.Otp.Trim(), StringComparison.Ordinal))
+        {
+            const string message = "Mã OTP không hợp lệ hoặc đã hết hạn";
+            return (false, message, new[] { message }, null);
+        }
+
+        var userName = string.IsNullOrWhiteSpace(request.UserName) ? email : request.UserName;
 
         var user = new ApplicationUser
         {
             UserName = userName,
-            Email = request.Email,
+            Email = email,
+            EmailConfirmed = true,
             DisplayName = request.DisplayName,
             Address = request.Address,
             Gender = request.Gender,
@@ -122,7 +147,62 @@ public sealed class AuthService : IAuthService
             return (false, null, errors, null);
         }
 
+        _cache.Remove(cacheKey);
+        _cache.Remove(GetRegisterOtpResendCacheKey(email));
+
         return (true, null, Array.Empty<string>(), user);
+    }
+
+    public async Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors)> SendRegisterOtpAsync(
+        SendRegisterOtpRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email))
+        {
+            const string message = "Email là bắt buộc";
+            return (false, message, new[] { message });
+        }
+
+        var email = request.Email.Trim();
+        var resendKey = GetRegisterOtpResendCacheKey(email);
+
+        if (_cache.TryGetValue(resendKey, out _))
+        {
+            const string message = "Vui lòng đợi trước khi gửi lại mã OTP";
+            return (false, message, new[] { message });
+        }
+
+        var existing = await _userManager.FindByEmailAsync(email);
+        if (existing is not null && !existing.IsDeleted)
+        {
+            const string message = "Email đã được sử dụng";
+            return (false, message, new[] { message });
+        }
+
+        var (sent, otp) = await _emailOtpSender.SendOtpEmailAsync(email, cancellationToken);
+        if (!sent || otp is null)
+        {
+            const string message = "Không thể gửi email OTP. Vui lòng thử lại sau.";
+            return (false, message, new[] { message });
+        }
+
+        _cache.Set(
+            GetRegisterOtpCacheKey(email),
+            new RegisterOtpCacheEntry { Otp = otp.Trim() },
+            new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = RegisterOtpLifetime,
+            });
+
+        _cache.Set(
+            resendKey,
+            true,
+            new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = RegisterOtpResendCooldown,
+            });
+
+        return (true, null, Array.Empty<string>());
     }
 
     //
@@ -135,6 +215,11 @@ public sealed class AuthService : IAuthService
         if (user is null)
         {
             return (false, null, null);
+        }
+
+        if (user.IsDeleted)
+        {
+            return (false, "Tài khoản đã bị xóa", null);
         }
 
         if (user.Status == UserStatus.Pending)
@@ -208,6 +293,12 @@ public sealed class AuthService : IAuthService
 
         var user = await _userManager.FindByEmailAsync(email);
 
+        if (user is not null && user.IsDeleted)
+        {
+            const string message = "Tài khoản đã bị xóa";
+            return (false, message, new[] { message }, null);
+        }
+
         if (user is null)
         {
             user = new ApplicationUser
@@ -280,8 +371,10 @@ public sealed class AuthService : IAuthService
         }
 
         var user = existing.User;
-        if (await _userManager.IsLockedOutAsync(user))
+        if (user.IsDeleted || await _userManager.IsLockedOutAsync(user))
         {
+            await RevokeAllRefreshTokensForUserAsync(user.Id, cancellationToken);
+            ClearRefreshTokenCookie(httpContext);
             return (false, null);
         }
 
@@ -624,6 +717,12 @@ public sealed class AuthService : IAuthService
     private static string GetPasswordResetCacheKey(string email)
         => $"pwdreset:{email.Trim().ToLowerInvariant()}";
 
+    private static string GetRegisterOtpCacheKey(string email)
+        => $"register-otp:{email.Trim().ToLowerInvariant()}";
+
+    private static string GetRegisterOtpResendCacheKey(string email)
+        => $"register-otp-resend:{email.Trim().ToLowerInvariant()}";
+
     private static (string? ErrorMessage, IReadOnlyList<string> Errors) MapIdentityRegisterErrors(
         IEnumerable<IdentityError> identityErrors)
     {
@@ -651,6 +750,11 @@ public sealed class AuthService : IAuthService
         public required string Otp { get; init; }
 
         public required string ResetToken { get; init; }
+    }
+
+    private sealed class RegisterOtpCacheEntry
+    {
+        public required string Otp { get; init; }
     }
 }
 

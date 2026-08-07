@@ -31,7 +31,7 @@ public sealed class AuthController : ControllerBase
             return BadRequest(new ApiResponse<ApplicationUserResponse>
             {
                 Success = false,
-                Message = errorMessage ?? "Registration failed",
+                Message = errorMessage ?? "Đăng ký thất bại",
                 Errors = errors.ToList(),
             });
         }
@@ -39,8 +39,34 @@ public sealed class AuthController : ControllerBase
         return Ok(new ApiResponse<ApplicationUserResponse>
         {
             Success = true,
-            Message = "Registration succeeded",
+            Message = "Đăng ký thành công",
             Data = result,
+        });
+    }
+
+    [HttpPost("send-register-otp")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SendRegisterOtp(
+        [FromBody] SendRegisterOtpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var (succeeded, errorMessage, errors) = await _authService.SendRegisterOtpAsync(request, cancellationToken);
+        if (!succeeded)
+        {
+            return BadRequest(new ApiResponse
+            {
+                Success = false,
+                Message = errorMessage ?? "Gửi mã OTP thất bại",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse
+        {
+            Success = true,
+            Message = "Mã OTP đã được gửi tới email của bạn",
         });
     }
 
@@ -81,7 +107,8 @@ public sealed class AuthController : ControllerBase
             var message = errorMessage ?? "Google login failed";
             var unauthorized =
                 message is "Credential Google không hợp lệ"
-                    or "Tài khoản của bạn đã bị lock";
+                    or "Tài khoản của bạn đã bị lock"
+                    or "Tài khoản đã bị xóa";
 
             if (unauthorized)
             {
