@@ -10,6 +10,10 @@ public interface IAuthService
         RegisterRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<(bool Succeeded, string? ErrorMessage, IEnumerable<string> Errors)> SendRegisterOtpAsync(
+        SendRegisterOtpRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<(bool Succeeded, string? ErrorMessage, AuthResponse? Result)> LoginAsync(
         LoginRequest request,
         CancellationToken cancellationToken = default);

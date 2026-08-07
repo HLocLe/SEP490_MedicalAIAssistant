@@ -219,18 +219,18 @@ public sealed class UserService : IUserService
     {
         if (userId == Guid.Empty)
         {
-            return (false, new[] { "Invalid user id." });
+            return (false, new[] { "Id người dùng không hợp lệ" });
         }
 
         var user = await _userManager.FindByIdAsync(userId.ToString());
         if (user is null)
         {
-            return (false, new[] { "User not found." });
+            return (false, new[] { "Không tìm thấy người dùng" });
         }
 
         if (user.IsDeleted)
         {
-            return (false, new[] { "User is already deleted." });
+            return (false, new[] { "Người dùng đã bị xóa" });
         }
 
         var hasLinkedDoctor = await HasLinkedDoctorAsync(user.Id, cancellationToken);
@@ -243,6 +243,14 @@ public sealed class UserService : IUserService
             return (false, updateResult.Errors.Select(e => e.Description));
         }
 
+        await _db.RefreshTokens
+            .Where(x => x.UserId == user.Id && !x.IsRevoked)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(t => t.IsRevoked, true)
+                    .SetProperty(t => t.ExpiresAt, DateTime.UtcNow.AddDays(-1)),
+                cancellationToken);
+
         if (hasLinkedDoctor)
         {
             await _realtimeNotifier.TryNotifyDoctorRealtimeAccessChangedAsync(
@@ -252,6 +260,35 @@ public sealed class UserService : IUserService
         }
 
         return (true, Array.Empty<string>());
+    }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors)> RestoreUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return (false, new[] { "Id người dùng không hợp lệ" });
+        }
+
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user is null)
+        {
+            return (false, new[] { "Không tìm thấy người dùng" });
+        }
+
+        if (!user.IsDeleted)
+        {
+            return (false, new[] { "Người dùng chưa bị xóa" });
+        }
+
+        user.IsDeleted = false;
+        user.DeletedAt = null;
+
+        var updateResult = await _userManager.UpdateAsync(user);
+        return updateResult.Succeeded
+            ? (true, Array.Empty<string>())
+            : (false, updateResult.Errors.Select(e => e.Description));
     }
 
     public async Task<(bool Succeeded, IEnumerable<string> Errors)> MarkPatientProfileCompletedAsync(

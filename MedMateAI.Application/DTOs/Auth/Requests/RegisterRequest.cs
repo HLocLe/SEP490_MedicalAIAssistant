@@ -12,4 +12,5 @@ public class RegisterRequest
     public string? Address { get; set; }
     public Gender? Gender { get; set; }
     public DateOnly? DateOfBirth { get; set; }
+    public string Otp { get; set; } = string.Empty;
 }
