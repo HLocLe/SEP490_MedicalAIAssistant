@@ -19,9 +19,13 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
         builder.Property(x => x.Address)
             .HasMaxLength(512);
 
+        builder.Property(x => x.CreatedAt)
+            .HasColumnType("timestamp with time zone")
+            .HasDefaultValueSql("CURRENT_TIMESTAMP")
+            .IsRequired();
+
         builder.Property(x => x.Status)
             .HasConversion<int>();
-            
 
         builder.Property(x => x.IsDeleted)
             .HasDefaultValue(false);
@@ -29,9 +33,9 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
         builder.Property(x => x.IsFirstLogin)
             .HasDefaultValue(false);
 
-             builder.Property(x => x.DeletedAt)
+        builder.Property(x => x.DeletedAt)
             .HasColumnType("timestamp with time zone");
-      
+
         builder.Property(x => x.IsProfileCompleted)
             .HasDefaultValue(false);
     }

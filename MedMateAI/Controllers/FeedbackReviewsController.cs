@@ -84,6 +84,28 @@ public sealed class FeedbackReviewsController : ControllerBase
         return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
+    [HttpGet("user/{userId:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<FeedbackReviewResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<FeedbackReviewResponse>>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ListByUserId(
+        Guid userId,
+        [FromQuery] PaginationQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return BadRequest(ApiResponseFactory.Fail<PagedResponse<FeedbackReviewResponse>>("Id người dùng không hợp lệ"));
+        }
+
+        var data = await _feedbackReviewService.ListFeedbackReviewsByUserIdAsync(
+            userId,
+            query.PageNumber,
+            query.PageSize,
+            cancellationToken);
+
+        return Ok(ApiResponseFactory.Success(data, "OK"));
+    }
+
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ApiResponse<FeedbackReviewResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<FeedbackReviewResponse>), StatusCodes.Status400BadRequest)]

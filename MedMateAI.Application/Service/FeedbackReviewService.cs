@@ -80,6 +80,24 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
         return MapToPagedResponse(paged);
     }
 
+    public async Task<PagedResponse<FeedbackReviewResponse>> ListFeedbackReviewsByUserIdAsync(
+        Guid userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var paged = await _unitOfWork.FeedbackReviews.GetPagedWithDetailsAsync(
+            pageNumber,
+            pageSize,
+            facilityId: null,
+            userId: userId,
+            status: null,
+            rating: null,
+            cancellationToken);
+
+        return MapToPagedResponse(paged);
+    }
+
     public async Task<FeedbackReviewResponse?> GetFeedbackReviewByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default)

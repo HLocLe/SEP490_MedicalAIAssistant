@@ -14,6 +14,8 @@ public sealed class ApplicationUserResponse
 
     public string? Address { get; set; }
 
+    public DateTime CreatedAt { get; set; }
+
     public UserStatus Status { get; set; }
 
     public bool IsDeleted { get; set; }
