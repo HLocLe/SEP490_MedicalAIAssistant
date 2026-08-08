@@ -44,7 +44,7 @@ public sealed class UsersController : ControllerBase
 
     
     [HttpGet]
-    [AllowAnonymous]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<ApplicationUserResponse>>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List(
         [FromQuery] PaginationQuery query,
@@ -60,7 +60,7 @@ public sealed class UsersController : ControllerBase
     }
 
     [HttpPut("{userId}")]
-    [AllowAnonymous]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Update(Guid userId, [FromBody] UpdateUserRequest request, CancellationToken cancellationToken)
@@ -84,7 +84,7 @@ public sealed class UsersController : ControllerBase
     }
 
     [HttpDelete("{userId}")]
-    [AllowAnonymous]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> SoftDelete(Guid userId, CancellationToken cancellationToken)
@@ -108,7 +108,7 @@ public sealed class UsersController : ControllerBase
     }
 
     [HttpPost("{userId}/restore")]
-    [AllowAnonymous]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Restore(Guid userId, CancellationToken cancellationToken)

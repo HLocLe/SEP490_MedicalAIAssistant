@@ -28,6 +28,7 @@ using MedMateAI.Infrastructure.NationalInstitutesofHealth.Options;
 using MedMateAI.Infrastructure.Translation;
 using MedMateAI.Infrastructure.Translation.Options;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -292,6 +293,13 @@ public static class DependencyInjection
                     }
                 };
             });
+
+        services.AddAuthorization(options =>
+        {
+            options.FallbackPolicy = new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .Build();
+        });
 
         services.AddHangfireBackgroundJobs(configuration);
 

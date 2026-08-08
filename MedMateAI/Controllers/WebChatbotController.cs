@@ -2,6 +2,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.WebChatbot.Requests;
 using MedMateAI.Application.DTOs.WebChatbot.Responses;
 using MedMateAI.Application.IService;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
@@ -25,6 +26,7 @@ public sealed class WebChatbotController : ControllerBase
     }
 
     [HttpPost("message")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<WebChatbotResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<WebChatbotResponse>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> SendMessage(

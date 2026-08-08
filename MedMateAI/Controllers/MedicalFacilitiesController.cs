@@ -3,6 +3,7 @@ using MedMateAI.Application.DTOs.MedicalFacilities.Requests;
 using MedMateAI.Application.DTOs.MedicalFacilities.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Helpers;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
@@ -22,6 +23,7 @@ public sealed class MedicalFacilitiesController : ControllerBase
     }
 
     [HttpGet]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<MedicalFacilityResponse>>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List(
         [FromQuery] PaginationQuery query,
@@ -40,6 +42,7 @@ public sealed class MedicalFacilitiesController : ControllerBase
     }
 
     [HttpGet("active")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<MedicalFacilityResponse>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<MedicalFacilityResponse>>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ListActive(
@@ -61,6 +64,7 @@ public sealed class MedicalFacilitiesController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<MedicalFacilityResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<MedicalFacilityResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<MedicalFacilityResponse>), StatusCodes.Status404NotFound)]
@@ -81,6 +85,7 @@ public sealed class MedicalFacilitiesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse<MedicalFacilityResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<MedicalFacilityResponse>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create(
@@ -97,6 +102,7 @@ public sealed class MedicalFacilitiesController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse<MedicalFacilityResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<MedicalFacilityResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<MedicalFacilityResponse>), StatusCodes.Status404NotFound)]
@@ -126,6 +132,7 @@ public sealed class MedicalFacilitiesController : ControllerBase
     }
 
     [HttpPatch("{id:guid}/status")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse<MedicalFacilityResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<MedicalFacilityResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<MedicalFacilityResponse>), StatusCodes.Status404NotFound)]
@@ -158,6 +165,7 @@ public sealed class MedicalFacilitiesController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]

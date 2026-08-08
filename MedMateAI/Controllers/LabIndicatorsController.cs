@@ -3,11 +3,13 @@ using MedMateAI.Application.DTOs.LabIndicators.Requests;
 using MedMateAI.Application.DTOs.LabIndicators.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Helpers;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
 
 [ApiController]
+[Authorize(Roles = "Admin")]
 [Route("api/lab-indicators")]
 public sealed class LabIndicatorsController : ControllerBase
 {

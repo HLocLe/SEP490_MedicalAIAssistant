@@ -4,6 +4,7 @@ using MedMateAI.Application.DTOs.Doctors.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Enums;
 using MedMateAI.Helpers;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
@@ -23,6 +24,7 @@ public sealed class DoctorsController : ControllerBase
     }
 
     [HttpGet]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<DoctorResponse>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<DoctorResponse>>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> List(
@@ -58,6 +60,7 @@ public sealed class DoctorsController : ControllerBase
     }
 
     [HttpGet("active")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<DoctorResponse>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<DoctorResponse>>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ListActive(
@@ -91,6 +94,7 @@ public sealed class DoctorsController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<DoctorResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<DoctorResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<DoctorResponse>), StatusCodes.Status404NotFound)]
@@ -111,6 +115,7 @@ public sealed class DoctorsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse<DoctorResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<DoctorResponse>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create(
@@ -127,6 +132,7 @@ public sealed class DoctorsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse<DoctorResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<DoctorResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<DoctorResponse>), StatusCodes.Status404NotFound)]
@@ -159,6 +165,7 @@ public sealed class DoctorsController : ControllerBase
     }
 
     [HttpPatch("{id:guid}/status")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse<DoctorResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<DoctorResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<DoctorResponse>), StatusCodes.Status404NotFound)]
@@ -191,6 +198,7 @@ public sealed class DoctorsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]
