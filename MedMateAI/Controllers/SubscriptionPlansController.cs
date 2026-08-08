@@ -19,6 +19,7 @@ public sealed class SubscriptionPlansController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<SubscriptionPlanResponse>>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List(CancellationToken cancellationToken = default)
     {
@@ -32,6 +33,7 @@ public sealed class SubscriptionPlansController : ControllerBase
     }
 
     [HttpGet("active")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<SubscriptionPlanResponse>>), StatusCodes.Status200OK)]
     public async Task<IActionResult> ListActive(CancellationToken cancellationToken = default)
     {
@@ -45,6 +47,7 @@ public sealed class SubscriptionPlansController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<SubscriptionPlanResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<SubscriptionPlanResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<SubscriptionPlanResponse>), StatusCodes.Status404NotFound)]

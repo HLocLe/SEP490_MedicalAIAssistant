@@ -3,11 +3,13 @@ using MedMateAI.Application.DTOs.FeedbackReviews.Requests;
 using MedMateAI.Application.DTOs.FeedbackReviews.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Helpers;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/feedback-reviews")]
 public sealed class FeedbackReviewsController : ControllerBase
 {
@@ -23,6 +25,7 @@ public sealed class FeedbackReviewsController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<FeedbackReviewResponse>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<FeedbackReviewResponse>>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> List(
@@ -63,6 +66,7 @@ public sealed class FeedbackReviewsController : ControllerBase
     }
 
     [HttpGet("facility/{facilityId:guid}")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<FeedbackReviewResponse>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<FeedbackReviewResponse>>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ListByFacility(
@@ -87,6 +91,7 @@ public sealed class FeedbackReviewsController : ControllerBase
     [HttpGet("user/{userId:guid}")]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<FeedbackReviewResponse>>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<FeedbackReviewResponse>>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<FeedbackReviewResponse>>), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> ListByUserId(
         Guid userId,
         [FromQuery] PaginationQuery query,
@@ -97,11 +102,19 @@ public sealed class FeedbackReviewsController : ControllerBase
             return BadRequest(ApiResponseFactory.Fail<PagedResponse<FeedbackReviewResponse>>("Id người dùng không hợp lệ"));
         }
 
-        var data = await _feedbackReviewService.ListFeedbackReviewsByUserIdAsync(
+        var (forbidden, data) = await _feedbackReviewService.ListFeedbackReviewsByUserIdAsync(
             userId,
             query.PageNumber,
             query.PageSize,
             cancellationToken);
+
+        if (forbidden || data is null)
+        {
+            return StatusCode(
+                StatusCodes.Status403Forbidden,
+                ApiResponseFactory.Fail<PagedResponse<FeedbackReviewResponse>>(
+                    "Không có quyền xem feedback của người dùng này"));
+        }
 
         return Ok(ApiResponseFactory.Success(data, "OK"));
     }
@@ -189,6 +202,7 @@ public sealed class FeedbackReviewsController : ControllerBase
     }
 
     [HttpPatch("{id:guid}/status")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse<FeedbackReviewResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<FeedbackReviewResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<FeedbackReviewResponse>), StatusCodes.Status404NotFound)]
@@ -223,6 +237,7 @@ public sealed class FeedbackReviewsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]

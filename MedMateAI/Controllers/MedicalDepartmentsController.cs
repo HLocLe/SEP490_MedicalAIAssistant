@@ -3,6 +3,7 @@ using MedMateAI.Application.DTOs.MedicalDepartments.Requests;
 using MedMateAI.Application.DTOs.MedicalDepartments.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Helpers;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
@@ -22,6 +23,7 @@ public sealed class MedicalDepartmentsController : ControllerBase
     }
 
     [HttpGet]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<MedicalDepartmentResponse>>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List(CancellationToken cancellationToken = default)
     {
@@ -30,6 +32,7 @@ public sealed class MedicalDepartmentsController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<MedicalDepartmentResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<MedicalDepartmentResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<MedicalDepartmentResponse>), StatusCodes.Status404NotFound)]
@@ -50,6 +53,7 @@ public sealed class MedicalDepartmentsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse<MedicalDepartmentResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<MedicalDepartmentResponse>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateMedicalDepartmentRequest request, CancellationToken cancellationToken)
@@ -64,6 +68,7 @@ public sealed class MedicalDepartmentsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse<MedicalDepartmentResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<MedicalDepartmentResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<MedicalDepartmentResponse>), StatusCodes.Status404NotFound)]
@@ -93,6 +98,7 @@ public sealed class MedicalDepartmentsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]

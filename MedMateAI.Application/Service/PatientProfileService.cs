@@ -2,6 +2,7 @@ using AutoMapper;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.PatientProfiles.Requests;
 using MedMateAI.Application.DTOs.PatientProfiles.Responses;
+using MedMateAI.Application.DTOs.Users.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Persistence;
@@ -12,6 +13,7 @@ namespace MedMateAI.Application.Service;
 public sealed class PatientProfileService : IPatientProfileService
 {
     private const int MaxChronicDiseaseItems = 100;
+    private const string AdminRole = "Admin";
 
     private readonly IUserService _userService;
     private readonly IGenericRepository<PatientProfile> _patientProfiles;
@@ -39,7 +41,7 @@ public sealed class PatientProfileService : IPatientProfileService
         var current = await _userService.GetCurrentUserAsync(cancellationToken);
         if (current is null)
         {
-            return (false, new[] { "Unauthorized." });
+            return (false, new[] { "Người dùng chưa đăng nhập." });
         }
 
         var entity = await _patientProfiles.FirstOrDefaultAsync(
@@ -49,7 +51,7 @@ public sealed class PatientProfileService : IPatientProfileService
 
         if (entity is null)
         {
-            return (false, new[] { "Patient profile not found." });
+            return (false, new[] { "Không tìm thấy hồ sơ bệnh nhân." });
         }
 
         entity.IsDeleted = true;
@@ -95,8 +97,19 @@ public sealed class PatientProfileService : IPatientProfileService
         Guid id,
         CancellationToken cancellationToken = default)
     {
+        var caller = await ResolveCallerAsync(cancellationToken);
+        if (caller.Current is null)
+        {
+            return (true, null);
+        }
+
         var entity = await _patientProfiles.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
+        {
+            return (true, null);
+        }
+
+        if (!CanAccessResource(entity.UserId, caller))
         {
             return (true, null);
         }
@@ -113,6 +126,12 @@ public sealed class PatientProfileService : IPatientProfileService
         CancellationToken cancellationToken = default)
     {
         if (userId == Guid.Empty)
+        {
+            return (true, null);
+        }
+
+        var caller = await ResolveCallerAsync(cancellationToken);
+        if (caller.Current is null || !CanAccessResource(userId, caller))
         {
             return (true, null);
         }
@@ -141,10 +160,19 @@ public sealed class PatientProfileService : IPatientProfileService
         CreatePatientProfileRequest request,
         CancellationToken cancellationToken = default)
     {
-       
-        if (request.UserId == Guid.Empty)
+        var caller = await ResolveCallerAsync(cancellationToken);
+        if (caller.Current is null)
         {
-            return (false, new[] { "userid is required." }, null);
+            return (false, new[] { "Người dùng chưa đăng nhập." }, null);
+        }
+
+       
+        var ownerUserId = caller.Current.Id;
+
+        var profileFieldErrors = ValidateHeightAndWeight(request.Height, request.Weight);
+        if (profileFieldErrors.Count > 0)
+        {
+            return (false, profileFieldErrors, null);
         }
 
         var validationErrors = ValidateChronicDiseaseCreateItems(request.ChronicDiseases);
@@ -154,19 +182,19 @@ public sealed class PatientProfileService : IPatientProfileService
         }
 
         var duplicate = await _patientProfiles.FirstOrDefaultAsync(
-            p => p.UserId == request.UserId && !p.IsDeleted,
+            p => p.UserId == ownerUserId && !p.IsDeleted,
             asNoTracking: true,
             cancellationToken);
         
         if (duplicate is not null)
         {
-            return (false, new[] { "A patient profile already exists for this user." }, null);
+            return (false, new[] { "Người dùng này đã có hồ sơ bệnh nhân." }, null);
         }
 
         var entity = new PatientProfile
         {
             Id = Guid.NewGuid(),
-            UserId = request.UserId,
+            UserId = ownerUserId,
             CreatedAt = DateTime.UtcNow,
             BloodType = string.IsNullOrWhiteSpace(request.BloodType) ? null : request.BloodType.Trim(),
             Height = request.Height,
@@ -203,7 +231,19 @@ public sealed class PatientProfileService : IPatientProfileService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid patient profile id." }, null);
+            return (false, false, new[] { "Id hồ sơ bệnh nhân không hợp lệ." }, null);
+        }
+
+        var caller = await ResolveCallerAsync(cancellationToken);
+        if (caller.Current is null)
+        {
+            return (false, false, new[] { "Người dùng chưa đăng nhập." }, null);
+        }
+
+        var profileFieldErrors = ValidateHeightAndWeight(request.Height, request.Weight);
+        if (profileFieldErrors.Count > 0)
+        {
+            return (false, false, profileFieldErrors, null);
         }
 
         var validationErrors = ValidateChronicDiseaseUpdateItems(request.ChronicDiseases);
@@ -215,7 +255,12 @@ public sealed class PatientProfileService : IPatientProfileService
         var entity = await _patientProfiles.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Patient profile not found." }, null);
+            return (false, true, new[] { "Không tìm thấy hồ sơ bệnh nhân." }, null);
+        }
+
+        if (!CanAccessResource(entity.UserId, caller))
+        {
+            return (false, true, new[] { "Không tìm thấy hồ sơ bệnh nhân." }, null);
         }
 
         if (request.BloodType is not null)
@@ -264,13 +309,24 @@ public sealed class PatientProfileService : IPatientProfileService
     {
         if (id == Guid.Empty)
         {
-            return (false, false, new[] { "Invalid patient profile id." });
+            return (false, false, new[] { "Id hồ sơ bệnh nhân không hợp lệ." });
+        }
+
+        var caller = await ResolveCallerAsync(cancellationToken);
+        if (caller.Current is null)
+        {
+            return (false, false, new[] { "Người dùng chưa đăng nhập." });
         }
 
         var entity = await _patientProfiles.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
         {
-            return (false, true, new[] { "Patient profile not found." });
+            return (false, true, new[] { "Không tìm thấy hồ sơ bệnh nhân." });
+        }
+
+        if (!CanAccessResource(entity.UserId, caller))
+        {
+            return (false, true, new[] { "Không tìm thấy hồ sơ bệnh nhân." });
         }
 
         entity.IsDeleted = true;
@@ -283,6 +339,25 @@ public sealed class PatientProfileService : IPatientProfileService
 
         return (true, false, Array.Empty<string>());
     }
+
+    private async Task<(ApplicationUserResponse? Current, bool IsAdmin)> ResolveCallerAsync(
+        CancellationToken cancellationToken)
+    {
+        var current = await _userService.GetCurrentUserAsync(cancellationToken);
+        if (current is null)
+        {
+            return (null, false);
+        }
+
+        var isAdmin = await _userService.IsInRoleAsync(current.Id, AdminRole, cancellationToken);
+        return (current, isAdmin);
+    }
+
+    private static bool CanAccessResource(
+        Guid resourceUserId,
+        (ApplicationUserResponse? Current, bool IsAdmin) caller) =>
+        caller.Current is not null
+        && (caller.IsAdmin || caller.Current.Id == resourceUserId);
 
     private PatientProfileResponse MapProfileResponse(
         PatientProfile profile,
@@ -402,7 +477,7 @@ public sealed class PatientProfileService : IPatientProfileService
         var existingDisease = existingDiseases.FirstOrDefault(disease => disease.Id == item.Id!.Value);
         if (existingDisease is null)
         {
-            return $"Chronic disease '{item.Id!.Value}' was not found for this profile.";
+            return $"Không tìm thấy bệnh mãn tính '{item.Id!.Value}' trong hồ sơ này.";
         }
 
         UpdateChronicDiseaseFromRequest(existingDisease, item);
@@ -480,7 +555,7 @@ public sealed class PatientProfileService : IPatientProfileService
 
         if (items.Count > MaxChronicDiseaseItems)
         {
-            return new[] { $"At most {MaxChronicDiseaseItems} chronic diseases are allowed." };
+            return new[] { $"Chỉ được phép tối đa {MaxChronicDiseaseItems} bệnh mãn tính." };
         }
 
         var errors = new List<string>();
@@ -508,12 +583,29 @@ public sealed class PatientProfileService : IPatientProfileService
     {
         if (string.IsNullOrWhiteSpace(diseaseName))
         {
-            errors.Add($"Chronic disease at index {index}: disease name is required.");
+            errors.Add($"Bệnh mãn tính tại vị trí {index}: tên bệnh là bắt buộc.");
         }
 
         if (from.HasValue && to.HasValue && from.Value > to.Value)
         {
-            errors.Add($"Chronic disease at index {index}: from date must be earlier than or equal to to date.");
+            errors.Add($"Bệnh mãn tính tại vị trí {index}: ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc.");
         }
+    }
+
+    private static IReadOnlyList<string> ValidateHeightAndWeight(double? height, double? weight)
+    {
+        var errors = new List<string>();
+
+        if (height.HasValue && height.Value < 0)
+        {
+            errors.Add("Chiều cao không được âm.");
+        }
+
+        if (weight.HasValue && weight.Value < 0)
+        {
+            errors.Add("Cân nặng không được âm.");
+        }
+
+        return errors;
     }
 }

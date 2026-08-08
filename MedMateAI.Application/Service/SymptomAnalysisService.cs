@@ -21,6 +21,9 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
 {
     private const int MaxMessageLength = 2000;
 
+    private const string UnsupportedSymptomMessage =
+        "Không xác định được triệu chứng trong các khoa đang hỗ trợ (hô hấp, cơ xương khớp, truyền nhiễm siêu vi). Vui lòng mô tả rõ hơn.";
+
     private static readonly JsonSerializerOptions DiagnosisJsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -62,8 +65,20 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             return null;
         }
 
+        var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return null;
+        }
+
         var session = await _unitOfWork.SymptomAnalysisSessions.GetByIdAsync(sessionId, cancellationToken);
         if (session is null || session.IsDeleted)
+        {
+            return null;
+        }
+
+        var isAdmin = await _userService.IsInRoleAsync(currentUser.Id, "Admin", cancellationToken);
+        if (!isAdmin && session.UserId != currentUser.Id)
         {
             return null;
         }
@@ -151,10 +166,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
 
         if (string.IsNullOrEmpty(normalizedInput))
         {
-            return new SuggestClinicalQuestionsResponse
-            {
-                SessionId = session.Id,
-            };
+            throw new ArgumentException(UnsupportedSymptomMessage);
         }
 
         var inputWords = normalizedInput
@@ -231,10 +243,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
 
         if (chapterMatches.Count == 0)
         {
-            return new SuggestClinicalQuestionsResponse
-            {
-                SessionId = session.Id,
-            };
+            throw new ArgumentException(UnsupportedSymptomMessage);
         }
 
         var topChapter = chapterMatches

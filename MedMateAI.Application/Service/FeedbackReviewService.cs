@@ -33,15 +33,18 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDistributedCache _cache;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IUserService _userService;
 
     public FeedbackReviewService(
         IUnitOfWork unitOfWork,
         IDistributedCache cache,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        IUserService userService)
     {
         _unitOfWork = unitOfWork;
         _cache = cache;
         _httpContextAccessor = httpContextAccessor;
+        _userService = userService;
     }
 
     public async Task<PagedResponse<FeedbackReviewResponse>> ListFeedbackReviewsAsync(
@@ -80,12 +83,17 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
         return MapToPagedResponse(paged);
     }
 
-    public async Task<PagedResponse<FeedbackReviewResponse>> ListFeedbackReviewsByUserIdAsync(
+    public async Task<(bool Forbidden, PagedResponse<FeedbackReviewResponse>? Data)> ListFeedbackReviewsByUserIdAsync(
         Guid userId,
         int pageNumber,
         int pageSize,
         CancellationToken cancellationToken = default)
     {
+        if (!await CanAccessUserResourceAsync(userId, cancellationToken))
+        {
+            return (true, null);
+        }
+
         var paged = await _unitOfWork.FeedbackReviews.GetPagedWithDetailsAsync(
             pageNumber,
             pageSize,
@@ -95,7 +103,7 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
             rating: null,
             cancellationToken);
 
-        return MapToPagedResponse(paged);
+        return (false, MapToPagedResponse(paged));
     }
 
     public async Task<FeedbackReviewResponse?> GetFeedbackReviewByIdAsync(
@@ -234,6 +242,11 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
 
         var entity = await _unitOfWork.FeedbackReviews.GetByIdAsync(id, cancellationToken);
         if (entity is null || entity.IsDeleted)
+        {
+            return (false, true, new[] { "Không tìm thấy feedback" }, null);
+        }
+
+        if (!await CanAccessUserResourceAsync(entity.UserId, cancellationToken))
         {
             return (false, true, new[] { "Không tìm thấy feedback" }, null);
         }
@@ -474,6 +487,24 @@ public sealed class FeedbackReviewService : IFeedbackReviewService
         return Guid.TryParse(userIdValue, out var userId)
             ? userId
             : null;
+    }
+
+    private async Task<bool> CanAccessUserResourceAsync(
+        Guid resourceUserId,
+        CancellationToken cancellationToken)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (!currentUserId.HasValue)
+        {
+            return false;
+        }
+
+        if (currentUserId.Value == resourceUserId)
+        {
+            return true;
+        }
+
+        return await _userService.IsInRoleAsync(currentUserId.Value, "Admin", cancellationToken);
     }
 
     private static bool IsRatingValid(int rating)

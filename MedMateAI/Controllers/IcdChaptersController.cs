@@ -3,11 +3,13 @@ using MedMateAI.Application.DTOs.IcdChapters.Requests;
 using MedMateAI.Application.DTOs.IcdChapters.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Helpers;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
 
 [ApiController]
+[Authorize(Roles = "Admin")]
 [Route("api/icd-chapters")]
 public sealed class IcdChaptersController : ControllerBase
 {

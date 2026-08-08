@@ -3,11 +3,13 @@ using MedMateAI.Application.DTOs.AIConfigs.Responses;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.IService;
 using MedMateAI.Helpers;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
 
 [ApiController]
+[Authorize(Roles = "Admin")]
 [Route("api/ai-configs")]
 public sealed class AIConfigsController : ControllerBase
 {

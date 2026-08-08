@@ -4,11 +4,13 @@ using MedMateAI.Application.DTOs.DepartmentConsultationQuestions.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Enums;
 using MedMateAI.Helpers;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
 
 [ApiController]
+[Authorize(Roles = "Admin")]
 [Route("api/department-consultation-questions")]
 public sealed class DepartmentConsultationQuestionsController : ControllerBase
 {

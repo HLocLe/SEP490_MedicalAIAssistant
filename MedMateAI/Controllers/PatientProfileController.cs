@@ -8,11 +8,12 @@ using Microsoft.AspNetCore.Mvc;
 namespace MedMateAI.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/patient-profiles")]
 
 public sealed class PatientProfileController : ControllerBase
 {
-    private const string PatientProfileNotFoundMessage = "Patient profile not found.";
+    private const string PatientProfileNotFoundMessage = "Không tìm thấy hồ sơ bệnh nhân.";
 
     private readonly IPatientProfileService _patientProfileService;
 
@@ -22,6 +23,7 @@ public sealed class PatientProfileController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = "Admin")]
    
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<PatientProfileResponse>>), StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] PaginationQuery query, CancellationToken cancellationToken)
@@ -50,7 +52,7 @@ public sealed class PatientProfileController : ControllerBase
             return BadRequest(new ApiResponse<PatientProfileResponse>
             {
                 Success = false,
-                Message = "Invalid user id.",
+                Message = "Id người dùng không hợp lệ.",
             });
         }
 
@@ -82,7 +84,7 @@ public sealed class PatientProfileController : ControllerBase
             return BadRequest(new ApiResponse<PatientProfileResponse>
             {
                 Success = false,
-                Message = "Invalid patient profile id.",
+                Message = "Id hồ sơ bệnh nhân không hợp lệ.",
             });
         }
 
@@ -115,7 +117,7 @@ public sealed class PatientProfileController : ControllerBase
             return BadRequest(new ApiResponse<PatientProfileResponse>
             {
                 Success = false,
-                Message = "Create patient profile failed.",
+                Message = "Tạo hồ sơ bệnh nhân thất bại.",
                 Errors = errors.ToList(),
             });
         }
@@ -123,7 +125,7 @@ public sealed class PatientProfileController : ControllerBase
         return Ok(new ApiResponse<PatientProfileResponse>
         {
             Success = true,
-            Message = "Patient profile created.",
+            Message = "Tạo hồ sơ bệnh nhân thành công.",
             Data = data,
         });
     }
@@ -139,7 +141,7 @@ public sealed class PatientProfileController : ControllerBase
             return BadRequest(new ApiResponse<PatientProfileResponse>
             {
                 Success = false,
-                Message = "Invalid patient profile id.",
+                Message = "Id hồ sơ bệnh nhân không hợp lệ.",
             });
         }
 
@@ -160,7 +162,7 @@ public sealed class PatientProfileController : ControllerBase
             return BadRequest(new ApiResponse<PatientProfileResponse>
             {
                 Success = false,
-                Message = "Update patient profile failed.",
+                Message = "Cập nhật hồ sơ bệnh nhân thất bại.",
                 Errors = errors.ToList(),
             });
         }
@@ -168,7 +170,7 @@ public sealed class PatientProfileController : ControllerBase
         return Ok(new ApiResponse<PatientProfileResponse>
         {
             Success = true,
-            Message = "Patient profile updated.",
+            Message = "Cập nhật hồ sơ bệnh nhân thành công.",
             Data = data,
         });
     }
@@ -184,7 +186,7 @@ public sealed class PatientProfileController : ControllerBase
             return BadRequest(new ApiResponse
             {
                 Success = false,
-                Message = "Invalid patient profile id.",
+                Message = "Id hồ sơ bệnh nhân không hợp lệ.",
             });
         }
 
@@ -205,7 +207,7 @@ public sealed class PatientProfileController : ControllerBase
             return BadRequest(new ApiResponse
             {
                 Success = false,
-                Message = "Delete patient profile failed.",
+                Message = "Xóa hồ sơ bệnh nhân thất bại.",
                 Errors = errors.ToList(),
             });
         }
@@ -213,7 +215,7 @@ public sealed class PatientProfileController : ControllerBase
         return Ok(new ApiResponse
         {
             Success = true,
-            Message = "Patient profile deleted (soft).",
+            Message = "Xóa hồ sơ bệnh nhân thành công.",
         });
     }
 
