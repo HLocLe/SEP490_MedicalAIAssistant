@@ -179,31 +179,21 @@ public sealed partial class ConsultationSessionService
             && !string.IsNullOrWhiteSpace(user.PhoneNumber)
             && session.AppointmentTime.HasValue)
         {
-            var smsContent = ConsultationReminderSmsBuilder.Build(
-                user.DisplayName ?? user.UserName ?? "Ban",
-                user.DateOfBirth,
-                user.PhoneNumber!,
-                department?.DepartmentName ?? string.Empty,
-                facilityName ?? "Chua cap nhat",
-                session.AppointmentTime);
-
             // Remind 1 hour before appointment; if already within 1 hour, send immediately.
             var remindAtUtc = session.AppointmentTime.Value.ToUniversalTime().AddHours(-1);
-            DateTime? scheduledAt = remindAtUtc > DateTime.UtcNow ? remindAtUtc : null;
-
-            var sent = await _smsSender.SendAsync(
-                user.PhoneNumber!,
-                smsContent,
-                scheduledAt,
-                cancellationToken);
-
-            if (sent)
+            if (remindAtUtc > DateTime.UtcNow)
             {
-                session.ReminderSmsSentAt = DateTime.UtcNow;
-                session.UpdatedAt = DateTime.UtcNow;
-                _consultationSessions.Update(session);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _jobScheduler.ScheduleReminderSms(session.Id, remindAtUtc);
             }
+            else
+            {
+                _jobScheduler.EnqueueReminderSms(session.Id);
+            }
+
+            session.ReminderSmsSentAt = DateTime.UtcNow;
+            session.UpdatedAt = DateTime.UtcNow;
+            _consultationSessions.Update(session);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
         return new ConsultationSummaryResponse
@@ -263,5 +253,69 @@ public sealed partial class ConsultationSessionService
             .OrderByDescending(item => item.IsMandatory)
             .ThenBy(item => item.Content)
             .ToList();
+    }
+
+    public async Task ProcessSendReminderSmsAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (sessionId == Guid.Empty)
+        {
+            return;
+        }
+
+        var session = await _consultationSessions.FirstOrDefaultAsync(
+            x => !x.IsDeleted && x.Id == sessionId,
+            cancellationToken: cancellationToken);
+
+        if (session is null
+            || !session.IsReminderEnabled
+            || !session.AppointmentTime.HasValue
+            || DateTime.UtcNow >= session.AppointmentTime.Value.ToUniversalTime())
+        {
+            return;
+        }
+
+        var user = await _userService.GetUserByIdAsync(session.UserId, cancellationToken);
+        if (user is null || string.IsNullOrWhiteSpace(user.PhoneNumber))
+        {
+            return;
+        }
+
+        var department = await _medicalDepartmentService.GetMedicalDepartmentByIdAsync(
+            session.DepartmentId,
+            cancellationToken);
+
+        string? facilityName = null;
+        if (session.FacilityId.HasValue)
+        {
+            var facility = await _medicalFacilityService.GetMedicalFacilityByIdAsync(
+                session.FacilityId.Value,
+                cancellationToken);
+            facilityName = facility?.FacilityName?.Trim();
+        }
+
+        var smsContent = ConsultationReminderSmsBuilder.Build(
+            user.DisplayName ?? user.UserName ?? "Ban",
+            user.DateOfBirth,
+            user.PhoneNumber,
+            department?.DepartmentName ?? string.Empty,
+            facilityName ?? "Chua cap nhat",
+            session.AppointmentTime);
+
+        var sent = await _smsSender.SendAsync(
+            user.PhoneNumber,
+            smsContent,
+            cancellationToken);
+
+        if (!sent)
+        {
+            return;
+        }
+
+        session.ReminderSmsSentAt = DateTime.UtcNow;
+        session.UpdatedAt = DateTime.UtcNow;
+        _consultationSessions.Update(session);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 }

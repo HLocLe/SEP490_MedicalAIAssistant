@@ -376,9 +376,7 @@ public sealed class PatientProfileService : IPatientProfileService
         caller.Current is not null
         && (caller.IsAdmin || caller.Current.Id == resourceUserId);
 
-    /// <summary>
-    /// GetUserByIdAsync returns null for soft-deleted accounts.
-    /// </summary>
+    
     private async Task<bool> IsOwnerAccountDeletedAsync(
         Guid userId,
         CancellationToken cancellationToken)

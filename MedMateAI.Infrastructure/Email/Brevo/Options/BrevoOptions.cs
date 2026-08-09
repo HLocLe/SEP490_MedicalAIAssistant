@@ -12,7 +12,7 @@ public sealed class BrevoOptions
 
     public string ApiUrl { get; set; } = "https://api.brevo.com/v3/smtp/email";
 
-    public string SmsApiUrl { get; set; } = "https://api.brevo.com/v3/transactionalSMS/sms";
+    public string SmsApiUrl { get; set; } = "https://api.brevo.com/v3/transactionalSMS/send";
 
     public string SmsSender { get; set; } = "MedMateAI";
 }

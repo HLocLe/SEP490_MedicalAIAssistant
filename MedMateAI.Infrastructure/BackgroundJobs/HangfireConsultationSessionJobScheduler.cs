@@ -9,4 +9,16 @@ public sealed class HangfireConsultationSessionJobScheduler : IConsultationSessi
     {
         BackgroundJob.Enqueue<ConsultationDoctorQuestionsJob>(job => job.ExecuteAsync(sessionId));
     }
+
+    public void EnqueueReminderSms(Guid sessionId)
+    {
+        BackgroundJob.Enqueue<ConsultationReminderSmsJob>(job => job.ExecuteAsync(sessionId));
+    }
+
+    public void ScheduleReminderSms(Guid sessionId, DateTime enqueueAtUtc)
+    {
+        BackgroundJob.Schedule<ConsultationReminderSmsJob>(
+            job => job.ExecuteAsync(sessionId),
+            enqueueAtUtc);
+    }
 }

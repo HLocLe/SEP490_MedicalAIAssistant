@@ -18,6 +18,10 @@ public interface IConsultationSessionService
         Guid sessionId,
         CancellationToken cancellationToken = default);
 
+    Task ProcessSendReminderSmsAsync(
+        Guid sessionId,
+        CancellationToken cancellationToken = default);
+
     Task<PagedResponse<ConsultationSessionSummaryResponse>> GetMyCompletedSessionsAsync(
         Guid userId,
         int pageNumber,
