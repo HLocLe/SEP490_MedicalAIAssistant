@@ -28,6 +28,11 @@ public interface IUserService
         UpdateUserRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<(bool Succeeded, IEnumerable<string> Errors)> UpdateCurrentUserPhoneAsync(
+        Guid userId,
+        string phoneNumber,
+        CancellationToken cancellationToken = default);
+
     Task<(bool Succeeded, IEnumerable<string> Errors)> SoftDeleteUserAsync(
         Guid userId,
         CancellationToken cancellationToken = default);

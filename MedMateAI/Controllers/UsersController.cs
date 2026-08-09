@@ -42,6 +42,45 @@ public sealed class UsersController : ControllerBase
         });
     }
 
+    [HttpPut("me/phone")]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> UpdateCurrentPhone(
+        [FromBody] UpdateCurrentUserPhoneRequest request,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return Unauthorized(new ApiResponse
+            {
+                Success = false,
+                Message = "Unauthorized",
+            });
+        }
+
+        var (ok, errors) = await _userService.UpdateCurrentUserPhoneAsync(
+            currentUser.Id,
+            request.PhoneNumber,
+            cancellationToken);
+
+        if (!ok)
+        {
+            return BadRequest(new ApiResponse
+            {
+                Success = false,
+                Message = "Cập nhật số điện thoại thất bại.",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse
+        {
+            Success = true,
+            Message = "Cập nhật số điện thoại thành công.",
+        });
+    }
+
     
     [HttpGet]
     [Authorize(Roles = "Admin")]

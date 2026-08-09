@@ -33,6 +33,9 @@ public static class HangfireDependencyInjection
         services.AddScoped<LabTestOcrJob>();
         services.AddSingleton<ILabTestJobScheduler, HangfireLabTestJobScheduler>();
 
+        services.AddScoped<ConsultationDoctorQuestionsJob>();
+        services.AddSingleton<IConsultationSessionJobScheduler, HangfireConsultationSessionJobScheduler>();
+
         return services;
     }
 }
