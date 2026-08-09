@@ -8,11 +8,21 @@ public sealed class ConsultationSession : BaseEntity
 
     public Guid DepartmentId { get; set; }
 
+    public Guid? FacilityId { get; set; }
+
+    public DateTime? AppointmentTime { get; set; }
+
     public string? UserSymptoms { get; set; }
 
     public ConsultationSessionStatus Status { get; set; } = ConsultationSessionStatus.Processing;
 
+    public bool IsReminderEnabled { get; set; }
+
+    public DateTime? ReminderSmsSentAt { get; set; }
+
     public MedicalDepartment Department { get; set; } = null!;
+
+    public MedicalFacility? Facility { get; set; }
 
     public ICollection<ConsultationQuestion> ConsultationQuestions { get; set; } = new List<ConsultationQuestion>();
 

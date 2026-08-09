@@ -38,6 +38,7 @@ public sealed class UnitOfWork : IUnitOfWork
     private IGenericRepository<LabTestResultDetail>? _labTestResultDetails;
     private IGenericRepository<LabTestOcrExtract>? _labTestOcrExtracts;
     private IGenericRepository<DepartmentConsultationQuestion>? _departmentConsultationQuestions;
+    private IGenericRepository<ChecklistItem>? _checklistItems;
     private IDbContextTransaction? _transaction;
 
     public UnitOfWork(ApplicationDbContext context)
@@ -131,6 +132,9 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public IGenericRepository<DepartmentConsultationQuestion> DepartmentConsultationQuestions =>
         _departmentConsultationQuestions ??= new GenericRepository<DepartmentConsultationQuestion>(_context);
+
+    public IGenericRepository<ChecklistItem> ChecklistItems =>
+        _checklistItems ??= new GenericRepository<ChecklistItem>(_context);
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

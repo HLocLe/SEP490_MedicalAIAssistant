@@ -213,6 +213,34 @@ public sealed class UserService : IUserService
             : (false, updateResult.Errors.Select(e => e.Description));
     }
 
+    public async Task<(bool Succeeded, IEnumerable<string> Errors)> UpdateCurrentUserPhoneAsync(
+        Guid userId,
+        string phoneNumber,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return (false, new[] { "Invalid user id." });
+        }
+
+        var normalizedPhone = phoneNumber?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedPhone))
+        {
+            return (false, new[] { "Số điện thoại là bắt buộc." });
+        }
+
+        var digitsOnly = new string(normalizedPhone.Where(char.IsDigit).ToArray());
+        if (digitsOnly.Length < 9 || digitsOnly.Length > 15)
+        {
+            return (false, new[] { "Số điện thoại không hợp lệ." });
+        }
+
+        return await UpdateUserAsync(
+            userId,
+            new UpdateUserRequest { PhoneNumber = normalizedPhone },
+            cancellationToken);
+    }
+
     public async Task<(bool Succeeded, IEnumerable<string> Errors)> SoftDeleteUserAsync(
         Guid userId,
         CancellationToken cancellationToken = default)

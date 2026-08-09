@@ -2,9 +2,9 @@ using System.Text.Json;
 
 using MedMateAI.Application.DTOs.Common;
 
-using MedMateAI.Application.DTOs.ConsultationSessions.Responses;
+using MedMateAI.Application.DTOs.ConsultationSessions.Requests;
 
-using MedMateAI.Application.DTOs.PatientProfiles.Responses;
+using MedMateAI.Application.DTOs.ConsultationSessions.Responses;
 
 using MedMateAI.Application.DTOs.WebChatbot.Requests;
 
@@ -26,10 +26,9 @@ namespace MedMateAI.Application.Service;
 
 
 
-public sealed class ConsultationSessionService : IConsultationSessionService
+public sealed partial class ConsultationSessionService : IConsultationSessionService
 
 {
-
     private const string DoctorQuestionsTaskType = "ConsultationDoctorQuestions";
 
 
@@ -46,11 +45,11 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
     private readonly IMedicalDepartmentService _medicalDepartmentService;
 
+    private readonly IMedicalFacilityService _medicalFacilityService;
+
     private readonly IAIConfigService _aiConfigService;
 
     private readonly IAIChatProvider _aiChatProvider;
-
-    private readonly IPatientProfileService _patientProfileService;
 
     private readonly IGenericRepository<ConsultationSession> _consultationSessions;
 
@@ -58,39 +57,63 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
     private readonly IUnitOfWork _unitOfWork;
 
+    private readonly IUserService _userService;
+
+    private readonly IChecklistItemService _checklistItemService;
+
+    private readonly ISmsSender _smsSender;
+
+    private readonly IConsultationSessionJobScheduler _jobScheduler;
+
 
 
     public ConsultationSessionService(
 
         IMedicalDepartmentService medicalDepartmentService,
 
+        IMedicalFacilityService medicalFacilityService,
+
         IAIConfigService aiConfigService,
 
         IAIChatProvider aiChatProvider,
-
-        IPatientProfileService patientProfileService,
 
         IGenericRepository<ConsultationSession> consultationSessions,
 
         IGenericRepository<ConsultationQuestion> consultationQuestions,
 
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+
+        IUserService userService,
+
+        IChecklistItemService checklistItemService,
+
+        ISmsSender smsSender,
+
+        IConsultationSessionJobScheduler jobScheduler)
 
     {
 
         _medicalDepartmentService = medicalDepartmentService;
 
+        _medicalFacilityService = medicalFacilityService;
+
         _aiConfigService = aiConfigService;
 
         _aiChatProvider = aiChatProvider;
-
-        _patientProfileService = patientProfileService;
 
         _consultationSessions = consultationSessions;
 
         _consultationQuestions = consultationQuestions;
 
         _unitOfWork = unitOfWork;
+
+        _userService = userService;
+
+        _checklistItemService = checklistItemService;
+
+        _smsSender = smsSender;
+
+        _jobScheduler = jobScheduler;
 
     }
 
@@ -103,6 +126,10 @@ public sealed class ConsultationSessionService : IConsultationSessionService
         Guid departmentId,
 
         string symptoms,
+
+        Guid? facilityId = null,
+
+        DateTime? appointmentTime = null,
 
         CancellationToken cancellationToken = default)
 
@@ -162,6 +189,54 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
 
 
+        Guid? normalizedFacilityId = null;
+
+        if (facilityId.HasValue && facilityId.Value != Guid.Empty)
+
+        {
+
+            var facility = await _medicalFacilityService.GetMedicalFacilityByIdAsync(facilityId.Value, cancellationToken);
+
+            if (facility is null)
+
+            {
+
+                return (false, new[] { "Facility not found." }, null);
+
+            }
+
+
+
+            normalizedFacilityId = facilityId.Value;
+
+        }
+
+
+
+        DateTime? normalizedAppointmentTime = null;
+
+        if (appointmentTime.HasValue)
+
+        {
+
+            var value = appointmentTime.Value;
+
+            normalizedAppointmentTime = value.Kind switch
+
+            {
+
+                DateTimeKind.Utc => value,
+
+                DateTimeKind.Local => value.ToUniversalTime(),
+
+                _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+
+            };
+
+        }
+
+
+
         var aiConfig = await _aiConfigService.GetActiveAIConfigByTaskTypeAsync(
 
             DoctorQuestionsTaskType,
@@ -175,6 +250,28 @@ public sealed class ConsultationSessionService : IConsultationSessionService
         {
 
             return (false, new[] { "AI is not config." }, null);
+
+        }
+
+
+
+        var hasDepartmentQuestions = await _unitOfWork.DepartmentConsultationQuestions.FirstOrDefaultAsync(
+
+            question => !question.IsDeleted
+
+                && question.IsActive
+
+                && question.DepartmentId == departmentId,
+
+            cancellationToken: cancellationToken);
+
+
+
+        if (hasDepartmentQuestions is null)
+
+        {
+
+            return (false, new[] { "Không có câu hỏi tư vấn theo khoa để gửi cho AI." }, null);
 
         }
 
@@ -194,6 +291,10 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
             DepartmentId = departmentId,
 
+            FacilityId = normalizedFacilityId,
+
+            AppointmentTime = normalizedAppointmentTime,
+
             UserSymptoms = trimmedSymptoms,
 
             Status = ConsultationSessionStatus.Processing,
@@ -210,17 +311,155 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
 
 
-        var (_, patientProfile) = await _patientProfileService.GetPatientProfileByUserIdAsync(
+        _jobScheduler.EnqueueGenerateDoctorQuestions(session.Id);
 
-            userId,
+
+
+        return (true, Array.Empty<string>(), new GenerateConsultationQuestionsResponse
+
+        {
+
+            SessionId = session.Id,
+
+            DepartmentId = departmentId,
+
+            DepartmentName = departmentName,
+
+            FacilityId = session.FacilityId,
+
+            AppointmentTime = session.AppointmentTime,
+
+            Symptoms = trimmedSymptoms,
+
+            Status = session.Status,
+
+            Questions = [],
+
+            Model = null,
+
+        });
+
+    }
+
+
+
+    public async Task ProcessGenerateDoctorQuestionsAsync(
+
+        Guid sessionId,
+
+        CancellationToken cancellationToken = default)
+
+    {
+
+        if (sessionId == Guid.Empty)
+
+        {
+
+            return;
+
+        }
+
+
+
+        var session = await _consultationSessions.FirstOrDefaultAsync(
+
+            x => !x.IsDeleted && x.Id == sessionId,
+
+            cancellationToken: cancellationToken);
+
+
+
+        if (session is null || session.Status != ConsultationSessionStatus.Processing)
+
+        {
+
+            return;
+
+        }
+
+
+
+        var department = await _medicalDepartmentService.GetMedicalDepartmentByIdAsync(
+
+            session.DepartmentId,
 
             cancellationToken);
 
-        var chronicDiseases = patientProfile?.ChronicDiseases ?? Array.Empty<PatientChronicDiseaseResponse>();
+        var departmentName = department?.DepartmentName?.Trim();
+
+        if (string.IsNullOrWhiteSpace(departmentName))
+
+        {
+
+            await MarkSessionFailedAsync(session, cancellationToken);
+
+            return;
+
+        }
 
 
 
-        var userPrompt = BuildUserPrompt(departmentName, trimmedSymptoms, chronicDiseases);
+        var aiConfig = await _aiConfigService.GetActiveAIConfigByTaskTypeAsync(
+
+            DoctorQuestionsTaskType,
+
+            cancellationToken);
+
+
+
+        if (aiConfig is null || string.IsNullOrWhiteSpace(aiConfig.SystemPrompt))
+
+        {
+
+            await MarkSessionFailedAsync(session, cancellationToken);
+
+            return;
+
+        }
+
+
+
+        var departmentQuestions = await _unitOfWork.DepartmentConsultationQuestions.GetAllAsync(
+
+            question => !question.IsDeleted
+
+                && question.IsActive
+
+                && question.DepartmentId == session.DepartmentId,
+
+            query => query
+
+                .OrderBy(question => question.Category)
+
+                .ThenBy(question => question.SortOrder)
+
+                .ThenBy(question => question.QuestionText),
+
+            cancellationToken: cancellationToken);
+
+
+
+        if (departmentQuestions.Count == 0)
+
+        {
+
+            await MarkSessionFailedAsync(session, cancellationToken);
+
+            return;
+
+        }
+
+
+
+        var trimmedSymptoms = session.UserSymptoms?.Trim() ?? string.Empty;
+
+        var userPrompt = BuildUserPrompt(
+
+            departmentName,
+
+            trimmedSymptoms,
+
+            departmentQuestions);
 
 
 
@@ -252,13 +491,13 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
         }
 
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
 
         {
 
             await MarkSessionFailedAsync(session, cancellationToken);
 
-            return (false, new[] { ex.Message }, null);
+            return;
 
         }
 
@@ -270,11 +509,13 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
             await MarkSessionFailedAsync(session, cancellationToken);
 
-            return (false, new[] { "Failed to parse doctor questions from AI response." }, null);
+            return;
 
         }
 
 
+
+        var utcNow = DateTime.UtcNow;
 
         var priority = 0;
 
@@ -311,28 +552,6 @@ public sealed class ConsultationSessionService : IConsultationSessionService
         _consultationSessions.Update(session);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-
-
-        return (true, Array.Empty<string>(), new GenerateConsultationQuestionsResponse
-
-        {
-
-            SessionId = session.Id,
-
-            DepartmentId = departmentId,
-
-            DepartmentName = departmentName,
-
-            Symptoms = trimmedSymptoms,
-
-            Status = session.Status,
-
-            Questions = questions,
-
-            Model = aiResult.Model,
-
-        });
 
     }
 
@@ -392,6 +611,30 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
 
 
+        var facilityNames = new Dictionary<Guid, string>();
+
+        foreach (var facilityIdValue in paged.Items
+
+            .Where(session => session.FacilityId.HasValue)
+
+            .Select(session => session.FacilityId!.Value)
+
+            .Distinct())
+
+        {
+
+            var facility = await _medicalFacilityService.GetMedicalFacilityByIdAsync(
+
+                facilityIdValue,
+
+                cancellationToken);
+
+            facilityNames[facilityIdValue] = facility?.FacilityName?.Trim() ?? string.Empty;
+
+        }
+
+
+
         return new PagedResponse<ConsultationSessionSummaryResponse>
 
         {
@@ -415,6 +658,16 @@ public sealed class ConsultationSessionService : IConsultationSessionService
                     DepartmentId = session.DepartmentId,
 
                     DepartmentName = departmentNames.GetValueOrDefault(session.DepartmentId),
+
+                    FacilityId = session.FacilityId,
+
+                    FacilityName = session.FacilityId.HasValue
+
+                        ? facilityNames.GetValueOrDefault(session.FacilityId.Value)
+
+                        : null,
+
+                    AppointmentTime = session.AppointmentTime,
 
                     Symptoms = session.UserSymptoms?.Trim() ?? string.Empty,
 
@@ -478,6 +731,24 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
 
 
+        string? facilityName = null;
+
+        if (session.FacilityId.HasValue)
+
+        {
+
+            var facility = await _medicalFacilityService.GetMedicalFacilityByIdAsync(
+
+                session.FacilityId.Value,
+
+                cancellationToken);
+
+            facilityName = facility?.FacilityName?.Trim();
+
+        }
+
+
+
         var questionsPaged = await _consultationQuestions.GetPagedAsync(
 
             1,
@@ -501,6 +772,12 @@ public sealed class ConsultationSessionService : IConsultationSessionService
             DepartmentId = session.DepartmentId,
 
             DepartmentName = department?.DepartmentName?.Trim() ?? string.Empty,
+
+            FacilityId = session.FacilityId,
+
+            FacilityName = facilityName,
+
+            AppointmentTime = session.AppointmentTime,
 
             Symptoms = session.UserSymptoms?.Trim() ?? string.Empty,
 
@@ -538,7 +815,7 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
         string symptoms,
 
-        IReadOnlyList<PatientChronicDiseaseResponse> chronicDiseases)
+        IReadOnlyList<DepartmentConsultationQuestion> departmentQuestions)
 
     {
 
@@ -554,77 +831,33 @@ public sealed class ConsultationSessionService : IConsultationSessionService
 
 
 
-        if (chronicDiseases.Count > 0)
+        lines.Add("Department consultation questions (select the 6 most relevant for the patient to ask the doctor):");
+
+        var index = 1;
+
+        foreach (var question in departmentQuestions)
 
         {
 
-            lines.Add("Chronic diseases:");
-
-            foreach (var disease in chronicDiseases)
+            if (string.IsNullOrWhiteSpace(question.QuestionText))
 
             {
 
-                if (string.IsNullOrWhiteSpace(disease.DiseaseName))
-
-                {
-
-                    continue;
-
-                }
-
-
-
-                lines.Add($"- {FormatChronicDiseaseLine(disease)}");
+                continue;
 
             }
+
+
+
+            lines.Add($"{index}. [{question.Category}] {question.QuestionText.Trim()}");
+
+            index++;
 
         }
 
 
 
         return string.Join('\n', lines);
-
-    }
-
-
-
-    private static string FormatChronicDiseaseLine(PatientChronicDiseaseResponse disease)
-
-    {
-
-        var name = disease.DiseaseName.Trim();
-
-        if (!disease.From.HasValue && !disease.To.HasValue)
-
-        {
-
-            return name;
-
-        }
-
-
-
-        if (disease.From.HasValue && disease.To.HasValue)
-
-        {
-
-            return $"{name} (from {disease.From.Value:yyyy-MM-dd} to {disease.To.Value:yyyy-MM-dd})";
-
-        }
-
-
-
-        if (disease.From.HasValue)
-
-        {
-
-            return $"{name} (from {disease.From.Value:yyyy-MM-dd})";
-
-        }
-
-
-
-        return $"{name} (to {disease.To!.Value:yyyy-MM-dd})";
 
     }
 

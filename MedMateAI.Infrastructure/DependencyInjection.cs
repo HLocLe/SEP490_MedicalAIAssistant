@@ -66,6 +66,7 @@ public static class DependencyInjection
         services.AddScoped<ILabTestOcrStructurer, LabTestOcrStructurer>();
         services.AddScoped<IClinicalQuestionService, ClinicalQuestionService>();
         services.AddScoped<IDepartmentConsultationQuestionService, DepartmentConsultationQuestionService>();
+        services.AddScoped<IChecklistItemService, ChecklistItemService>();
         services.AddScoped<IMedicalFacilityService, MedicalFacilityService>();
         services.AddScoped<IFacilityDepartmentService, FacilityDepartmentService>();
         services.AddScoped<IDoctorService, DoctorService>();
@@ -191,9 +192,15 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(30);
         });
 
+        services.AddHttpClient<BrevoSmsSender>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+
         //
         services.AddScoped<IEmailSender>(sp => sp.GetRequiredService<BrevoEmailSender>());
         services.AddScoped<IEmailOtpSender>(sp => sp.GetRequiredService<BrevoEmailSender>());
+        services.AddScoped<ISmsSender>(sp => sp.GetRequiredService<BrevoSmsSender>());
         services.AddHttpClient<IAIChatProvider, OpenRouterChatProvider>();
 
         //
@@ -257,7 +264,7 @@ public static class DependencyInjection
            "JWT secret must be at least 32 chars.")
          .ValidateOnStart();
         
-        services.AddAutoMapper(cfg => { }, typeof(UserMappingProfile), typeof(PatientProfileMappingProfile), typeof(IcdChapterMappingProfile), typeof(ClinicalQuestionMappingProfile), typeof(MedicalFacilityMappingProfile), typeof(SymptomAnalysisMappingProfile), typeof(LabIndicatorMappingProfile), typeof(DepartmentConsultationQuestionMappingProfile));
+        services.AddAutoMapper(cfg => { }, typeof(UserMappingProfile), typeof(PatientProfileMappingProfile), typeof(IcdChapterMappingProfile), typeof(ClinicalQuestionMappingProfile), typeof(MedicalFacilityMappingProfile), typeof(SymptomAnalysisMappingProfile), typeof(LabIndicatorMappingProfile), typeof(DepartmentConsultationQuestionMappingProfile), typeof(ChecklistItemMappingProfile));
 
         services.AddAuthentication(options =>
             {

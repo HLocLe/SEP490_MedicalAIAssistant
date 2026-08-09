@@ -28,5 +28,9 @@ public sealed class MedicalFacility : BaseEntity
 
     public ICollection<FeedbackReview> FeedbackReviews { get; set; } = new List<FeedbackReview>();
 
+    public ICollection<ChecklistItem> ChecklistItems { get; set; } = new List<ChecklistItem>();
+
+    public ICollection<ConsultationSession> ConsultationSessions { get; set; } = new List<ConsultationSession>();
+
     public ICollection<TreatmentJourney> TreatmentJourneys { get; set; } = new List<TreatmentJourney>();
 }

@@ -29,6 +29,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<DepartmentConsultationQuestion> DepartmentConsultationQuestions => Set<DepartmentConsultationQuestion>();
 
+    public DbSet<ChecklistItem> ChecklistItems => Set<ChecklistItem>();
+
     public DbSet<MedicalFacility> MedicalFacilities => Set<MedicalFacility>();
 
     public DbSet<FacilityDepartment> FacilityDepartments => Set<FacilityDepartment>();

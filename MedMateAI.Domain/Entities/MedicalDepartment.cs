@@ -19,5 +19,7 @@ public sealed class MedicalDepartment : BaseEntity
     public ICollection<DepartmentConsultationQuestion> DepartmentConsultationQuestions { get; set; } =
         new List<DepartmentConsultationQuestion>();
 
+    public ICollection<ChecklistItem> ChecklistItems { get; set; } = new List<ChecklistItem>();
+
     public ICollection<TreatmentJourney> TreatmentJourneys { get; set; } = new List<TreatmentJourney>();
 }

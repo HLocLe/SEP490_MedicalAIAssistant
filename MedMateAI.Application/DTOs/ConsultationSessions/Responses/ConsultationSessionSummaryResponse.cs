@@ -10,6 +10,12 @@ public sealed class ConsultationSessionSummaryResponse
 
     public string DepartmentName { get; set; } = string.Empty;
 
+    public Guid? FacilityId { get; set; }
+
+    public string? FacilityName { get; set; }
+
+    public DateTime? AppointmentTime { get; set; }
+
     public string Symptoms { get; set; } = string.Empty;
 
     public ConsultationSessionStatus Status { get; set; }

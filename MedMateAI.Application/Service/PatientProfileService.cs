@@ -14,6 +14,8 @@ public sealed class PatientProfileService : IPatientProfileService
 {
     private const int MaxChronicDiseaseItems = 100;
     private const string AdminRole = "Admin";
+    private const string DeletedUserAccountMessage =
+        "Tài khoản người dùng đã bị xóa. Không thể cập nhật hồ sơ.";
 
     private readonly IUserService _userService;
     private readonly IGenericRepository<PatientProfile> _patientProfiles;
@@ -169,6 +171,11 @@ public sealed class PatientProfileService : IPatientProfileService
        
         var ownerUserId = caller.Current.Id;
 
+        if (await IsOwnerAccountDeletedAsync(ownerUserId, cancellationToken))
+        {
+            return (false, new[] { DeletedUserAccountMessage }, null);
+        }
+
         var profileFieldErrors = ValidateHeightAndWeight(request.Height, request.Weight);
         if (profileFieldErrors.Count > 0)
         {
@@ -263,6 +270,11 @@ public sealed class PatientProfileService : IPatientProfileService
             return (false, true, new[] { "Không tìm thấy hồ sơ bệnh nhân." }, null);
         }
 
+        if (await IsOwnerAccountDeletedAsync(entity.UserId, cancellationToken))
+        {
+            return (false, false, new[] { DeletedUserAccountMessage }, null);
+        }
+
         if (request.BloodType is not null)
         {
             entity.BloodType = string.IsNullOrWhiteSpace(request.BloodType) ? null : request.BloodType.Trim();
@@ -329,6 +341,11 @@ public sealed class PatientProfileService : IPatientProfileService
             return (false, true, new[] { "Không tìm thấy hồ sơ bệnh nhân." });
         }
 
+        if (await IsOwnerAccountDeletedAsync(entity.UserId, cancellationToken))
+        {
+            return (false, false, new[] { DeletedUserAccountMessage });
+        }
+
         entity.IsDeleted = true;
         entity.DeletedAt = DateTime.UtcNow;
 
@@ -358,6 +375,17 @@ public sealed class PatientProfileService : IPatientProfileService
         (ApplicationUserResponse? Current, bool IsAdmin) caller) =>
         caller.Current is not null
         && (caller.IsAdmin || caller.Current.Id == resourceUserId);
+
+    /// <summary>
+    /// GetUserByIdAsync returns null for soft-deleted accounts.
+    /// </summary>
+    private async Task<bool> IsOwnerAccountDeletedAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var owner = await _userService.GetUserByIdAsync(userId, cancellationToken);
+        return owner is null;
+    }
 
     private PatientProfileResponse MapProfileResponse(
         PatientProfile profile,

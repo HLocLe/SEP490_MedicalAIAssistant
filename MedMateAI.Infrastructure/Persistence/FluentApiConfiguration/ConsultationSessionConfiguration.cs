@@ -18,11 +18,22 @@ public sealed class ConsultationSessionConfiguration : IEntityTypeConfiguration<
         builder.Property(x => x.UserSymptoms)
             .HasColumnType("text");
 
+        builder.Property(x => x.AppointmentTime)
+            .HasColumnType("timestamp with time zone");
+
         builder.Property(x => x.Status)
             .HasConversion<string>()
             .HasMaxLength(32)
             .IsRequired()
             .HasDefaultValue(ConsultationSessionStatus.Processing);
+
+        builder.Property(x => x.IsReminderEnabled)
+            .HasDefaultValue(false);
+
+        builder.Property(x => x.ReminderSmsSentAt)
+            .HasColumnType("timestamp with time zone");
+
+        builder.HasIndex(x => x.FacilityId);
 
         builder.HasOne<ApplicationUser>()
             .WithMany(x => x.ConsultationSessions)
@@ -33,6 +44,11 @@ public sealed class ConsultationSessionConfiguration : IEntityTypeConfiguration<
             .WithMany(x => x.ConsultationSessions)
             .HasForeignKey(x => x.DepartmentId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(x => x.Facility)
+            .WithMany(x => x.ConsultationSessions)
+            .HasForeignKey(x => x.FacilityId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasMany(x => x.ConsultationQuestions)
             .WithOne(x => x.ConsultationSession)

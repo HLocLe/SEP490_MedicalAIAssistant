@@ -139,6 +139,10 @@ public sealed class ConsultationSessionController : ControllerBase
 
             request.Symptoms,
 
+            request.FacilityId,
+
+            request.AppointmentTime,
+
             cancellationToken);
 
 
@@ -169,7 +173,7 @@ public sealed class ConsultationSessionController : ControllerBase
 
             Success = true,
 
-            Message = "OK",
+            Message = "Đã xếp hàng xử lý câu hỏi tư vấn.",
 
             Data = data,
 
@@ -321,6 +325,125 @@ public sealed class ConsultationSessionController : ControllerBase
 
         });
 
+    }
+
+    [Authorize]
+    [HttpPost("{sessionId:guid}/register-reminder")]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RegisterReminder(
+        Guid sessionId,
+        [FromBody] RegisterConsultationReminderRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return Unauthorized(new ApiResponse { Success = false, Message = "Unauthorized" });
+        }
+
+        var (ok, notFound, errors) = await _consultationSessionService.RegisterReminderAsync(
+            currentUser.Id,
+            sessionId,
+            request,
+            cancellationToken);
+
+        if (notFound)
+        {
+            return NotFound(new ApiResponse { Success = false, Message = "Consultation session not found." });
+        }
+
+        if (!ok)
+        {
+            return BadRequest(new ApiResponse
+            {
+                Success = false,
+                Message = "Đăng ký nhắc nhở thất bại.",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse { Success = true, Message = "Đăng ký nhắc nhở thành công." });
+    }
+
+    [Authorize]
+    [HttpGet("{sessionId:guid}/summary")]
+    [ProducesResponseType(typeof(ApiResponse<ConsultationSummaryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<ConsultationSummaryResponse>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetSummary(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return Unauthorized(new ApiResponse<ConsultationSummaryResponse> { Success = false, Message = "Unauthorized" });
+        }
+
+        var (notFound, data) = await _consultationSessionService.GetSummaryAsync(
+            currentUser.Id,
+            sessionId,
+            cancellationToken);
+
+        if (notFound || data is null)
+        {
+            return NotFound(new ApiResponse<ConsultationSummaryResponse>
+            {
+                Success = false,
+                Message = "Consultation session not found.",
+            });
+        }
+
+        return Ok(new ApiResponse<ConsultationSummaryResponse>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data,
+        });
+    }
+
+    [Authorize]
+    [HttpPost("{sessionId:guid}/complete")]
+    [ProducesResponseType(typeof(ApiResponse<ConsultationSummaryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<ConsultationSummaryResponse>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<ConsultationSummaryResponse>), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CompleteSummary(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return Unauthorized(new ApiResponse<ConsultationSummaryResponse> { Success = false, Message = "Unauthorized" });
+        }
+
+        var (ok, notFound, errors, data) = await _consultationSessionService.CompleteSummaryAsync(
+            currentUser.Id,
+            sessionId,
+            cancellationToken);
+
+        if (notFound || data is null)
+        {
+            return NotFound(new ApiResponse<ConsultationSummaryResponse>
+            {
+                Success = false,
+                Message = "Consultation session not found.",
+            });
+        }
+
+        if (!ok)
+        {
+            return BadRequest(new ApiResponse<ConsultationSummaryResponse>
+            {
+                Success = false,
+                Message = "Hoàn tất phiên tư vấn thất bại.",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse<ConsultationSummaryResponse>
+        {
+            Success = true,
+            Message = "Hoàn tất phiên tư vấn thành công.",
+            Data = data,
+        });
     }
 
 }
