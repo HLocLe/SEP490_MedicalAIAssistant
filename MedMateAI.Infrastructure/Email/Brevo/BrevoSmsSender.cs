@@ -17,6 +17,11 @@ public sealed class BrevoSmsSender : ISmsSender
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    private static readonly Regex NonDigitRegex = new(
+        @"\D",
+        RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
     private readonly HttpClient _httpClient;
     private readonly BrevoOptions _options;
     private readonly ILogger<BrevoSmsSender> _logger;
@@ -100,7 +105,7 @@ public sealed class BrevoSmsSender : ISmsSender
 
     internal static string FormatPhoneNumber(string phone)
     {
-        var cleaned = Regex.Replace(phone, @"\D", string.Empty);
+        var cleaned = NonDigitRegex.Replace(phone, string.Empty);
         if (cleaned.StartsWith("0", StringComparison.Ordinal))
         {
             return "84" + cleaned[1..];
