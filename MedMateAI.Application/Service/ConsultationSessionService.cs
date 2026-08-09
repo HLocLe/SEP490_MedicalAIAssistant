@@ -135,31 +135,13 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
 
     {
 
-        if (userId == Guid.Empty)
+        var inputError = ValidateGenerateDoctorQuestionsInput(userId, departmentId, symptoms);
+
+        if (inputError is not null)
 
         {
 
-            return (false, new[] { "User id is required." }, null);
-
-        }
-
-
-
-        if (departmentId == Guid.Empty)
-
-        {
-
-            return (false, new[] { "Department id is required." }, null);
-
-        }
-
-
-
-        if (string.IsNullOrWhiteSpace(symptoms))
-
-        {
-
-            return (false, new[] { "Symptoms are required." }, null);
+            return (false, new[] { inputError }, null);
 
         }
 
@@ -167,71 +149,29 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
 
         var department = await _medicalDepartmentService.GetMedicalDepartmentByIdAsync(departmentId, cancellationToken);
 
-        if (department is null)
+        var departmentName = department?.DepartmentName?.Trim();
+
+        if (department is null || string.IsNullOrWhiteSpace(departmentName))
 
         {
 
-            return (false, new[] { "Department not found." }, null);
+            return (false, new[] { department is null ? "Department not found." : "Department name is not available." }, null);
 
         }
 
 
 
-        var departmentName = department.DepartmentName?.Trim();
+        var (facilityOk, facilityError, normalizedFacilityId) = await TryNormalizeFacilityIdAsync(
 
-        if (string.IsNullOrWhiteSpace(departmentName))
+            facilityId,
 
-        {
+            cancellationToken);
 
-            return (false, new[] { "Department name is not available." }, null);
-
-        }
-
-
-
-        Guid? normalizedFacilityId = null;
-
-        if (facilityId.HasValue && facilityId.Value != Guid.Empty)
+        if (!facilityOk)
 
         {
 
-            var facility = await _medicalFacilityService.GetMedicalFacilityByIdAsync(facilityId.Value, cancellationToken);
-
-            if (facility is null)
-
-            {
-
-                return (false, new[] { "Facility not found." }, null);
-
-            }
-
-
-
-            normalizedFacilityId = facilityId.Value;
-
-        }
-
-
-
-        DateTime? normalizedAppointmentTime = null;
-
-        if (appointmentTime.HasValue)
-
-        {
-
-            var value = appointmentTime.Value;
-
-            normalizedAppointmentTime = value.Kind switch
-
-            {
-
-                DateTimeKind.Utc => value,
-
-                DateTimeKind.Local => value.ToUniversalTime(),
-
-                _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
-
-            };
+            return (false, new[] { facilityError! }, null);
 
         }
 
@@ -293,7 +233,7 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
 
             FacilityId = normalizedFacilityId,
 
-            AppointmentTime = normalizedAppointmentTime,
+            AppointmentTime = NormalizeAppointmentTimeUtc(appointmentTime),
 
             UserSymptoms = trimmedSymptoms,
 
@@ -338,6 +278,120 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
             Model = null,
 
         });
+
+    }
+
+
+
+    private static string? ValidateGenerateDoctorQuestionsInput(
+
+        Guid userId,
+
+        Guid departmentId,
+
+        string symptoms)
+
+    {
+
+        if (userId == Guid.Empty)
+
+        {
+
+            return "User id is required.";
+
+        }
+
+
+
+        if (departmentId == Guid.Empty)
+
+        {
+
+            return "Department id is required.";
+
+        }
+
+
+
+        if (string.IsNullOrWhiteSpace(symptoms))
+
+        {
+
+            return "Symptoms are required.";
+
+        }
+
+
+
+        return null;
+
+    }
+
+
+
+    private async Task<(bool Succeeded, string? Error, Guid? FacilityId)> TryNormalizeFacilityIdAsync(
+
+        Guid? facilityId,
+
+        CancellationToken cancellationToken)
+
+    {
+
+        if (!facilityId.HasValue || facilityId.Value == Guid.Empty)
+
+        {
+
+            return (true, null, null);
+
+        }
+
+
+
+        var facility = await _medicalFacilityService.GetMedicalFacilityByIdAsync(facilityId.Value, cancellationToken);
+
+        if (facility is null)
+
+        {
+
+            return (false, "Facility not found.", null);
+
+        }
+
+
+
+        return (true, null, facilityId.Value);
+
+    }
+
+
+
+    private static DateTime? NormalizeAppointmentTimeUtc(DateTime? appointmentTime)
+
+    {
+
+        if (!appointmentTime.HasValue)
+
+        {
+
+            return null;
+
+        }
+
+
+
+        var value = appointmentTime.Value;
+
+        return value.Kind switch
+
+        {
+
+            DateTimeKind.Utc => value,
+
+            DateTimeKind.Local => value.ToUniversalTime(),
+
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+
+        };
 
     }
 
