@@ -14,9 +14,13 @@ public static class ConsultationReminderSmsBuilder
         DateTime? appointmentTime)
     {
         var dob = dateOfBirth?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) ?? "Chua cap nhat";
-        var appointment = appointmentTime.HasValue
-            ? appointmentTime.Value.ToString("HH:mm dd/MM/yyyy", CultureInfo.InvariantCulture)
-            : "Chua cap nhat";
+        var appointment = "Chua cap nhat";
+        if (appointmentTime.HasValue)
+        {
+            // Vietnam is fixed UTC+7 (no DST). Format SMS in local VN time.
+            var vietnamTime = appointmentTime.Value.ToUniversalTime().AddHours(7);
+            appointment = vietnamTime.ToString("HH:mm dd/MM/yyyy", CultureInfo.InvariantCulture);
+        }
 
         var rawContent =
             $"[MedMateAI] Chao {displayName.Trim()} ({dob}), SDT {phoneNumber.Trim()}. " +

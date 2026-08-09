@@ -176,7 +176,8 @@ public sealed partial class ConsultationSessionService
         if (sendReminderSms
             && session.IsReminderEnabled
             && !session.ReminderSmsSentAt.HasValue
-            && !string.IsNullOrWhiteSpace(user.PhoneNumber))
+            && !string.IsNullOrWhiteSpace(user.PhoneNumber)
+            && session.AppointmentTime.HasValue)
         {
             var smsContent = ConsultationReminderSmsBuilder.Build(
                 user.DisplayName ?? user.UserName ?? "Ban",
@@ -186,7 +187,16 @@ public sealed partial class ConsultationSessionService
                 facilityName ?? "Chua cap nhat",
                 session.AppointmentTime);
 
-            var sent = await _smsSender.SendAsync(user.PhoneNumber!, smsContent, cancellationToken: cancellationToken);
+            // Remind 1 hour before appointment; if already within 1 hour, send immediately.
+            var remindAtUtc = session.AppointmentTime.Value.ToUniversalTime().AddHours(-1);
+            DateTime? scheduledAt = remindAtUtc > DateTime.UtcNow ? remindAtUtc : null;
+
+            var sent = await _smsSender.SendAsync(
+                user.PhoneNumber!,
+                smsContent,
+                scheduledAt,
+                cancellationToken);
+
             if (sent)
             {
                 session.ReminderSmsSentAt = DateTime.UtcNow;
