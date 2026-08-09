@@ -252,9 +252,13 @@ public sealed class DepartmentConsultationQuestionService : IDepartmentConsultat
             }
         }
 
-        if (request.SortOrder.HasValue)
+        if (request.SortOrder.HasValue && request.SortOrder.Value > 0)
         {
             entity.SortOrder = request.SortOrder.Value;
+        }
+        else
+        {
+            errors.Add("SortOrder phải lớn hơn 0");
         }
 
         if (request.IsActive.HasValue)
@@ -332,6 +336,11 @@ public sealed class DepartmentConsultationQuestionService : IDepartmentConsultat
         if (!Enum.IsDefined(typeof(ConsultationQuestionCategory), request.Category))
         {
             errors.Add("Category không hợp lệ");
+        }
+
+        if (request.SortOrder == 0)
+        {
+            errors.Add("SortOrder phải lớn hơn 0");
         }
 
         if (string.IsNullOrWhiteSpace(request.QuestionText))

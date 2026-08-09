@@ -39,7 +39,6 @@ public sealed class BrevoSmsSender : ISmsSender
     public async Task<bool> SendAsync(
         string phoneNumber,
         string messageContent,
-        DateTime? scheduledAt = null,
         CancellationToken cancellationToken = default)
     {
         ValidateOptions();
@@ -61,7 +60,6 @@ public sealed class BrevoSmsSender : ISmsSender
             sender = _options.SmsSender.Trim(),
             recipient = recipientPhone,
             content = messageContent.Trim(),
-            scheduledAt = scheduledAt?.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
         };
 
         using var request = new HttpRequestMessage(HttpMethod.Post, _options.SmsApiUrl.Trim());
