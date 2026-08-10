@@ -1,35 +1,28 @@
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Text;
 using System.Text.RegularExpressions;
 using MedMateAI.Application.IService;
-using MedMateAI.Infrastructure.Email.Brevo.Options;
+using MedMateAI.Infrastructure.SMS.Twilio.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace MedMateAI.Infrastructure.Email.Brevo;
+namespace MedMateAI.Infrastructure.SMS.Twilio;
 
-public sealed class BrevoSmsSender : ISmsSender
+public sealed class TwilioSmsSender : ISmsSender
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     private static readonly Regex NonDigitRegex = new(
         @"\D",
         RegexOptions.Compiled,
         TimeSpan.FromMilliseconds(100));
 
     private readonly HttpClient _httpClient;
-    private readonly BrevoOptions _options;
-    private readonly ILogger<BrevoSmsSender> _logger;
+    private readonly TwilioOptions _options;
+    private readonly ILogger<TwilioSmsSender> _logger;
 
-    public BrevoSmsSender(
+    public TwilioSmsSender(
         HttpClient httpClient,
-        IOptions<BrevoOptions> options,
-        ILogger<BrevoSmsSender> logger)
+        IOptions<TwilioOptions> options,
+        ILogger<TwilioSmsSender> logger)
     {
         _httpClient = httpClient;
         _options = options.Value;
@@ -54,18 +47,17 @@ public sealed class BrevoSmsSender : ISmsSender
         }
 
         var recipientPhone = FormatPhoneNumber(phoneNumber);
-        var payload = new
-        {
-            type = "transactional",
-            sender = _options.SmsSender.Trim(),
-            recipient = recipientPhone,
-            content = messageContent.Trim(),
-        };
+        var url = $"https://api.twilio.com/2010-04-01/Accounts/{_options.AccountSid.Trim()}/Messages.json";
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, _options.SmsApiUrl.Trim());
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.TryAddWithoutValidation("api-key", _options.ApiKey.Trim());
-        request.Content = JsonContent.Create(payload, options: JsonOptions);
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        var authBytes = Encoding.ASCII.GetBytes($"{_options.AccountSid.Trim()}:{_options.AuthToken.Trim()}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(authBytes));
+        request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["To"] = recipientPhone,
+            ["From"] = _options.FromPhoneNumber.Trim(),
+            ["Body"] = messageContent.Trim(),
+        });
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (response.IsSuccessStatusCode)
@@ -75,7 +67,7 @@ public sealed class BrevoSmsSender : ISmsSender
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         _logger.LogWarning(
-            "Brevo SMS API failed with status code {StatusCode}. Response: {ResponseBody}",
+            "Twilio SMS API failed with status code {StatusCode}. Response: {ResponseBody}",
             (int)response.StatusCode,
             Truncate(responseBody, 500));
 
@@ -84,32 +76,44 @@ public sealed class BrevoSmsSender : ISmsSender
 
     private void ValidateOptions()
     {
-        if (string.IsNullOrWhiteSpace(_options.ApiKey)
-            || string.Equals(_options.ApiKey, "YOUR_BREVO_API_KEY", StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(_options.AccountSid))
         {
-            throw new InvalidOperationException("Brevo:ApiKey is required.");
+            throw new InvalidOperationException("Twilio:AccountSid is required.");
         }
 
-        if (string.IsNullOrWhiteSpace(_options.SmsApiUrl))
+        if (string.IsNullOrWhiteSpace(_options.AuthToken))
         {
-            throw new InvalidOperationException("Brevo:SmsApiUrl is required.");
+            throw new InvalidOperationException("Twilio:AuthToken is required.");
         }
 
-        if (string.IsNullOrWhiteSpace(_options.SmsSender))
+        if (string.IsNullOrWhiteSpace(_options.FromPhoneNumber))
         {
-            throw new InvalidOperationException("Brevo:SmsSender is required.");
+            throw new InvalidOperationException("Twilio:FromPhoneNumber is required.");
         }
     }
 
+    /// <summary>
+    /// Formats phone to E.164. Vietnamese local numbers starting with 0 become +84...
+    /// </summary>
     internal static string FormatPhoneNumber(string phone)
     {
         var cleaned = NonDigitRegex.Replace(phone, string.Empty);
-        if (cleaned.StartsWith("0", StringComparison.Ordinal))
+        if (string.IsNullOrEmpty(cleaned))
         {
-            return "84" + cleaned[1..];
+            return phone.Trim();
         }
 
-        return cleaned;
+        if (cleaned.StartsWith("0", StringComparison.Ordinal))
+        {
+            return "+84" + cleaned[1..];
+        }
+
+        if (cleaned.StartsWith("84", StringComparison.Ordinal))
+        {
+            return "+" + cleaned;
+        }
+
+        return "+" + cleaned;
     }
 
     private static string Truncate(string? value, int maxLength)

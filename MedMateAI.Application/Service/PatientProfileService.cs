@@ -198,6 +198,19 @@ public sealed class PatientProfileService : IPatientProfileService
             return (false, new[] { "Người dùng này đã có hồ sơ bệnh nhân." }, null);
         }
 
+        var softDeleted = await _patientProfiles.FirstOrDefaultAsync(
+            p => p.UserId == ownerUserId && p.IsDeleted,
+            asNoTracking: true,
+            cancellationToken);
+
+        if (softDeleted is not null)
+        {
+            return (false, new[]
+            {
+                "Hồ sơ bệnh nhân đã từng bị xóa. Không thể tạo mới do ràng buộc dữ liệu. Vui lòng liên hệ hỗ trợ để khôi phục hồ sơ.",
+            }, null);
+        }
+
         var entity = new PatientProfile
         {
             Id = Guid.NewGuid(),
