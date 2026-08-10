@@ -6,5 +6,6 @@
 **/*.user
 **/*.rsuser
 **/TestResults
+**/MedMateAI.Tests
 **/.dockerignore
 **/Dockerfile*
