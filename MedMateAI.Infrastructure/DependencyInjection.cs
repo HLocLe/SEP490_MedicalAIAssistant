@@ -16,6 +16,8 @@ using MedMateAI.Infrastructure.Persistence.Seeder;
 using MedMateAI.Infrastructure.Repositories;
 using MedMateAI.Infrastructure.Email.Brevo;
 using MedMateAI.Infrastructure.Email.Brevo.Options;
+using MedMateAI.Infrastructure.SMS.Twilio;
+using MedMateAI.Infrastructure.SMS.Twilio.Options;
 using MedMateAI.Infrastructure.AI;
 using MedMateAI.Infrastructure.AI.Options;
 using MedMateAI.Infrastructure.BackgroundJobs;
@@ -114,6 +116,7 @@ public static class DependencyInjection
         services.Configure<AzureOptions>(configuration.GetSection(AzureOptions.SectionName));
 
         services.Configure<BrevoOptions>(configuration.GetSection(BrevoOptions.SectionName));
+        services.Configure<TwilioOptions>(configuration.GetSection(TwilioOptions.SectionName));
         services.Configure<FrontendOptions>(configuration.GetSection(FrontendOptions.SectionName));
         services.AddOptions<RecoveryPlanOptions>()
             .Bind(configuration.GetSection(RecoveryPlanOptions.SectionName))
@@ -192,7 +195,7 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(30);
         });
 
-        services.AddHttpClient<BrevoSmsSender>(client =>
+        services.AddHttpClient<TwilioSmsSender>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);
         });
@@ -200,7 +203,7 @@ public static class DependencyInjection
         //
         services.AddScoped<IEmailSender>(sp => sp.GetRequiredService<BrevoEmailSender>());
         services.AddScoped<IEmailOtpSender>(sp => sp.GetRequiredService<BrevoEmailSender>());
-        services.AddScoped<ISmsSender>(sp => sp.GetRequiredService<BrevoSmsSender>());
+        services.AddScoped<ISmsSender>(sp => sp.GetRequiredService<TwilioSmsSender>());
         services.AddHttpClient<IAIChatProvider, OpenRouterChatProvider>();
 
         //
