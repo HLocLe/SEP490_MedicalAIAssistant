@@ -18,6 +18,7 @@ namespace MedMateAI.Tests.Services;
 public class DoctorInvitationServiceTests
 {
     private const string HashedToken = "hashed-token";
+    private const string TestPassword = "UnitTest.Invite.Pwd";
 
     private Mock<IUnitOfWork> _unitOfWorkMock = null!;
     private Mock<IDoctorInvitationRepository> _invitationRepoMock = null!;
@@ -446,7 +447,7 @@ public class DoctorInvitationServiceTests
         _invitationRepoMock.Setup(r => r.GetByTokenHashAsync(HashedToken, It.IsAny<CancellationToken>()))
             .ReturnsAsync((DoctorInvitation?)null);
 
-        var request = new RegisterDoctorByInvitationRequest { Token = "raw-token", Password = "P@ssw0rd" };
+        var request = new RegisterDoctorByInvitationRequest { Token = "raw-token", Password = TestPassword };
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await _service.RegisterDoctorAsync(request));
     }
@@ -464,7 +465,7 @@ public class DoctorInvitationServiceTests
         var request = new RegisterDoctorByInvitationRequest
         {
             Token = "raw-token",
-            Password = "P@ssw0rd",
+            Password = TestPassword,
             FullName = "New Doctor",
             FacilityDepartmentId = Guid.NewGuid(),
             DepartmentRole = DepartmentRole.Doctor,
@@ -483,7 +484,7 @@ public class DoctorInvitationServiceTests
         var request = new RegisterDoctorByInvitationRequest
         {
             Token = "raw-token",
-            Password = "P@ssw0rd",
+            Password = TestPassword,
             FullName = "New Doctor",
         };
 
@@ -508,7 +509,7 @@ public class DoctorInvitationServiceTests
         var request = new RegisterDoctorByInvitationRequest
         {
             Token = "raw-token",
-            Password = "P@ssw0rd",
+            Password = TestPassword,
             FullName = "New Doctor",
             FacilityDepartmentId = Guid.NewGuid(),
             DepartmentRole = DepartmentRole.Doctor,
@@ -527,7 +528,7 @@ public class DoctorInvitationServiceTests
         _doctorRepoMock.Setup(r => r.GetByIdAsync(doctorId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Doctor?)null);
 
-        var request = new RegisterDoctorByInvitationRequest { Token = "raw-token", Password = "P@ssw0rd" };
+        var request = new RegisterDoctorByInvitationRequest { Token = "raw-token", Password = TestPassword };
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await _service.RegisterDoctorAsync(request));
     }
@@ -542,7 +543,7 @@ public class DoctorInvitationServiceTests
         _doctorRepoMock.Setup(r => r.GetByIdAsync(doctor.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(doctor);
 
-        var request = new RegisterDoctorByInvitationRequest { Token = "raw-token", Password = "P@ssw0rd" };
+        var request = new RegisterDoctorByInvitationRequest { Token = "raw-token", Password = TestPassword };
 
         Assert.ThrowsAsync<InvalidOperationException>(async () => await _service.RegisterDoctorAsync(request));
     }
@@ -557,7 +558,7 @@ public class DoctorInvitationServiceTests
         _doctorRepoMock.Setup(r => r.GetByIdAsync(doctor.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(doctor);
 
-        var request = new RegisterDoctorByInvitationRequest { Token = "raw-token", Password = "P@ssw0rd" };
+        var request = new RegisterDoctorByInvitationRequest { Token = "raw-token", Password = TestPassword };
 
         Assert.ThrowsAsync<ArgumentException>(async () => await _service.RegisterDoctorAsync(request));
     }
@@ -599,7 +600,7 @@ public class DoctorInvitationServiceTests
         var request = new RegisterDoctorByInvitationRequest
         {
             Token = "raw-token",
-            Password = "P@ssw0rd",
+            Password = TestPassword,
             FullName = "New Doctor",
             FacilityDepartmentId = Guid.NewGuid(),
             DepartmentRole = DepartmentRole.Doctor,
@@ -619,7 +620,7 @@ public class DoctorInvitationServiceTests
         var request = new RegisterDoctorByInvitationRequest
         {
             Token = "raw-token",
-            Password = "P@ssw0rd",
+            Password = TestPassword,
             FullName = "New Doctor",
             FacilityDepartmentId = Guid.NewGuid(),
             DepartmentRole = DepartmentRole.Doctor,
@@ -647,7 +648,7 @@ public class DoctorInvitationServiceTests
         var request = new RegisterDoctorByInvitationRequest
         {
             Token = "raw-token",
-            Password = "P@ssw0rd",
+            Password = TestPassword,
             FullName = "Existing Doctor",
         };
 
