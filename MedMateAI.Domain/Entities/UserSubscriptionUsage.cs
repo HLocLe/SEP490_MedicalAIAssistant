@@ -8,7 +8,7 @@ public sealed class UserSubscriptionUsage : BaseEntity
     public int UsedCount { get; set; }
     public int ReservedCount { get; set; }
     public DateTime CycleStart { get; set; }
-    public DateTime CycleEnd { get; set; }
+    public DateTime? CycleEnd { get; set; }
     public int Version { get; set; }
     public UserSubscription UserSubscription { get; set; } = null!;
     public Quota Quota { get; set; } = null!;

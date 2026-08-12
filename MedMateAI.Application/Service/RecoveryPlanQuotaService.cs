@@ -1,121 +1,52 @@
-using MedMateAI.Application.DTOs.UserSubscriptions.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models;
-using MedMateAI.Domain.Common;
+using MedMateAI.Application.Models.ServiceCredits;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
-using MedMateAI.Domain.Persistence;
 
 namespace MedMateAI.Application.Service;
 
 public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
 {
-    public const string QuotaCode = "RECOVERY_PLAN_REQUEST";
-    public const string ReferenceType = "RECOVERY_PLAN_REQUEST";
+    public const string QuotaCode = IServiceCreditService.QuotaCode;
+    public const string ReferenceType = "RecoveryPlanRequest";
 
-    private const string ReserveReason = "Recovery plan request quota reserved.";
-    private const string ReleaseReason = "Recovery plan request quota released.";
-    private const string ConsumeReason = "Recovery plan request quota consumed.";
-    private const string RestoreReason = "Recovery plan request quota restored.";
+    private const string ReserveReason = "Recovery plan service credit reserved.";
+    private const string ReleaseReason = "Recovery plan service credit released.";
+    private const string ConsumeReason = "Recovery plan service credit consumed.";
+    private const string RestoreReason = "Recovery plan service credit restored.";
 
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IServiceCreditService _serviceCreditService;
 
-    public RecoveryPlanQuotaService(IUnitOfWork unitOfWork)
+    public RecoveryPlanQuotaService(IServiceCreditService serviceCreditService)
     {
-        _unitOfWork = unitOfWork;
+        _serviceCreditService = serviceCreditService;
     }
 
-    public async Task<RecoveryPlanOperationResult<UserSubscriptionUsage>> ResolveUsageAsync(
+    public async Task<RecoveryPlanOperationResult<UserSubscriptionUsage>> ReserveUsageAsync(
         Guid userId,
-        DateTime utcNow,
-        CancellationToken cancellationToken)
-    {
-        var subscription = await _unitOfWork.UserSubscriptions.GetCurrentActiveWithPlanQuotasAsync(
-            userId,
-            utcNow,
-            cancellationToken);
-
-        if (subscription is null)
-        {
-            return RecoveryPlanOperationResult<UserSubscriptionUsage>.Fail(RecoveryPlanErrorCode.NoActiveSubscription);
-        }
-
-        var planQuota = subscription.Plan.SubscriptionPlanQuotas.FirstOrDefault(IsRecoveryPlanQuota);
-        if (planQuota is null)
-        {
-            return RecoveryPlanOperationResult<UserSubscriptionUsage>.Fail(RecoveryPlanErrorCode.RecoveryPlanQuotaNotConfigured);
-        }
-
-        if (planQuota.LimitValue <= 0)
-        {
-            return RecoveryPlanOperationResult<UserSubscriptionUsage>.Fail(RecoveryPlanErrorCode.RecoveryPlanQuotaExhausted);
-        }
-
-        var usage = await _unitOfWork.QuotaUsages.GetOrCreateAsync(
-            subscription.Id,
-            planQuota.QuotaId,
-            subscription.StartDate!.Value,
-            subscription.EndDate!.Value,
-            planQuota.LimitValue,
-            utcNow,
-            cancellationToken);
-
-        return RecoveryPlanOperationResult<UserSubscriptionUsage>.Ok(usage);
-    }
-
-    public async Task<RecoveryPlanOperationResult<IReadOnlyList<SubscriptionUsageResponse>>> GetCurrentUsageAsync(
-        Guid userId,
-        CancellationToken cancellationToken)
-    {
-        var utcNow = DateTime.UtcNow;
-        var subscription = await _unitOfWork.UserSubscriptions.GetCurrentActiveWithPlanQuotasAsync(
-            userId,
-            utcNow,
-            cancellationToken);
-
-        if (subscription is null)
-        {
-            return RecoveryPlanOperationResult<IReadOnlyList<SubscriptionUsageResponse>>.Fail(RecoveryPlanErrorCode.NoActiveSubscription);
-        }
-
-        var usages = await _unitOfWork.QuotaUsages.GetBySubscriptionAsync(
-            subscription.Id,
-            cancellationToken);
-
-        var cycleStart = subscription.StartDate!.Value;
-        var cycleEnd = subscription.EndDate!.Value;
-
-        var items = subscription.Plan.SubscriptionPlanQuotas
-            .Where(planQuota =>
-                !planQuota.IsDeleted
-                && planQuota.IsActive
-                && !planQuota.Quota.IsDeleted
-                && planQuota.Quota.IsActive)
-            .Select(planQuota => MapUsage(planQuota, usages, cycleStart, cycleEnd))
-            .ToList();
-
-        return RecoveryPlanOperationResult<IReadOnlyList<SubscriptionUsageResponse>>.Ok(items);
-    }
-
-    public Task<QuotaMutationStatus> ReserveAsync(
-        Guid usageId,
-        Guid userSubscriptionId,
-        Guid quotaId,
         Guid requestId,
         Guid actorUserId,
         string idempotencyKey,
         DateTime utcNow,
         CancellationToken cancellationToken)
     {
-        return MutateAsync(
-            () => _unitOfWork.QuotaUsages.ReserveAsync(usageId, utcNow, cancellationToken),
-            SubscriptionQuotaActionType.Reserve,
+        var result = await _serviceCreditService.ReserveAsync(
+            userId,
+            ReferenceType,
             requestId,
             actorUserId,
             idempotencyKey,
             ReserveReason,
             utcNow,
             cancellationToken);
+
+        return result.Success && result.Data is not null
+            ? RecoveryPlanOperationResult<UserSubscriptionUsage>.Ok(
+                result.Data,
+                result.IsReplay)
+            : RecoveryPlanOperationResult<UserSubscriptionUsage>.Fail(
+                MapError(result.Error));
     }
 
     public Task<QuotaMutationStatus> ReleaseAsync(
@@ -129,7 +60,9 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
         CancellationToken cancellationToken)
     {
         return MutateAsync(
-            () => _unitOfWork.QuotaUsages.ReleaseAsync(usageId, utcNow, cancellationToken),
+            usageId,
+            userSubscriptionId,
+            quotaId,
             SubscriptionQuotaActionType.Release,
             requestId,
             actorUserId,
@@ -150,7 +83,9 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
         CancellationToken cancellationToken)
     {
         return MutateAsync(
-            () => _unitOfWork.QuotaUsages.ConsumeAsync(usageId, utcNow, cancellationToken),
+            usageId,
+            userSubscriptionId,
+            quotaId,
             SubscriptionQuotaActionType.Consume,
             requestId,
             actorUserId,
@@ -171,7 +106,9 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
         CancellationToken cancellationToken)
     {
         return MutateAsync(
-            () => _unitOfWork.QuotaUsages.RestoreAsync(usageId, utcNow, cancellationToken),
+            usageId,
+            userSubscriptionId,
+            quotaId,
             SubscriptionQuotaActionType.Restore,
             requestId,
             actorUserId,
@@ -181,8 +118,10 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
             cancellationToken);
     }
 
-    private async Task<QuotaMutationStatus> MutateAsync(
-        Func<Task<QuotaMutationResult?>> mutation,
+    private Task<QuotaMutationStatus> MutateAsync(
+        Guid usageId,
+        Guid userSubscriptionId,
+        Guid quotaId,
         SubscriptionQuotaActionType actionType,
         Guid requestId,
         Guid? actorUserId,
@@ -191,100 +130,29 @@ public sealed class RecoveryPlanQuotaService : IRecoveryPlanQuotaService
         DateTime utcNow,
         CancellationToken cancellationToken)
     {
-        var existingLog = await _unitOfWork.QuotaUsages.GetLogByIdempotencyKeyAsync(
-            idempotencyKey,
-            cancellationToken);
-
-        if (existingLog is not null)
-        {
-            return QuotaMutationStatus.Duplicate;
-        }
-
-        var mutationResult = await mutation();
-        if (mutationResult is null)
-        {
-            return QuotaMutationStatus.Rejected;
-        }
-
-        var log = CreateMutationLog(
-            mutationResult,
+        return _serviceCreditService.MutateAsync(
+            usageId,
+            userSubscriptionId,
+            quotaId,
             actionType,
+            ReferenceType,
             requestId,
             actorUserId,
             idempotencyKey,
             reason,
-            utcNow);
-
-        var logInserted = await _unitOfWork.QuotaUsages.TryInsertLogAsync(log, cancellationToken);
-        if (logInserted)
-        {
-            return QuotaMutationStatus.Applied;
-        }
-
-        return QuotaMutationStatus.Duplicate;
+            utcNow,
+            cancellationToken);
     }
 
-    private static UserSubscriptionLog CreateMutationLog(
-        QuotaMutationResult mutationResult,
-        SubscriptionQuotaActionType actionType,
-        Guid requestId,
-        Guid? actorUserId,
-        string idempotencyKey,
-        string reason,
-        DateTime utcNow)
-    {
-        return new UserSubscriptionLog
+    private static RecoveryPlanErrorCode MapError(ServiceCreditErrorCode error) =>
+        error switch
         {
-            Id = Guid.NewGuid(),
-            UserSubscriptionId = mutationResult.UserSubscriptionId,
-            UserSubscriptionUsageId = mutationResult.UsageId,
-            QuotaId = mutationResult.QuotaId,
-            ActionType = actionType,
-            Quantity = 1,
-            UsedCountBefore = mutationResult.UsedCountBefore,
-            UsedCountAfter = mutationResult.UsedCountAfter,
-            ReservedCountBefore = mutationResult.ReservedCountBefore,
-            ReservedCountAfter = mutationResult.ReservedCountAfter,
-            ReferenceType = ReferenceType,
-            ReferenceId = requestId,
-            Reason = reason,
-            IdempotencyKey = idempotencyKey,
-            PerformedByUserId = actorUserId,
-            CreatedAt = utcNow,
+            ServiceCreditErrorCode.NoCreditPackage =>
+                RecoveryPlanErrorCode.NoCreditPackage,
+            ServiceCreditErrorCode.ServiceCreditExhausted =>
+                RecoveryPlanErrorCode.ServiceCreditExhausted,
+            ServiceCreditErrorCode.ServiceCreditNotConfigured =>
+                RecoveryPlanErrorCode.ServiceCreditNotConfigured,
+            _ => RecoveryPlanErrorCode.QuotaMutationFailed
         };
-    }
-
-    private static SubscriptionUsageResponse MapUsage(
-        SubscriptionPlanQuota planQuota,
-        IReadOnlyList<UserSubscriptionUsage> usages,
-        DateTime cycleStart,
-        DateTime cycleEnd)
-    {
-        var usage = usages.FirstOrDefault(currentUsage =>
-            currentUsage.QuotaId == planQuota.QuotaId
-            && currentUsage.CycleStart == cycleStart
-            && currentUsage.CycleEnd == cycleEnd);
-
-        return new SubscriptionUsageResponse
-        {
-            QuotaCode = planQuota.Quota.Code,
-            QuotaName = planQuota.Quota.Name,
-            LimitValue = usage?.LimitValue ?? planQuota.LimitValue,
-            UsedCount = usage?.UsedCount ?? 0,
-            ReservedCount = usage?.ReservedCount ?? 0,
-            CycleStart = cycleStart,
-            CycleEnd = cycleEnd,
-            ResetPeriod = planQuota.ResetPeriod,
-        };
-    }
-
-    private static bool IsRecoveryPlanQuota(SubscriptionPlanQuota planQuota)
-    {
-        return !planQuota.IsDeleted
-            && planQuota.IsActive
-            && planQuota.ResetPeriod == QuotaResetPeriod.SubscriptionCycle
-            && !planQuota.Quota.IsDeleted
-            && planQuota.Quota.IsActive
-            && string.Equals(planQuota.Quota.Code, QuotaCode, StringComparison.Ordinal);
-    }
 }

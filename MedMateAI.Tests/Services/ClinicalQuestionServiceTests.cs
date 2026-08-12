@@ -134,7 +134,7 @@ public class ClinicalQuestionServiceTests
         var (succeeded, errors, data) = await _service.CreateClinicalQuestionAsync(null!);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Request body is required."));
+        Assert.That(errors, Contains.Item("Request body là bắt buộc"));
     }
 
     [Test]
@@ -146,8 +146,8 @@ public class ClinicalQuestionServiceTests
         var (succeeded, errors, data) = await _service.CreateClinicalQuestionAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Chapter id is required."));
-        Assert.That(errors, Contains.Item("Question text is required."));
+        Assert.That(errors, Contains.Item("ChapterId là bắt buộc"));
+        Assert.That(errors, Contains.Item("Nội dung câu hỏi là bắt buộc"));
     }
 
     [Test]
@@ -163,7 +163,7 @@ public class ClinicalQuestionServiceTests
         var (succeeded, errors, data) = await _service.CreateClinicalQuestionAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("ICD chapter not found."));
+        Assert.That(errors, Contains.Item("Không tìm thấy ICD chapter"));
     }
 
     [Test]
@@ -227,7 +227,7 @@ public class ClinicalQuestionServiceTests
         var (succeeded, errors, data) = await _service.BulkCreateClinicalQuestionsAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("At least one question is required."));
+        Assert.That(errors, Contains.Item("Cần ít nhất một câu hỏi"));
     }
 
     [Test]
@@ -242,7 +242,7 @@ public class ClinicalQuestionServiceTests
         var (succeeded, errors, data) = await _service.BulkCreateClinicalQuestionsAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Questions[0]: Item is required."));
+        Assert.That(errors, Contains.Item("Questions[0]: Mục câu hỏi là bắt buộc"));
     }
 
     [Test]
@@ -306,7 +306,7 @@ public class ClinicalQuestionServiceTests
             Guid.Empty, new UpdateClinicalQuestionRequest { QuestionVi = "x" });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid clinical question id."));
+        Assert.That(errors, Contains.Item("Id câu hỏi không hợp lệ"));
     }
 
     [Test]
@@ -316,7 +316,7 @@ public class ClinicalQuestionServiceTests
         var (succeeded, notFound, errors, data) = await _service.UpdateClinicalQuestionAsync(Guid.NewGuid(), null!);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Request body is required."));
+        Assert.That(errors, Contains.Item("Request body là bắt buộc"));
     }
 
     [Test]
@@ -327,7 +327,7 @@ public class ClinicalQuestionServiceTests
             Guid.NewGuid(), new UpdateClinicalQuestionRequest());
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("No fields to update."));
+        Assert.That(errors, Contains.Item("Không có trường nào để cập nhật"));
     }
 
     [Test]
@@ -357,7 +357,7 @@ public class ClinicalQuestionServiceTests
             id, new UpdateClinicalQuestionRequest { ChapterId = Guid.Empty });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Chapter id is invalid."));
+        Assert.That(errors, Contains.Item("ChapterId không hợp lệ"));
     }
 
     [Test]
@@ -375,7 +375,7 @@ public class ClinicalQuestionServiceTests
             id, new UpdateClinicalQuestionRequest { ChapterId = newChapterId });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("ICD chapter not found."));
+        Assert.That(errors, Contains.Item("Không tìm thấy ICD chapter"));
     }
 
     [Test]
@@ -422,7 +422,7 @@ public class ClinicalQuestionServiceTests
         var (succeeded, notFound, errors) = await _service.SoftDeleteClinicalQuestionAsync(Guid.Empty);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid clinical question id."));
+        Assert.That(errors, Contains.Item("Id câu hỏi không hợp lệ"));
     }
 
     [Test]

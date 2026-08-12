@@ -11,12 +11,21 @@ public interface ISubscriptionPlanQuotaRepository
         Guid quotaId,
         CancellationToken cancellationToken = default);
 
+    Task<Quota?> GetQuotaDefinitionByCodeAsync(
+        string quotaCode,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<SubscriptionPlanQuota>> ListPlanQuotasAsync(
         Guid planId,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<SubscriptionPlanQuota>> ListActivePlanQuotasAsync(
         IReadOnlyCollection<Guid> planIds,
+        CancellationToken cancellationToken = default);
+
+    Task<SubscriptionPlanQuota?> GetActivePlanQuotaByCodeAsync(
+        Guid planId,
+        string quotaCode,
         CancellationToken cancellationToken = default);
 
     Task<SubscriptionPlan?> GetPlanForUpdateAsync(

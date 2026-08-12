@@ -5,9 +5,17 @@ namespace MedMateAI.Domain.Repository;
 
 public interface IQuotaUsageRepository
 {
+    Task AcquireIdempotencyLockAsync(
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
     Task<UserSubscriptionUsage> GetOrCreateAsync(
-        Guid subscriptionId, Guid quotaId, DateTime cycleStart, DateTime cycleEnd,
+        Guid subscriptionId, Guid quotaId, DateTime cycleStart, DateTime? cycleEnd,
         int limitValue, DateTime utcNow, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<UserSubscriptionUsage>> GetEligibleByUserAsync(
+        Guid userId,
+        string quotaCode,
+        DateTime utcNow,
+        CancellationToken cancellationToken = default);
     Task<QuotaMutationResult?> ReserveAsync(Guid usageId, DateTime utcNow, CancellationToken cancellationToken = default);
     Task<QuotaMutationResult?> ReleaseAsync(Guid usageId, DateTime utcNow, CancellationToken cancellationToken = default);
     Task<QuotaMutationResult?> ConsumeAsync(Guid usageId, DateTime utcNow, CancellationToken cancellationToken = default);
@@ -20,6 +28,10 @@ public interface IQuotaUsageRepository
     Task<UserSubscriptionUsage?> GetByIdAsync(Guid usageId, CancellationToken cancellationToken = default);
     Task<UserSubscriptionUsage?> GetByIdForQuotaAsync(
         Guid usageId,
+        Guid userSubscriptionId,
+        string quotaCode,
+        CancellationToken cancellationToken = default);
+    Task<UserSubscriptionUsage?> GetBySubscriptionForQuotaAsync(
         Guid userSubscriptionId,
         string quotaCode,
         CancellationToken cancellationToken = default);

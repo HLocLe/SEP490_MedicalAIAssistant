@@ -12,6 +12,7 @@ public enum RecoveryPlanErrorCode
 {
     None, Unauthenticated, Forbidden, InvalidRequest, NotFound,
     NoActiveSubscription, RecoveryPlanQuotaNotConfigured, RecoveryPlanQuotaExhausted,
+    NoCreditPackage, ServiceCreditNotConfigured, ServiceCreditExhausted,
     IdempotencyKeyInvalid, InvalidRequestState, RecoveryPlanRequestAlreadyClaimed,
     DoctorProfileNotFound, DoctorNotActive, DoctorNotAcceptingRequests,
     DoctorCapacityReached, AssignmentExpired, QuotaMutationFailed, Conflict,

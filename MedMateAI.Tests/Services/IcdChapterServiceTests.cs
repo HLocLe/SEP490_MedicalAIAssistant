@@ -140,7 +140,7 @@ public class IcdChapterServiceTests
         var (succeeded, errors, data) = await _service.CreateIcdChapterAsync(null!);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Request body is required."));
+        Assert.That(errors, Contains.Item("Request body là bắt buộc"));
     }
 
     [Test]
@@ -152,8 +152,8 @@ public class IcdChapterServiceTests
         var (succeeded, errors, data) = await _service.CreateIcdChapterAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Chapter code is required."));
-        Assert.That(errors, Contains.Item("Chapter name is required."));
+        Assert.That(errors, Contains.Item("ChapterCode là bắt buộc"));
+        Assert.That(errors, Contains.Item("ChapterName là bắt buộc"));
     }
 
     [Test]
@@ -171,7 +171,7 @@ public class IcdChapterServiceTests
         var (succeeded, errors, data) = await _service.CreateIcdChapterAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Chapter code already exists."));
+        Assert.That(errors, Contains.Item("ChapterCode đã tồn tại"));
     }
 
     [Test]
@@ -305,7 +305,7 @@ public class IcdChapterServiceTests
             Guid.Empty, new UpdateIcdChapterRequest { ChapterName = "x" });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid ICD chapter id."));
+        Assert.That(errors, Contains.Item("Id ICD chapter không hợp lệ"));
     }
 
     [Test]
@@ -315,7 +315,7 @@ public class IcdChapterServiceTests
         var (succeeded, notFound, errors, data) = await _service.UpdateIcdChapterAsync(Guid.NewGuid(), null!);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Request body is required."));
+        Assert.That(errors, Contains.Item("Request body là bắt buộc"));
     }
 
     [Test]
@@ -326,7 +326,7 @@ public class IcdChapterServiceTests
             Guid.NewGuid(), new UpdateIcdChapterRequest());
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("No fields to update."));
+        Assert.That(errors, Contains.Item("Không có trường nào để cập nhật"));
     }
 
     [Test]
@@ -362,7 +362,7 @@ public class IcdChapterServiceTests
             id, new UpdateIcdChapterRequest { ChapterCode = "B00" });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Chapter code already exists."));
+        Assert.That(errors, Contains.Item("ChapterCode đã tồn tại"));
     }
 
     [Test]
@@ -448,7 +448,7 @@ public class IcdChapterServiceTests
         var (succeeded, notFound, errors) = await _service.SoftDeleteIcdChapterAsync(Guid.Empty);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid ICD chapter id."));
+        Assert.That(errors, Contains.Item("Id ICD chapter không hợp lệ"));
     }
 
     [Test]

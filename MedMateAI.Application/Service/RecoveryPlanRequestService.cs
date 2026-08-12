@@ -124,43 +124,29 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             }
 
             var utcNow = DateTime.UtcNow;
-            var usageResult = await _quota.ResolveUsageAsync(userId, utcNow, cancellationToken);
+            var usageResult = await _quota.ReserveUsageAsync(
+                userId,
+                requestId,
+                userId,
+                scopedIdempotencyKey,
+                utcNow,
+                cancellationToken);
             if (!usageResult.Success || usageResult.Data is null)
             {
                 await RollbackAsync();
                 return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(usageResult.Error);
             }
 
-            var usage = usageResult.Data;
-            var quotaMutationStatus = await _quota.ReserveAsync(
-                usage.Id,
-                usage.UserSubscriptionId,
-                usage.QuotaId,
-                requestId,
-                userId,
-                scopedIdempotencyKey,
-                utcNow,
-                cancellationToken);
-
-            switch (quotaMutationStatus)
+            if (usageResult.IsReplay)
             {
-                case QuotaMutationStatus.Applied:
-                    break;
-                case QuotaMutationStatus.Duplicate:
-                    return await RollbackAndLoadCreateReplayAsync(
-                        userId,
-                        scopedIdempotencyKey,
-                        RecoveryPlanErrorCode.Conflict,
-                        cancellationToken);
-                case QuotaMutationStatus.Rejected:
-                    return await RollbackAndLoadCreateReplayAsync(
-                        userId,
-                        scopedIdempotencyKey,
-                        RecoveryPlanErrorCode.RecoveryPlanQuotaExhausted,
-                        cancellationToken);
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(quotaMutationStatus));
+                return await RollbackAndLoadCreateReplayAsync(
+                    userId,
+                    scopedIdempotencyKey,
+                    RecoveryPlanErrorCode.Conflict,
+                    cancellationToken);
             }
+
+            var usage = usageResult.Data;
 
             var recoveryPlanRequest = new RecoveryPlanRequest
             {
@@ -1108,14 +1094,14 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
     private static string BuildCreateIdempotencyKey(Guid userId, string idempotencyKey)
     {
         var keyHash = SHA256.HashData(Encoding.UTF8.GetBytes(idempotencyKey));
-        return $"RPR_CREATE:{userId:N}:{Convert.ToHexString(keyHash)}";
+        return $"credit:reserve:recovery-plan:{userId:N}:{Convert.ToHexString(keyHash)}";
     }
 
     private static string BuildCancelQuotaReleaseKey(Guid requestId) =>
-        $"RPR:{requestId}:RELEASE:CANCEL";
+        $"credit:release:recovery-plan:{requestId:N}";
 
     private static string BuildRejectQuotaReleaseKey(Guid requestId) =>
-        $"RPR:{requestId}:RELEASE:REJECT";
+        $"credit:release:recovery-plan:{requestId:N}";
 
     private static RecoveryPlanErrorCode ValidateDoctor(Doctor? doctor)
     {

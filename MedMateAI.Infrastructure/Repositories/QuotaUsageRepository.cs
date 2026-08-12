@@ -1,5 +1,6 @@
 using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Repository;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,11 +15,22 @@ public sealed class QuotaUsageRepository : IQuotaUsageRepository
         _context = context;
     }
 
+    public async Task AcquireIdempotencyLockAsync(
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureActiveTransaction();
+
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({idempotencyKey}, 0));",
+            cancellationToken);
+    }
+
     public async Task<UserSubscriptionUsage> GetOrCreateAsync(
         Guid subscriptionId,
         Guid quotaId,
         DateTime cycleStart,
-        DateTime cycleEnd,
+        DateTime? cycleEnd,
         int limitValue,
         DateTime utcNow,
         CancellationToken cancellationToken = default)
@@ -38,7 +50,7 @@ public sealed class QuotaUsageRepository : IQuotaUsageRepository
                 ({usageId}, {subscriptionId}, {quotaId}, {limitValue},
                  0, 0, {cycleStart}, {cycleEnd}, 0,
                  {utcNow}, NULL, false)
-            ON CONFLICT ("UserSubscriptionId", "QuotaId", "CycleStart", "CycleEnd")
+            ON CONFLICT ("UserSubscriptionId", "QuotaId")
                 WHERE "IsDeleted" = false
             DO NOTHING;
             """,
@@ -50,8 +62,6 @@ public sealed class QuotaUsageRepository : IQuotaUsageRepository
                 currentUsage =>
                     currentUsage.UserSubscriptionId == subscriptionId
                     && currentUsage.QuotaId == quotaId
-                    && currentUsage.CycleStart == cycleStart
-                    && currentUsage.CycleEnd == cycleEnd
                     && !currentUsage.IsDeleted,
                 cancellationToken);
 
@@ -62,6 +72,40 @@ public sealed class QuotaUsageRepository : IQuotaUsageRepository
 
         throw new InvalidOperationException(
             "The conflict-safe subscription usage insert completed, but the usage row could not be loaded.");
+    }
+
+    public async Task<IReadOnlyList<UserSubscriptionUsage>> GetEligibleByUserAsync(
+        Guid userId,
+        string quotaCode,
+        DateTime utcNow,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty || string.IsNullOrWhiteSpace(quotaCode))
+        {
+            return Array.Empty<UserSubscriptionUsage>();
+        }
+
+        return await _context.UserSubscriptionUsages
+            .AsNoTracking()
+            .Include(usage => usage.UserSubscription)
+            .Where(usage =>
+                !usage.IsDeleted
+                && !usage.Quota.IsDeleted
+                && usage.Quota.Code == quotaCode
+                && !usage.UserSubscription.IsDeleted
+                && usage.UserSubscription.UserId == userId
+                && usage.UserSubscription.Status == SubscriptionStatus.Active
+                && usage.UserSubscription.StartDate.HasValue
+                && usage.UserSubscription.StartDate.Value <= utcNow
+                && (!usage.UserSubscription.EndDate.HasValue
+                    || usage.UserSubscription.EndDate.Value > utcNow))
+            .OrderBy(usage => usage.UserSubscription.EndDate.HasValue ? 0 : 1)
+            .ThenBy(usage => usage.UserSubscription.EndDate)
+            .ThenBy(usage => usage.UserSubscription.StartDate)
+            .ThenBy(usage => usage.UserSubscription.CreatedAt)
+            .ThenBy(usage => usage.UserSubscriptionId)
+            .ThenBy(usage => usage.Id)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<QuotaMutationResult?> ReserveAsync(
@@ -290,7 +334,22 @@ public sealed class QuotaUsageRepository : IQuotaUsageRepository
                     && !usage.IsDeleted
                     && usage.UserSubscriptionId == userSubscriptionId
                     && !usage.Quota.IsDeleted
-                    && usage.Quota.IsActive
+                    && usage.Quota.Code == quotaCode,
+                cancellationToken);
+    }
+
+    public Task<UserSubscriptionUsage?> GetBySubscriptionForQuotaAsync(
+        Guid userSubscriptionId,
+        string quotaCode,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.UserSubscriptionUsages
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                usage =>
+                    !usage.IsDeleted
+                    && usage.UserSubscriptionId == userSubscriptionId
+                    && !usage.Quota.IsDeleted
                     && usage.Quota.Code == quotaCode,
                 cancellationToken);
     }

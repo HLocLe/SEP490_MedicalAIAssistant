@@ -47,9 +47,13 @@ public sealed class UserSubscriptionRepository
                 x.UserId == userId
                 && !x.IsDeleted
                 && x.Status == SubscriptionStatus.Active
-                && x.EndDate.HasValue
-                && x.EndDate.Value > utcNow)
-            .OrderByDescending(x => x.EndDate)
+                && x.StartDate.HasValue
+                && x.StartDate.Value <= utcNow
+                && (!x.EndDate.HasValue || x.EndDate.Value > utcNow))
+            .OrderBy(x => x.EndDate.HasValue ? 0 : 1)
+            .ThenBy(x => x.EndDate)
+            .ThenBy(x => x.StartDate)
+            .ThenBy(x => x.Id)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -80,10 +84,14 @@ public sealed class UserSubscriptionRepository
                 .ThenInclude(x => x.Quota)
             .Where(x => x.UserId == userId && !x.IsDeleted
                 && x.Status == SubscriptionStatus.Active
-                && x.StartDate.HasValue && x.EndDate.HasValue
-                && x.StartDate.Value <= utcNow && x.EndDate.Value > utcNow
-                && !x.Plan.IsDeleted && x.Plan.IsActive)
-            .OrderByDescending(x => x.EndDate)
+                && x.StartDate.HasValue
+                && x.StartDate.Value <= utcNow
+                && (!x.EndDate.HasValue || x.EndDate.Value > utcNow)
+                && !x.Plan.IsDeleted)
+            .OrderBy(x => x.EndDate.HasValue ? 0 : 1)
+            .ThenBy(x => x.EndDate)
+            .ThenBy(x => x.StartDate)
+            .ThenBy(x => x.Id)
             .FirstOrDefaultAsync(cancellationToken);
     }
 }

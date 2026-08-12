@@ -63,6 +63,11 @@ public class RecoveryPlanRequestServiceTests
         _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
+        _requestRepoMock.Setup(r => r.LockUserRecoveryPlanWorkflowAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
         _optionsMock.Setup(o => o.Value).Returns(new RecoveryPlanOptions { AssignmentTimeoutMinutes = 15 });
 
         _service = new RecoveryPlanRequestService(
@@ -112,26 +117,104 @@ public class RecoveryPlanRequestServiceTests
             RequestNote = "Notes here"
         };
 
-        // LoadIdempotentReplayAsync needs QuotaUsages.GetLogByIdempotencyKeyAsync to return null (no replay)
         _quotaUsageRepoMock.Setup(q => q.GetLogByIdempotencyKeyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserSubscriptionLog?)null);
 
-        // Quota is resolved successfully
-        var usageResult = RecoveryPlanOperationResult<UserSubscriptionUsage>.Ok(new UserSubscriptionUsage
-        {
-            Id = Guid.NewGuid(),
-            UserSubscriptionId = Guid.NewGuid()
-        });
-        _quotaMock.Setup(q => q.ResolveUsageAsync(_userId, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(usageResult);
+        var usage = MakeUsage();
+        _quotaMock.Setup(q => q.ReserveUsageAsync(
+                _userId,
+                It.IsAny<Guid>(),
+                _userId,
+                It.IsAny<string>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RecoveryPlanOperationResult<UserSubscriptionUsage>.Ok(usage));
 
         // Act
         var result = await _service.CreateAsync(_userId, "valid-key", req, CancellationToken.None);
 
         // Assert
         Assert.That(result.Success, Is.True);
-        _requestRepoMock.Verify(r => r.Add(It.IsAny<RecoveryPlanRequest>()), Times.Once);
+        _requestRepoMock.Verify(r => r.Add(It.Is<RecoveryPlanRequest>(created =>
+            created.UserId == _userId &&
+            created.UserSubscriptionId == usage.UserSubscriptionId &&
+            created.UserSubscriptionUsageId == usage.Id &&
+            created.Status == RecoveryPlanRequestStatus.WaitingForDoctor)), Times.Once);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
         _unitOfWorkMock.Verify(u => u.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [TestCase(RecoveryPlanErrorCode.NoCreditPackage)]
+    [TestCase(RecoveryPlanErrorCode.ServiceCreditNotConfigured)]
+    [TestCase(RecoveryPlanErrorCode.ServiceCreditExhausted)]
+    [TestCase(RecoveryPlanErrorCode.QuotaMutationFailed)]
+    public async Task CreateAsync_ReserveFailure_RollsBackAndReturnsQuotaError(
+        RecoveryPlanErrorCode quotaError)
+    {
+        _quotaMock.Setup(q => q.ReserveUsageAsync(
+                _userId,
+                It.IsAny<Guid>(),
+                _userId,
+                It.IsAny<string>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RecoveryPlanOperationResult<UserSubscriptionUsage>.Fail(quotaError));
+
+        var result = await _service.CreateAsync(
+            _userId,
+            "reserve-failure-key",
+            new CreateRecoveryPlanRequest { DiseaseGroup = RecoveryPlanDiseaseGroup.Respiratory },
+            CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Error, Is.EqualTo(quotaError));
+        });
+        _unitOfWorkMock.Verify(u => u.RollbackTransactionAsync(CancellationToken.None), Times.Once);
+        _requestRepoMock.Verify(r => r.Add(It.IsAny<RecoveryPlanRequest>()), Times.Never);
+        _unitOfWorkMock.Verify(u => u.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task CreateAsync_ReserveReplay_RollsBackAndReturnsExistingRequest()
+    {
+        var existingRequest = MakeRequest();
+        var usage = MakeUsage();
+        _quotaUsageRepoMock.SetupSequence(q => q.GetLogByIdempotencyKeyAsync(
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((UserSubscriptionLog?)null)
+            .ReturnsAsync((UserSubscriptionLog?)null)
+            .ReturnsAsync(new UserSubscriptionLog { ReferenceId = existingRequest.Id });
+        _quotaMock.Setup(q => q.ReserveUsageAsync(
+                _userId,
+                It.IsAny<Guid>(),
+                _userId,
+                It.IsAny<string>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RecoveryPlanOperationResult<UserSubscriptionUsage>.Ok(usage, replay: true));
+        _requestRepoMock.Setup(r => r.GetByIdAsync(
+                existingRequest.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingRequest);
+
+        var result = await _service.CreateAsync(
+            _userId,
+            "reserve-replay-key",
+            new CreateRecoveryPlanRequest { DiseaseGroup = RecoveryPlanDiseaseGroup.Respiratory },
+            CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.IsReplay, Is.True);
+            Assert.That(result.Data!.Id, Is.EqualTo(existingRequest.Id));
+        });
+        _unitOfWorkMock.Verify(u => u.RollbackTransactionAsync(CancellationToken.None), Times.Once);
+        _requestRepoMock.Verify(r => r.Add(It.IsAny<RecoveryPlanRequest>()), Times.Never);
+        _unitOfWorkMock.Verify(u => u.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── StartReviewAsync & Transition ────────────────────────────────────────
@@ -230,6 +313,13 @@ public class RecoveryPlanRequestServiceTests
             UserSubscriptionUsageId = Guid.NewGuid(),
             Version = 1
         };
+
+    private static UserSubscriptionUsage MakeUsage() => new()
+    {
+        Id = Guid.NewGuid(),
+        UserSubscriptionId = Guid.NewGuid(),
+        QuotaId = Guid.NewGuid()
+    };
 
     // ── GetMineAsync ─────────────────────────────────────────────────────────
 

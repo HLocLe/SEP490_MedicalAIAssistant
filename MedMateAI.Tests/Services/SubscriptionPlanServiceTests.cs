@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using System.Text;
 using System.Text.Json;
+using MedMateAI.Application.DTOs.SubscriptionPlanQuotas.Responses;
 using MedMateAI.Application.DTOs.SubscriptionPlans.Requests;
 using MedMateAI.Application.DTOs.SubscriptionPlans.Responses;
 using MedMateAI.Application.IService;
@@ -35,6 +36,10 @@ public class SubscriptionPlanServiceTests
         _cacheInvalidatorMock
             .Setup(c => c.InvalidateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        _quotaServiceMock.Setup(service => service.GetActivePlanQuotasAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<SubscriptionPlanQuotaResponse>>());
         _service = new SubscriptionPlanService(
             _repoMock.Object,
             _unitOfWorkMock.Object,
@@ -272,7 +277,8 @@ public class SubscriptionPlanServiceTests
         Assert.That(result.PlanName, Is.EqualTo("Unique"));
         _repoMock.Verify(r => r.Add(It.IsAny<SubscriptionPlan>()), Times.Once);
         _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
-        _cacheMock.Verify(c => c.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        _cacheInvalidatorMock.Verify(c => c.InvalidateAsync(
+            result.Id, CancellationToken.None), Times.Once);
     }
 
     [Test]
@@ -324,7 +330,8 @@ public class SubscriptionPlanServiceTests
         Assert.That(plan.DurationInDays, Is.EqualTo(60));
         _repoMock.Verify(r => r.Update(plan), Times.Once);
         _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
-        _cacheMock.Verify(c => c.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        _cacheInvalidatorMock.Verify(c => c.InvalidateAsync(
+            id, CancellationToken.None), Times.Once);
     }
 
     [Test]
@@ -346,6 +353,8 @@ public class SubscriptionPlanServiceTests
         Assert.That(plan.IsActive, Is.True);
         _repoMock.Verify(r => r.Update(plan), Times.Once);
         _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _cacheInvalidatorMock.Verify(c => c.InvalidateAsync(
+            id, CancellationToken.None), Times.Once);
     }
 
     [Test]
@@ -365,6 +374,7 @@ public class SubscriptionPlanServiceTests
         Assert.That(plan.IsDeleted, Is.True);
         _repoMock.Verify(r => r.Update(plan), Times.Once);
         _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
-        _cacheMock.Verify(c => c.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        _cacheInvalidatorMock.Verify(c => c.InvalidateAsync(
+            id, CancellationToken.None), Times.Once);
     }
 }
