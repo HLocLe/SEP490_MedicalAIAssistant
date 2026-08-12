@@ -7,6 +7,7 @@ using MedMateAI.Application.IService;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Persistence;
+using MedMateAI.Domain.Repository;
 using Microsoft.AspNetCore.Http;
 
 namespace MedMateAI.Application.Service;
@@ -15,15 +16,18 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPayOSService _payOsService;
+    private readonly ISubscriptionPlanQuotaRepository _subscriptionPlanQuotaRepository;
     private readonly IHttpContextAccessor _httpContextAccessor;
 
     public UserSubscriptionService(
         IUnitOfWork unitOfWork,
         IPayOSService payOsService,
+        ISubscriptionPlanQuotaRepository subscriptionPlanQuotaRepository,
         IHttpContextAccessor httpContextAccessor)
     {
         _unitOfWork = unitOfWork;
         _payOsService = payOsService;
+        _subscriptionPlanQuotaRepository = subscriptionPlanQuotaRepository;
         _httpContextAccessor = httpContextAccessor;
     }
 
@@ -75,38 +79,47 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
         }
 
         var utcNow = DateTime.UtcNow;
-        var activeSubscription = await _unitOfWork.UserSubscriptions.GetCurrentActiveByUserAsync(
-            userId!.Value,
-            utcNow,
-            cancellationToken);
-
-        if (activeSubscription is not null)
-        {
-            return (false, new[] { "You already have an active subscription." }, null);
-        }
-
         var amount = decimal.ToInt32(plan.Price);
         var orderCode = await GenerateOrderCodeAsync(cancellationToken);
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
+            var lockedPlan = await _subscriptionPlanQuotaRepository.GetPlanForUpdateAsync(
+                plan.Id,
+                cancellationToken);
+            if (lockedPlan is null || !lockedPlan.IsActive)
+            {
+                await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+                return (false, new[] { "Subscription plan is not active." }, null);
+            }
+
+            var planQuota = await _subscriptionPlanQuotaRepository.GetActivePlanQuotaByCodeAsync(
+                plan.Id,
+                IServiceCreditService.QuotaCode,
+                cancellationToken);
+            if (planQuota is null || planQuota.LimitValue <= 0)
+            {
+                await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+                return (false, new[] { "SERVICE_CREDIT_NOT_CONFIGURED" }, null);
+            }
+
             var subscription = new UserSubscription
             {
                 Id = Guid.NewGuid(),
-                UserId = userId.Value,
+                UserId = userId.GetValueOrDefault(),
                 PlanId = plan.Id,
                 Status = SubscriptionStatus.Pending,
                 StartDate = null,
                 EndDate = null,
-                AutoRenew = request.AutoRenew,
+                AutoRenew = false,
                 CreatedAt = utcNow,
             };
 
             var payment = new Payment
             {
                 Id = Guid.NewGuid(),
-                UserId = userId.Value,
+                UserId = userId.GetValueOrDefault(),
                 UserSubscriptionId = subscription.Id,
                 Amount = plan.Price,
                 Currency = "VND",
@@ -118,7 +131,7 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
             {
                 Id = Guid.NewGuid(),
                 PaymentId = payment.Id,
-                UserId = userId.Value,
+                UserId = userId.GetValueOrDefault(),
                 UserSubscriptionId = subscription.Id,
                 Amount = plan.Price,
                 PaymentProvider = "payOS",
@@ -134,6 +147,15 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+            await _unitOfWork.QuotaUsages.GetOrCreateAsync(
+                subscription.Id,
+                planQuota.QuotaId,
+                utcNow,
+                cycleEnd: null,
+                planQuota.LimitValue,
+                utcNow,
+                cancellationToken);
+
             PayOSCreatePaymentResult paymentLinkResult;
             try
             {
@@ -147,7 +169,7 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
                         CancelUrl = string.Empty,
                         PaymentId = payment.Id,
                         SubscriptionId = subscription.Id,
-                        UserId = userId.Value,
+                        UserId = userId.GetValueOrDefault(),
                     },
                     cancellationToken);
             }
@@ -196,7 +218,7 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
         }
         catch
         {
-            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
             return (false, new[] { "Checkout failed." }, null);
         }
     }
@@ -261,14 +283,20 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
             return (false, true, Array.Empty<string>(), null);
         }
 
-        if (subscription.Status is SubscriptionStatus.Active or SubscriptionStatus.Pending)
+        if (subscription.Status != SubscriptionStatus.Pending)
         {
-            subscription.Status = SubscriptionStatus.Cancelled;
-            subscription.AutoRenew = false;
-            subscription.UpdatedAt = DateTime.UtcNow;
-            _unitOfWork.UserSubscriptions.Update(subscription);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            return (
+                false,
+                false,
+                new[] { "Only pending subscriptions can be cancelled." },
+                null);
         }
+
+        subscription.Status = SubscriptionStatus.Cancelled;
+        subscription.AutoRenew = false;
+        subscription.UpdatedAt = DateTime.UtcNow;
+        _unitOfWork.UserSubscriptions.Update(subscription);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         var updated = await _unitOfWork.UserSubscriptions.GetByIdWithPlanAsync(id, cancellationToken);
         return updated is null

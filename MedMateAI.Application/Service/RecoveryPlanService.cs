@@ -474,7 +474,7 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
             var usage = await _unitOfWork.QuotaUsages.GetByIdForQuotaAsync(
                 recoveryPlanRequest.UserSubscriptionUsageId,
                 recoveryPlanRequest.UserSubscriptionId,
-                RecoveryPlanQuotaService.QuotaCode,
+                IServiceCreditService.QuotaCode,
                 cancellationToken);
             if (usage is null)
             {
@@ -1028,7 +1028,7 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
 
     private static string BuildPublishConsumeKey(Guid requestId)
     {
-        return $"RPR:{requestId}:CONSUME:PUBLISH";
+        return $"credit:consume:recovery-plan:{requestId:N}";
     }
 
     private void AddPublishedEvent(

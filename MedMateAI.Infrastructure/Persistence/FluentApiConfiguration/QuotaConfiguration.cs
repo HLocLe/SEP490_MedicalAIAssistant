@@ -6,7 +6,7 @@ namespace MedMateAI.Infrastructure.Persistence.FluentAPiConfiguration;
 
 public sealed class QuotaConfiguration : IEntityTypeConfiguration<Quota>
 {
-    private static readonly Guid RecoveryPlanRequestQuotaId = new("7c57cfd1-5bb6-4d4e-8959-9e87d240d481");
+    private static readonly Guid ServiceCreditQuotaId = new("7c57cfd1-5bb6-4d4e-8959-9e87d240d481");
     private static readonly DateTime SeededAt = new(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc);
 
     public void Configure(EntityTypeBuilder<Quota> builder)
@@ -21,11 +21,11 @@ public sealed class QuotaConfiguration : IEntityTypeConfiguration<Quota>
         builder.HasIndex(x => x.Code).IsUnique();
         builder.HasData(new Quota
         {
-            Id = RecoveryPlanRequestQuotaId,
-            Code = "RECOVERY_PLAN_REQUEST",
-            Name = "Recovery Plan Request",
-            Description = "Quota for requesting a doctor-created recovery plan.",
-            Unit = "request",
+            Id = ServiceCreditQuotaId,
+            Code = "SERVICE_CREDIT",
+            Name = "Service Credit",
+            Description = "Shared credit for eligible MediMate AI services.",
+            Unit = "credit",
             IsActive = true,
             IsDeleted = false,
             CreatedAt = SeededAt

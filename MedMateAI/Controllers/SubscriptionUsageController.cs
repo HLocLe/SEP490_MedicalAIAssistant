@@ -11,20 +11,22 @@ namespace MedMateAI.Controllers;
 [Route("api/me/subscription-usage")]
 public sealed class SubscriptionUsageController : ControllerBase
 {
-    private readonly IRecoveryPlanQuotaService _service;
-    public SubscriptionUsageController(IRecoveryPlanQuotaService service) => _service = service;
+    private readonly IServiceCreditService _service;
+    public SubscriptionUsageController(IServiceCreditService service) => _service = service;
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken token)
     {
         if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
             return Unauthorized(new ApiResponse { Success = false, Message = "Unauthorized.", Errors = new() { "UNAUTHENTICATED" } });
-        var result = await _service.GetCurrentUsageAsync(userId, token);
+        var result = await _service.GetBalanceAsync(userId, DateTime.UtcNow, token);
         if (result.Success)
-            return Ok(new ApiResponse<IReadOnlyList<SubscriptionUsageResponse>> { Success = true, Message = "OK", Data = result.Data });
-        var code = result.Error == Application.Models.RecoveryPlanErrorCode.NoActiveSubscription
-            ? "NO_ACTIVE_SUBSCRIPTION" : result.Error.ToString().ToUpperInvariant();
-        return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse
-            { Success = false, Message = "Subscription usage unavailable.", Errors = new() { code } });
+            return Ok(new ApiResponse<SubscriptionUsageResponse> { Success = true, Message = "OK", Data = result.Data });
+        return StatusCode(StatusCodes.Status409Conflict, new ApiResponse
+        {
+            Success = false,
+            Message = "Subscription usage unavailable.",
+            Errors = new() { "QUOTA_MUTATION_FAILED" }
+        });
     }
 }

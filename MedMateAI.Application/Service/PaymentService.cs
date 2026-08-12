@@ -4,6 +4,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Payments.PayOS;
 using MedMateAI.Application.DTOs.Payments.Responses;
 using MedMateAI.Application.IService;
+using MedMateAI.Application.Models;
 using MedMateAI.Application.Models.Payments;
 using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
@@ -27,17 +28,20 @@ public sealed class PaymentService : IPaymentService
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPayOSService _payOsService;
+    private readonly IServiceCreditService _serviceCreditService;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<PaymentService> _logger;
 
     public PaymentService(
         IUnitOfWork unitOfWork,
         IPayOSService payOsService,
+        IServiceCreditService serviceCreditService,
         IHttpContextAccessor httpContextAccessor,
         ILogger<PaymentService> logger)
     {
         _unitOfWork = unitOfWork;
         _payOsService = payOsService;
+        _serviceCreditService = serviceCreditService;
         _httpContextAccessor = httpContextAccessor;
         _logger = logger;
     }
@@ -93,10 +97,11 @@ public sealed class PaymentService : IPaymentService
                 return false;
             }
 
-            var mutationError = ApplyVerifiedPayOSState(
+            var mutationError = await ApplyVerifiedPayOSStateAsync(
                 transaction!,
                 verifiedState,
-                DateTime.UtcNow);
+                DateTime.UtcNow,
+                cancellationToken);
             if (mutationError != PaymentReconciliationErrorCode.None)
             {
                 await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
@@ -262,10 +267,11 @@ public sealed class PaymentService : IPaymentService
                     BuildReconciliationFailureMessage(lockedValidationError));
             }
 
-            var mutationError = ApplyVerifiedPayOSState(
+            var mutationError = await ApplyVerifiedPayOSStateAsync(
                 transaction!,
                 providerState,
-                DateTime.UtcNow);
+                DateTime.UtcNow,
+                cancellationToken);
             if (mutationError != PaymentReconciliationErrorCode.None)
             {
                 return await RollbackReconciliationFailureAsync(
@@ -632,14 +638,14 @@ public sealed class PaymentService : IPaymentService
             && transaction.PaidAt.HasValue
             && transaction.ProcessedAt.HasValue
             && subscription.Status == SubscriptionStatus.Active
-            && subscription.StartDate.HasValue
-            && subscription.EndDate.HasValue;
+            && subscription.StartDate.HasValue;
     }
 
-    private static PaymentReconciliationErrorCode ApplyVerifiedPayOSState(
+    private async Task<PaymentReconciliationErrorCode> ApplyVerifiedPayOSStateAsync(
         PaymentTransaction transaction,
         PayOSPaymentLinkResult providerState,
-        DateTime utcNow)
+        DateTime utcNow,
+        CancellationToken cancellationToken)
     {
         if (!IsSupportedProviderStatus(providerState.Status))
         {
@@ -651,6 +657,17 @@ public sealed class PaymentService : IPaymentService
         switch (providerState.Status)
         {
             case PaidStatus:
+                var grantStatus = await _serviceCreditService.GrantAsync(
+                    transaction.UserSubscriptionId,
+                    transaction.Payment!.Id,
+                    transaction.UserId,
+                    utcNow,
+                    cancellationToken);
+                if (grantStatus == QuotaMutationStatus.Rejected)
+                {
+                    return PaymentReconciliationErrorCode.Conflict;
+                }
+
                 ApplyPaidState(transaction, utcNow);
                 break;
             case CancelledStatus:
@@ -739,20 +756,21 @@ public sealed class PaymentService : IPaymentService
         transaction.PaidAt ??= paidAt;
         transaction.ProcessedAt ??= utcNow;
 
-        var startDate = subscription.StartDate ?? paidAt;
-        var durationInDays = subscription.Plan.DurationInDays;
-        if (durationInDays <= 0)
+        var wasActiveLegacySubscription =
+            subscription.Status == SubscriptionStatus.Active
+            && subscription.EndDate.HasValue;
+        if (!wasActiveLegacySubscription)
         {
-            durationInDays = 1;
+            subscription.EndDate = null;
+            subscription.AutoRenew = false;
+            subscription.UpdatedAt = utcNow;
         }
 
         if (subscription.Status != SubscriptionStatus.Active
-            || !subscription.StartDate.HasValue
-            || !subscription.EndDate.HasValue)
+            || !subscription.StartDate.HasValue)
         {
             subscription.Status = SubscriptionStatus.Active;
-            subscription.StartDate = startDate;
-            subscription.EndDate ??= startDate.AddDays(durationInDays);
+            subscription.StartDate ??= paidAt;
             subscription.UpdatedAt = utcNow;
         }
     }

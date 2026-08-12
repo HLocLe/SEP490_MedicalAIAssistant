@@ -62,6 +62,9 @@ internal static class RecoveryPlanHttpResultMapper
         RecoveryPlanErrorCode.Unauthenticated => StatusCodes.Status401Unauthorized,
         RecoveryPlanErrorCode.Forbidden or RecoveryPlanErrorCode.NoActiveSubscription
             or RecoveryPlanErrorCode.RecoveryPlanQuotaNotConfigured
+            or RecoveryPlanErrorCode.NoCreditPackage
+            or RecoveryPlanErrorCode.ServiceCreditNotConfigured
+            or RecoveryPlanErrorCode.ServiceCreditExhausted
             or RecoveryPlanErrorCode.DoctorNotActive
             or RecoveryPlanErrorCode.DoctorNotAcceptingRequests => StatusCodes.Status403Forbidden,
         RecoveryPlanErrorCode.NotFound

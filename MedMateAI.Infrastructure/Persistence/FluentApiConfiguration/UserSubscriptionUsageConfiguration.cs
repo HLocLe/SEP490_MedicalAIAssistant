@@ -14,12 +14,16 @@ public sealed class UserSubscriptionUsageConfiguration : IEntityTypeConfiguratio
             t.HasCheckConstraint("CK_UserSubscriptionUsage_UsedCount", "\"UsedCount\" >= 0");
             t.HasCheckConstraint("CK_UserSubscriptionUsage_ReservedCount", "\"ReservedCount\" >= 0");
             t.HasCheckConstraint("CK_UserSubscriptionUsage_Total", "\"UsedCount\" + \"ReservedCount\" <= \"LimitValue\"");
-            t.HasCheckConstraint("CK_UserSubscriptionUsage_Cycle", "\"CycleEnd\" > \"CycleStart\"");
+            t.HasCheckConstraint(
+                "CK_UserSubscriptionUsage_Cycle",
+                "\"CycleEnd\" IS NULL OR \"CycleEnd\" > \"CycleStart\"");
         });
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("UserSubscriptionUsageId").ValueGeneratedOnAdd();
         builder.Property(x => x.Version).HasDefaultValue(0).IsConcurrencyToken();
-        builder.HasIndex(x => new { x.UserSubscriptionId, x.QuotaId, x.CycleStart, x.CycleEnd }).IsUnique().HasFilter("\"IsDeleted\" = false");
+        builder.HasIndex(x => new { x.UserSubscriptionId, x.QuotaId })
+            .IsUnique()
+            .HasFilter("\"IsDeleted\" = false");
         builder.HasIndex(x => new { x.UserSubscriptionId, x.CycleEnd });
         builder.HasOne(x => x.UserSubscription).WithMany(x => x.Usages).HasForeignKey(x => x.UserSubscriptionId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Quota).WithMany(x => x.UserSubscriptionUsages).HasForeignKey(x => x.QuotaId).OnDelete(DeleteBehavior.Restrict);

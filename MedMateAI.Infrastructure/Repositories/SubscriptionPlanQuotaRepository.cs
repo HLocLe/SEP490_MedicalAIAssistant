@@ -75,6 +75,36 @@ public sealed class SubscriptionPlanQuotaRepository
             .ToListAsync(cancellationToken);
     }
 
+    public Task<SubscriptionPlanQuota?> GetActivePlanQuotaByCodeAsync(
+        Guid planId,
+        string quotaCode,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.SubscriptionPlanQuotas
+            .AsNoTracking()
+            .Include(mapping => mapping.Quota)
+            .SingleOrDefaultAsync(
+                mapping =>
+                    mapping.PlanId == planId
+                    && !mapping.IsDeleted
+                    && mapping.IsActive
+                    && !mapping.Quota.IsDeleted
+                    && mapping.Quota.IsActive
+                    && mapping.Quota.Code == quotaCode,
+                cancellationToken);
+    }
+
+    public Task<Quota?> GetQuotaDefinitionByCodeAsync(
+        string quotaCode,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.Quotas
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                quota => quota.Code == quotaCode && !quota.IsDeleted,
+                cancellationToken);
+    }
+
     public async Task<SubscriptionPlan?> GetPlanForUpdateAsync(
         Guid planId,
         CancellationToken cancellationToken = default)

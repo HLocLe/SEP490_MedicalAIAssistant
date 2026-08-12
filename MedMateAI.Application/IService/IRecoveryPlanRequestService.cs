@@ -1,6 +1,5 @@
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.RecoveryPlanRequests;
-using MedMateAI.Application.DTOs.UserSubscriptions.Responses;
 using MedMateAI.Application.Models;
 using MedMateAI.Domain.Enums;
 
@@ -87,19 +86,8 @@ public interface IRecoveryPlanRequestService
 
 public interface IRecoveryPlanQuotaService
 {
-    Task<RecoveryPlanOperationResult<IReadOnlyList<SubscriptionUsageResponse>>> GetCurrentUsageAsync(
+    Task<RecoveryPlanOperationResult<MedMateAI.Domain.Entities.UserSubscriptionUsage>> ReserveUsageAsync(
         Guid userId,
-        CancellationToken cancellationToken);
-
-    Task<RecoveryPlanOperationResult<MedMateAI.Domain.Entities.UserSubscriptionUsage>> ResolveUsageAsync(
-        Guid userId,
-        DateTime utcNow,
-        CancellationToken cancellationToken);
-
-    Task<QuotaMutationStatus> ReserveAsync(
-        Guid usageId,
-        Guid userSubscriptionId,
-        Guid quotaId,
         Guid requestId,
         Guid actorUserId,
         string idempotencyKey,
