@@ -217,7 +217,7 @@ public class MedicalDepartmentServiceTests
         var (succeeded, errors, data) = await _service.CreateMedicalDepartmentAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Department name is required."));
+        Assert.That(errors, Contains.Item("DepartmentName là bắt buộc"));
     }
 
     [Test]
@@ -235,7 +235,7 @@ public class MedicalDepartmentServiceTests
         var (succeeded, errors, data) = await _service.CreateMedicalDepartmentAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("ICD chapter 'Z99' was not found."));
+        Assert.That(errors, Contains.Item("Không tìm thấy ICD chapter"));
     }
 
     [Test]
@@ -276,7 +276,7 @@ public class MedicalDepartmentServiceTests
             Guid.Empty, new UpdateMedicalDepartmentRequest { DepartmentName = "x" });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid medical department id."));
+        Assert.That(errors, Contains.Item("Id khoa không hợp lệ"));
     }
 
     [Test]
@@ -287,7 +287,7 @@ public class MedicalDepartmentServiceTests
             Guid.NewGuid(), new UpdateMedicalDepartmentRequest { DepartmentName = " " });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Department name cannot be empty when provided."));
+        Assert.That(errors, Contains.Item("DepartmentName không được để trống"));
     }
 
     [Test]
@@ -323,7 +323,7 @@ public class MedicalDepartmentServiceTests
             id, new UpdateMedicalDepartmentRequest { ChapterCode = "Z99" });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("ICD chapter 'Z99' was not found."));
+        Assert.That(errors, Contains.Item("Không tìm thấy ICD chapter"));
     }
 
     [Test]
@@ -356,7 +356,7 @@ public class MedicalDepartmentServiceTests
         var (succeeded, notFound, errors) = await _service.SoftDeleteMedicalDepartmentAsync(Guid.Empty);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid medical department id."));
+        Assert.That(errors, Contains.Item("Id khoa không hợp lệ"));
     }
 
     [Test]

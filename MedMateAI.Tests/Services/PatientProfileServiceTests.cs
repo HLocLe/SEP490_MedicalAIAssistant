@@ -24,6 +24,7 @@ public class PatientProfileServiceTests
     private Mock<IMapper> _mapperMock = null!;
     private Mock<IUnitOfWork> _uowMock = null!;
     private PatientProfileService _service = null!;
+    private readonly Guid _userId = Guid.NewGuid();
 
     [SetUp]
     public void SetUp()
@@ -36,6 +37,21 @@ public class PatientProfileServiceTests
 
         _uowMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
+        _userServiceMock.Setup(service => service.GetCurrentUserAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId });
+        _userServiceMock.Setup(service => service.IsInRoleAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _userServiceMock.Setup(service => service.GetUserByIdAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid userId, CancellationToken _) => new ApplicationUserResponse { Id = userId });
+        _userServiceMock.Setup(service => service.MarkPatientProfileCompletedAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((true, Array.Empty<string>()));
 
         _service = new PatientProfileService(
             _userServiceMock.Object,
@@ -81,7 +97,7 @@ public class PatientProfileServiceTests
         var (succeeded, errors) = await _service.DeleteMyProfileAsync();
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Unauthorized."));
+        Assert.That(errors, Contains.Item("Người dùng chưa đăng nhập."));
     }
 
     [Test]
@@ -101,7 +117,7 @@ public class PatientProfileServiceTests
         var (succeeded, errors) = await _service.DeleteMyProfileAsync();
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Patient profile not found."));
+        Assert.That(errors, Contains.Item("Không tìm thấy hồ sơ bệnh nhân."));
     }
 
     [Test]
@@ -206,7 +222,7 @@ public class PatientProfileServiceTests
     public async Task GetPatientProfileByIdAsync_Found_ReturnsProfile()
     {
         var id = Guid.NewGuid();
-        var profile = new PatientProfile { Id = id, UserId = Guid.NewGuid(), IsDeleted = false };
+        var profile = new PatientProfile { Id = id, UserId = _userId, IsDeleted = false };
         _patientProfilesMock.Setup(r => r.GetByIdAsync(id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(profile);
 
@@ -263,6 +279,8 @@ public class PatientProfileServiceTests
     {
         var userId = Guid.NewGuid();
         var profile = new PatientProfile { Id = Guid.NewGuid(), UserId = userId, IsDeleted = false };
+        _userServiceMock.Setup(s => s.GetCurrentUserAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = userId });
         _patientProfilesMock.Setup(r => r.FirstOrDefaultAsync(
                 It.IsAny<Expression<Func<PatientProfile, bool>>>(),
                 It.IsAny<bool>(),
@@ -298,20 +316,22 @@ public class PatientProfileServiceTests
 
     [Test]
     [Category("B")]
-    public async Task CreatePatientProfileAsync_EmptyUserId_ReturnsFailed()
+    public async Task CreatePatientProfileAsync_Unauthenticated_ReturnsFailed()
     {
+        _userServiceMock.Setup(s => s.GetCurrentUserAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ApplicationUserResponse?)null);
         var req = new CreatePatientProfileRequest { UserId = Guid.Empty };
         var (succeeded, errors, data) = await _service.CreatePatientProfileAsync(req);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("User is not authenticated."));
+        Assert.That(errors, Contains.Item("Người dùng chưa đăng nhập."));
     }
 
     [Test]
     [Category("A")]
     public async Task CreatePatientProfileAsync_DuplicateProfile_ReturnsFailed()
     {
-        var userId = Guid.NewGuid();
+        var userId = _userId;
         var req = new CreatePatientProfileRequest { UserId = userId };
         
         var existing = new PatientProfile { Id = Guid.NewGuid(), UserId = userId };
@@ -324,7 +344,7 @@ public class PatientProfileServiceTests
         var (succeeded, errors, data) = await _service.CreatePatientProfileAsync(req);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("A patient profile already exists for this user."));
+        Assert.That(errors, Contains.Item("Người dùng này đã có hồ sơ bệnh nhân."));
     }
 
     [Test]
@@ -333,7 +353,7 @@ public class PatientProfileServiceTests
     {
         var req = new CreatePatientProfileRequest
         {
-            UserId = Guid.NewGuid(),
+            UserId = _userId,
             ChronicDiseases = new List<PatientChronicDiseaseItemCreateRequest>
             {
                 new() { DiseaseName = "  ", From = new DateOnly(2026, 1, 10), To = new DateOnly(2026, 1, 1) } // invalid name & dates
@@ -356,7 +376,7 @@ public class PatientProfileServiceTests
     [Category("N")]
     public async Task CreatePatientProfileAsync_Success_CreatesProfileAndChronicDiseases()
     {
-        var userId = Guid.NewGuid();
+        var userId = _userId;
         var req = new CreatePatientProfileRequest
         {
             UserId = userId,
@@ -412,7 +432,7 @@ public class PatientProfileServiceTests
         var (succeeded, notFound, errors, data) = await _service.UpdatePatientProfileAsync(Guid.Empty, req);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid patient profile id."));
+        Assert.That(errors, Contains.Item("Id hồ sơ bệnh nhân không hợp lệ."));
     }
 
     [Test]
@@ -435,7 +455,7 @@ public class PatientProfileServiceTests
     public async Task UpdatePatientProfileAsync_Success_UpdatesFieldsAndSyncsChronicDiseases()
     {
         var id = Guid.NewGuid();
-        var profile = new PatientProfile { Id = id, UserId = Guid.NewGuid(), BloodType = "A-", Height = 160 };
+        var profile = new PatientProfile { Id = id, UserId = _userId, BloodType = "A-", Height = 160 };
         _patientProfilesMock.Setup(r => r.GetByIdAsync(id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(profile);
 
@@ -486,7 +506,7 @@ public class PatientProfileServiceTests
         var (succeeded, notFound, errors) = await _service.SoftDeletePatientProfileAsync(Guid.Empty);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid patient profile id."));
+        Assert.That(errors, Contains.Item("Id hồ sơ bệnh nhân không hợp lệ."));
     }
 
     [Test]
@@ -508,7 +528,7 @@ public class PatientProfileServiceTests
     public async Task SoftDeletePatientProfileAsync_Success_SoftDeletesProfileAndChronicDiseases()
     {
         var id = Guid.NewGuid();
-        var profile = new PatientProfile { Id = id, UserId = Guid.NewGuid(), IsDeleted = false };
+        var profile = new PatientProfile { Id = id, UserId = _userId, IsDeleted = false };
         _patientProfilesMock.Setup(r => r.GetByIdAsync(id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(profile);
 

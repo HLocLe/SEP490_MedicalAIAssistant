@@ -63,7 +63,7 @@ public class LabTestServiceTests
 
         // Assert
         Assert.That(result.Succeeded, Is.False);
-        Assert.That(result.Errors, Contains.Item("User id is required."));
+        Assert.That(result.Errors, Contains.Item("Id người dùng là bắt buộc"));
     }
 
     [TestCase("http://example.com/test.txt")]
@@ -100,7 +100,7 @@ public class LabTestServiceTests
 
         // Assert
         Assert.That(result.Succeeded, Is.False);
-        Assert.That(result.Errors, Contains.Item("PatientAgeAtTest is invalid."));
+        Assert.That(result.Errors, Contains.Item("PatientAgeAtTest không hợp lệ"));
     }
 
     [Test]

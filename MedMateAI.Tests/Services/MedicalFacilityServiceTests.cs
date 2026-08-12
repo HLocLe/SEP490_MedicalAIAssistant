@@ -228,7 +228,7 @@ public class MedicalFacilityServiceTests
         var (succeeded, errors, data) = await _service.CreateMedicalFacilityAsync(null!);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Request body is required."));
+        Assert.That(errors, Contains.Item("Request body là bắt buộc"));
     }
 
     [Test]
@@ -248,12 +248,12 @@ public class MedicalFacilityServiceTests
         var (succeeded, errors, data) = await _service.CreateMedicalFacilityAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Facility name is required."));
-        Assert.That(errors, Contains.Item("Latitude must be between -90 and 90."));
-        Assert.That(errors, Contains.Item("Longitude must be between -180 and 180."));
-        Assert.That(errors, Contains.Item("Website must be a valid absolute URL."));
-        Assert.That(errors, Contains.Item("ImageUrl must be a valid absolute http or https URL."));
-        Assert.That(errors, Contains.Item("DepartmentIds contains invalid empty guid."));
+        Assert.That(errors, Contains.Item("Tên cơ sở y tế là bắt buộc"));
+        Assert.That(errors, Contains.Item("Latitude phải từ -90 đến 90"));
+        Assert.That(errors, Contains.Item("Longitude phải từ -180 đến 180"));
+        Assert.That(errors, Contains.Item("Website không hợp lệ"));
+        Assert.That(errors, Contains.Item("ImageUrl không hợp lệ"));
+        Assert.That(errors, Contains.Item("DepartmentIds chứa Guid rỗng"));
     }
 
     [Test]
@@ -273,7 +273,7 @@ public class MedicalFacilityServiceTests
         var (succeeded, errors, data) = await _service.CreateMedicalFacilityAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Some DepartmentIds do not exist or are deleted."));
+        Assert.That(errors, Contains.Item("Một số DepartmentId không tồn tại hoặc đã xóa"));
     }
 
     [Test]
@@ -291,7 +291,7 @@ public class MedicalFacilityServiceTests
         var (succeeded, errors, data) = await _service.CreateMedicalFacilityAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Medical facility with same facility name and address already exists."));
+        Assert.That(errors, Contains.Item("Cơ sở y tế cùng tên và địa chỉ đã tồn tại"));
     }
 
     [Test]
@@ -337,7 +337,7 @@ public class MedicalFacilityServiceTests
             Guid.Empty, new UpdateMedicalFacilityRequest());
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid medical facility id."));
+        Assert.That(errors, Contains.Item("Id cơ sở y tế không hợp lệ"));
     }
 
     [Test]
@@ -347,7 +347,7 @@ public class MedicalFacilityServiceTests
         var (succeeded, notFound, errors, data) = await _service.UpdateMedicalFacilityAsync(Guid.NewGuid(), null!);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Request body is required."));
+        Assert.That(errors, Contains.Item("Request body là bắt buộc"));
     }
 
     [Test]
@@ -377,7 +377,7 @@ public class MedicalFacilityServiceTests
             id, new UpdateMedicalFacilityRequest { FacilityType = (MedicalFacilityType)999 });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("FacilityType is invalid."));
+        Assert.That(errors, Contains.Item("FacilityType không hợp lệ"));
     }
 
     [Test]
@@ -392,7 +392,7 @@ public class MedicalFacilityServiceTests
             id, new UpdateMedicalFacilityRequest { FacilityName = " " });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Facility name cannot be empty when provided."));
+        Assert.That(errors, Contains.Item("Tên cơ sở y tế không được để trống"));
     }
 
     [Test]
@@ -408,7 +408,7 @@ public class MedicalFacilityServiceTests
             id, new UpdateMedicalFacilityRequest { DepartmentIds = new List<Guid> { departmentId, departmentId } });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("DepartmentIds must contain distinct values."));
+        Assert.That(errors, Contains.Item("DepartmentIds phải là các giá trị khác nhau"));
     }
 
     [Test]
@@ -485,7 +485,7 @@ public class MedicalFacilityServiceTests
             Guid.Empty, new UpdateMedicalFacilityStatusRequest { IsActive = true });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid medical facility id."));
+        Assert.That(errors, Contains.Item("Id cơ sở y tế không hợp lệ"));
     }
 
     [Test]
@@ -531,7 +531,7 @@ public class MedicalFacilityServiceTests
         var (succeeded, notFound, errors) = await _service.SoftDeleteMedicalFacilityAsync(Guid.Empty);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid medical facility id."));
+        Assert.That(errors, Contains.Item("Id cơ sở y tế không hợp lệ"));
     }
 
     [Test]

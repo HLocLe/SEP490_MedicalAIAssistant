@@ -462,7 +462,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.CreateLabIndicatorAsync(null!);
 
-        Assert.That(result.Errors, Does.Contain("Request body is required."));
+        Assert.That(result.Errors, Does.Contain("Request body là bắt buộc"));
     }
 
     [Test]
@@ -471,7 +471,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.CreateLabIndicatorAsync(MakeCreateRequest(symbol: "   "));
 
-        Assert.That(result.Errors, Does.Contain("Symbol is required."));
+        Assert.That(result.Errors, Does.Contain("Symbol là bắt buộc"));
     }
 
     [Test]
@@ -480,7 +480,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.CreateLabIndicatorAsync(MakeCreateRequest(min: 20, max: 10));
 
-        Assert.That(result.Errors, Does.Contain("MinReference cannot be greater than MaxReference."));
+        Assert.That(result.Errors, Does.Contain("MinReference không được lớn hơn MaxReference"));
     }
 
     [Test]
@@ -502,7 +502,7 @@ public class LabIndicatorServiceTests
 
         var result = await _service.CreateLabIndicatorAsync(MakeCreateRequest());
 
-        Assert.That(result.Errors, Does.Contain("Indicator symbol already exists."));
+        Assert.That(result.Errors, Does.Contain("Ký hiệu chỉ số đã tồn tại"));
     }
 
     // â”€â”€ BulkCreateLabIndicatorsAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -562,7 +562,7 @@ public class LabIndicatorServiceTests
             },
         });
 
-        Assert.That(result.Errors, Does.Contain("Indicators[1]: Symbol is required."));
+        Assert.That(result.Errors, Does.Contain("Indicators[1]: Symbol là bắt buộc"));
     }
 
     [Test]
@@ -594,7 +594,7 @@ public class LabIndicatorServiceTests
             Indicators = new List<CreateLabIndicatorRequest> { MakeCreateRequest(symbol: "hgb") },
         });
 
-        Assert.That(result.Errors, Does.Contain("Indicator symbol already exists: HGB"));
+        Assert.That(result.Errors, Does.Contain("Ký hiệu chỉ số đã tồn tại: HGB"));
     }
 
     // â”€â”€ UpdateLabIndicatorAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -605,7 +605,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.UpdateLabIndicatorAsync(Guid.Empty, new UpdateLabIndicatorRequest());
 
-        Assert.That(result.Errors, Does.Contain("Invalid indicator id."));
+        Assert.That(result.Errors, Does.Contain("Id chỉ số xét nghiệm không hợp lệ"));
         Assert.That(result.NotFound, Is.False);
     }
 
@@ -615,7 +615,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.UpdateLabIndicatorAsync(IndicatorId, null!);
 
-        Assert.That(result.Errors, Does.Contain("Request body is required."));
+        Assert.That(result.Errors, Does.Contain("Request body là bắt buộc"));
     }
 
     [Test]
@@ -647,7 +647,7 @@ public class LabIndicatorServiceTests
         var result = await _service.UpdateLabIndicatorAsync(
             IndicatorId, new UpdateLabIndicatorRequest { Symbol = "  " });
 
-        Assert.That(result.Errors, Does.Contain("Symbol cannot be empty when provided."));
+        Assert.That(result.Errors, Does.Contain("Symbol không được để trống"));
     }
 
     [Test]
@@ -660,7 +660,7 @@ public class LabIndicatorServiceTests
         var result = await _service.UpdateLabIndicatorAsync(
             IndicatorId, new UpdateLabIndicatorRequest { Symbol = "wbc" });
 
-        Assert.That(result.Errors, Does.Contain("Indicator symbol already exists."));
+        Assert.That(result.Errors, Does.Contain("Ký hiệu chỉ số đã tồn tại"));
     }
 
     [Test]
@@ -689,7 +689,7 @@ public class LabIndicatorServiceTests
         var result = await _service.UpdateLabIndicatorAsync(
             IndicatorId, new UpdateLabIndicatorRequest { MinReference = 99 });
 
-        Assert.That(result.Errors, Does.Contain("MinReference cannot be greater than MaxReference."));
+        Assert.That(result.Errors, Does.Contain("MinReference không được lớn hơn MaxReference"));
     }
 
     // â”€â”€ SoftDeleteLabIndicatorAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -700,7 +700,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.SoftDeleteLabIndicatorAsync(Guid.Empty);
 
-        Assert.That(result.Errors, Does.Contain("Invalid indicator id."));
+        Assert.That(result.Errors, Does.Contain("Id chỉ số xét nghiệm không hợp lệ"));
     }
 
     [Test]
@@ -757,7 +757,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.GetAliasesByIndicatorIdAsync(Guid.Empty);
 
-        Assert.That(result.Errors, Does.Contain("Invalid indicator id."));
+        Assert.That(result.Errors, Does.Contain("Id chỉ số xét nghiệm không hợp lệ"));
         Assert.That(result.NotFound, Is.False);
     }
 
@@ -892,7 +892,7 @@ public class LabIndicatorServiceTests
             },
         });
 
-        Assert.That(result.Errors, Does.Contain("Aliases[1]: AliasText is required."));
+        Assert.That(result.Errors, Does.Contain("Aliases[1]: AliasText là bắt buộc"));
     }
 
     [Test]
@@ -926,7 +926,7 @@ public class LabIndicatorServiceTests
             Aliases = new List<CreateLabIndicatorAliasRequest> { new() { AliasText = "Hemoglobin" } },
         });
 
-        Assert.That(result.Errors, Does.Contain("Alias already exists for this indicator: Hemoglobin"));
+        Assert.That(result.Errors, Does.Contain("Alias đã tồn tại cho chỉ số này: Hemoglobin"));
     }
 
     // â”€â”€ CreateAliasAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -970,7 +970,7 @@ public class LabIndicatorServiceTests
         var result = await _service.CreateAliasAsync(
             IndicatorId, new CreateLabIndicatorAliasRequest { AliasText = "   " });
 
-        Assert.That(result.Errors, Does.Contain("AliasText is required."));
+        Assert.That(result.Errors, Does.Contain("AliasText là bắt buộc"));
     }
 
     [Test]
@@ -986,7 +986,7 @@ public class LabIndicatorServiceTests
         var result = await _service.CreateAliasAsync(
             IndicatorId, new CreateLabIndicatorAliasRequest { AliasText = "Hemoglobin" });
 
-        Assert.That(result.Errors, Does.Contain("Alias already exists for this indicator: Hemoglobin"));
+        Assert.That(result.Errors, Does.Contain("Alias đã tồn tại cho chỉ số này: Hemoglobin"));
     }
 
     // â”€â”€ UpdateAliasAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1018,7 +1018,7 @@ public class LabIndicatorServiceTests
         var result = await _service.UpdateAliasAsync(
             IndicatorId, Guid.Empty, new UpdateLabIndicatorAliasRequest { AliasText = "Hemoglobin" });
 
-        Assert.That(result.Errors, Does.Contain("Invalid alias id."));
+        Assert.That(result.Errors, Does.Contain("Id alias không hợp lệ"));
     }
 
     [Test]
@@ -1028,7 +1028,7 @@ public class LabIndicatorServiceTests
         var result = await _service.UpdateAliasAsync(
             IndicatorId, ChildId, new UpdateLabIndicatorAliasRequest { AliasText = "   " });
 
-        Assert.That(result.Errors, Does.Contain("AliasText is required."));
+        Assert.That(result.Errors, Does.Contain("AliasText là bắt buộc"));
     }
 
     [Test]
@@ -1072,7 +1072,7 @@ public class LabIndicatorServiceTests
         var result = await _service.UpdateAliasAsync(
             IndicatorId, ChildId, new UpdateLabIndicatorAliasRequest { AliasText = "Hemoglobin" });
 
-        Assert.That(result.Errors, Does.Contain("Alias already exists for this indicator: Hemoglobin"));
+        Assert.That(result.Errors, Does.Contain("Alias đã tồn tại cho chỉ số này: Hemoglobin"));
     }
 
     // â”€â”€ SoftDeleteAliasAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1097,7 +1097,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.SoftDeleteAliasAsync(IndicatorId, Guid.Empty);
 
-        Assert.That(result.Errors, Does.Contain("Invalid alias id."));
+        Assert.That(result.Errors, Does.Contain("Id alias không hợp lệ"));
     }
 
     [Test]
@@ -1192,7 +1192,7 @@ public class LabIndicatorServiceTests
 
         Assert.That(
             result.Errors,
-            Does.Contain("ReferenceRanges[0]: Between comparison requires MinValue and MaxValue."));
+            Does.Contain("ReferenceRanges[0]: So sánh Between yêu cầu MinValue và MaxValue"));
     }
 
     [Test]
@@ -1211,7 +1211,7 @@ public class LabIndicatorServiceTests
 
         Assert.That(
             result.Errors,
-            Does.Contain("ReferenceRanges[0]: A reference range cannot set both Gender and AgeGroup."));
+            Does.Contain("ReferenceRanges[0]: Khoảng tham chiếu không thể đặt cả Gender và AgeGroup"));
     }
 
     [Test]
@@ -1231,7 +1231,7 @@ public class LabIndicatorServiceTests
 
         Assert.That(
             result.Errors,
-            Does.Contain("ReferenceRanges[1]: A reference range for gender Male already exists."));
+            Does.Contain("ReferenceRanges[1]: Khoảng tham chiếu cho giới tính Male đã tồn tại."));
     }
 
     [Test]
@@ -1249,7 +1249,7 @@ public class LabIndicatorServiceTests
 
         Assert.That(
             result.Errors,
-            Does.Contain("ReferenceRanges[0]: A default reference range already exists for this indicator."));
+            Does.Contain("ReferenceRanges[0]: Khoảng tham chiếu mặc định đã tồn tại cho chỉ số này"));
     }
 
     // â”€â”€ CreateReferenceRangeAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1286,7 +1286,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.CreateReferenceRangeAsync(IndicatorId, null!);
 
-        Assert.That(result.Errors, Does.Contain("Reference range request is required."));
+        Assert.That(result.Errors, Does.Contain("Request khoảng tham chiếu là bắt buộc"));
     }
 
     [Test]
@@ -1297,7 +1297,7 @@ public class LabIndicatorServiceTests
             IndicatorId,
             MakeCreateRangeRequest(comparisonType: ReferenceComparisonType.LessThanOrEqual, max: null));
 
-        Assert.That(result.Errors, Does.Contain("LessThanOrEqual comparison requires MaxValue."));
+        Assert.That(result.Errors, Does.Contain("So sánh LessThanOrEqual yêu cầu MaxValue"));
     }
 
     [Test]
@@ -1308,7 +1308,7 @@ public class LabIndicatorServiceTests
             IndicatorId,
             MakeCreateRangeRequest(comparisonType: ReferenceComparisonType.GreaterThanOrEqual, min: null));
 
-        Assert.That(result.Errors, Does.Contain("GreaterThanOrEqual comparison requires MinValue."));
+        Assert.That(result.Errors, Does.Contain("So sánh GreaterThanOrEqual yêu cầu MinValue"));
     }
 
     [Test]
@@ -1318,7 +1318,7 @@ public class LabIndicatorServiceTests
         var result = await _service.CreateReferenceRangeAsync(
             IndicatorId, MakeCreateRangeRequest(min: 20, max: 10));
 
-        Assert.That(result.Errors, Does.Contain("MinValue cannot be greater than MaxValue."));
+        Assert.That(result.Errors, Does.Contain("MinValue không được lớn hơn MaxValue"));
     }
 
     [Test]
@@ -1330,7 +1330,7 @@ public class LabIndicatorServiceTests
         var result = await _service.CreateReferenceRangeAsync(
             IndicatorId, MakeCreateRangeRequest(gender: Gender.Male));
 
-        Assert.That(result.Errors, Does.Contain("A reference range for gender Male already exists."));
+        Assert.That(result.Errors, Does.Contain("Khoảng tham chiếu cho giới tính Male đã tồn tại."));
     }
 
     // â”€â”€ UpdateReferenceRangeAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1358,7 +1358,7 @@ public class LabIndicatorServiceTests
         var result = await _service.UpdateReferenceRangeAsync(
             IndicatorId, Guid.Empty, MakeUpdateRangeRequest());
 
-        Assert.That(result.Errors, Does.Contain("Invalid reference range id."));
+        Assert.That(result.Errors, Does.Contain("Id khoảng tham chiếu không hợp lệ"));
     }
 
     [Test]
@@ -1367,7 +1367,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.UpdateReferenceRangeAsync(IndicatorId, ChildId, null!);
 
-        Assert.That(result.Errors, Does.Contain("Reference range request is required."));
+        Assert.That(result.Errors, Does.Contain("Request khoảng tham chiếu là bắt buộc"));
     }
 
     [Test]
@@ -1392,7 +1392,7 @@ public class LabIndicatorServiceTests
         var result = await _service.UpdateReferenceRangeAsync(
             IndicatorId, ChildId, MakeUpdateRangeRequest(gender: Gender.Male, ageGroup: AgeGroup.Adult));
 
-        Assert.That(result.Errors, Does.Contain("A reference range cannot set both Gender and AgeGroup."));
+        Assert.That(result.Errors, Does.Contain("Khoảng tham chiếu không thể đặt cả Gender và AgeGroup"));
     }
 
     [Test]
@@ -1406,7 +1406,7 @@ public class LabIndicatorServiceTests
         var result = await _service.UpdateReferenceRangeAsync(
             IndicatorId, ChildId, MakeUpdateRangeRequest(ageGroup: AgeGroup.Adult));
 
-        Assert.That(result.Errors, Does.Contain("A reference range for age group Adult already exists."));
+        Assert.That(result.Errors, Does.Contain("Khoảng tham chiếu cho nhóm tuổi Adult đã tồn tại."));
     }
 
     // â”€â”€ SoftDeleteReferenceRangeAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1431,7 +1431,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.SoftDeleteReferenceRangeAsync(IndicatorId, Guid.Empty);
 
-        Assert.That(result.Errors, Does.Contain("Invalid reference range id."));
+        Assert.That(result.Errors, Does.Contain("Id khoảng tham chiếu không hợp lệ"));
     }
 
     [Test]
@@ -1513,7 +1513,7 @@ public class LabIndicatorServiceTests
                 },
             });
 
-        Assert.That(result.Errors, Does.Contain("AdviceCaches[0]: Status cannot be Unknown."));
+        Assert.That(result.Errors, Does.Contain("AdviceCaches[0]: Status không được là Unknown"));
     }
 
     [Test]
@@ -1533,7 +1533,7 @@ public class LabIndicatorServiceTests
                 AdviceCaches = new List<CreateLabIndicatorAdviceCacheRequest> { MakeCreateAdviceRequest() },
             });
 
-        Assert.That(result.Errors, Does.Contain("Advice cache already exists for status High."));
+        Assert.That(result.Errors, Does.Contain("Advice cache đã tồn tại cho status High."));
     }
 
     [Test]
@@ -1577,7 +1577,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.CreateAdviceCacheAsync(IndicatorId, null!);
 
-        Assert.That(result.Errors, Does.Contain("Advice cache request is required."));
+        Assert.That(result.Errors, Does.Contain("Request advice cache là bắt buộc"));
     }
 
     [Test]
@@ -1587,7 +1587,7 @@ public class LabIndicatorServiceTests
         var result = await _service.CreateAdviceCacheAsync(
             IndicatorId, MakeCreateAdviceRequest(LabResultStatus.Unknown));
 
-        Assert.That(result.Errors, Does.Contain("Status cannot be Unknown."));
+        Assert.That(result.Errors, Does.Contain("Status không được là Unknown"));
     }
 
     [Test]
@@ -1602,7 +1602,7 @@ public class LabIndicatorServiceTests
 
         var result = await _service.CreateAdviceCacheAsync(IndicatorId, MakeCreateAdviceRequest());
 
-        Assert.That(result.Errors, Does.Contain("Advice cache already exists for status High."));
+        Assert.That(result.Errors, Does.Contain("Advice cache đã tồn tại cho status High."));
     }
 
     // â”€â”€ UpdateAdviceCacheAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1635,7 +1635,7 @@ public class LabIndicatorServiceTests
             Guid.Empty,
             new UpdateLabIndicatorAdviceCacheRequest { Status = LabResultStatus.High });
 
-        Assert.That(result.Errors, Does.Contain("Invalid advice cache id."));
+        Assert.That(result.Errors, Does.Contain("Id advice cache không hợp lệ"));
     }
 
     [Test]
@@ -1644,7 +1644,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.UpdateAdviceCacheAsync(IndicatorId, ChildId, null!);
 
-        Assert.That(result.Errors, Does.Contain("Advice cache request is required."));
+        Assert.That(result.Errors, Does.Contain("Request advice cache là bắt buộc"));
     }
 
     [Test]
@@ -1656,7 +1656,7 @@ public class LabIndicatorServiceTests
             ChildId,
             new UpdateLabIndicatorAdviceCacheRequest { Status = LabResultStatus.Unknown });
 
-        Assert.That(result.Errors, Does.Contain("Status cannot be Unknown."));
+        Assert.That(result.Errors, Does.Contain("Status không được là Unknown"));
     }
 
     [Test]
@@ -1691,7 +1691,7 @@ public class LabIndicatorServiceTests
             ChildId,
             new UpdateLabIndicatorAdviceCacheRequest { Status = LabResultStatus.Low });
 
-        Assert.That(result.Errors, Does.Contain("Advice cache already exists for status Low."));
+        Assert.That(result.Errors, Does.Contain("Advice cache đã tồn tại cho status Low."));
     }
 
     // â”€â”€ SoftDeleteAdviceCacheAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1716,7 +1716,7 @@ public class LabIndicatorServiceTests
     {
         var result = await _service.SoftDeleteAdviceCacheAsync(IndicatorId, Guid.Empty);
 
-        Assert.That(result.Errors, Does.Contain("Invalid advice cache id."));
+        Assert.That(result.Errors, Does.Contain("Id advice cache không hợp lệ"));
     }
 
     [Test]

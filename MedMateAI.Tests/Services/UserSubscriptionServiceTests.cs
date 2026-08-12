@@ -23,10 +23,13 @@ public class UserSubscriptionServiceTests
     private Mock<IGenericRepository<SubscriptionPlan>> _plansMock = null!;
     private Mock<IPaymentRepository> _paymentsMock = null!;
     private Mock<IPaymentTransactionRepository> _transactionsMock = null!;
+    private Mock<IQuotaUsageRepository> _quotaUsageRepositoryMock = null!;
+    private Mock<ISubscriptionPlanQuotaRepository> _subscriptionPlanQuotaRepositoryMock = null!;
     private Mock<IPayOSService> _payOsMock = null!;
     private Mock<IHttpContextAccessor> _httpContextAccessorMock = null!;
     private UserSubscriptionService _service = null!;
     private readonly Guid _userId = Guid.NewGuid();
+    private readonly Guid _serviceCreditQuotaId = Guid.NewGuid();
 
     [SetUp]
     public void SetUp()
@@ -36,6 +39,8 @@ public class UserSubscriptionServiceTests
         _plansMock = new Mock<IGenericRepository<SubscriptionPlan>>();
         _paymentsMock = new Mock<IPaymentRepository>();
         _transactionsMock = new Mock<IPaymentTransactionRepository>();
+        _quotaUsageRepositoryMock = new Mock<IQuotaUsageRepository>();
+        _subscriptionPlanQuotaRepositoryMock = new Mock<ISubscriptionPlanQuotaRepository>();
         _payOsMock = new Mock<IPayOSService>();
         _httpContextAccessorMock = new Mock<IHttpContextAccessor>();
 
@@ -43,6 +48,7 @@ public class UserSubscriptionServiceTests
         _unitOfWorkMock.Setup(u => u.SubscriptionPlans).Returns(_plansMock.Object);
         _unitOfWorkMock.Setup(u => u.Payments).Returns(_paymentsMock.Object);
         _unitOfWorkMock.Setup(u => u.PaymentTransactions).Returns(_transactionsMock.Object);
+        _unitOfWorkMock.Setup(u => u.QuotaUsages).Returns(_quotaUsageRepositoryMock.Object);
 
         // Transaction setups
         _unitOfWorkMock.Setup(u => u.BeginTransactionAsync(It.IsAny<CancellationToken>()))
@@ -54,6 +60,41 @@ public class UserSubscriptionServiceTests
         _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
+        _subscriptionPlanQuotaRepositoryMock.Setup(repository => repository.GetPlanForUpdateAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid planId, CancellationToken _) => new SubscriptionPlan
+            {
+                Id = planId,
+                IsActive = true
+            });
+        _subscriptionPlanQuotaRepositoryMock.Setup(repository => repository.GetActivePlanQuotaByCodeAsync(
+                It.IsAny<Guid>(),
+                IServiceCreditService.QuotaCode,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid planId, string _quotaCode, CancellationToken _cancellationToken) => new SubscriptionPlanQuota
+            {
+                PlanId = planId,
+                QuotaId = _serviceCreditQuotaId,
+                LimitValue = 10,
+                IsActive = true,
+                IsDeleted = false
+            });
+        _quotaUsageRepositoryMock.Setup(repository => repository.GetOrCreateAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<int>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSubscriptionUsage
+            {
+                Id = Guid.NewGuid(),
+                QuotaId = _serviceCreditQuotaId,
+                LimitValue = 10
+            });
+
         // Default mock authenticated HttpContext
         var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, _userId.ToString()) };
         var identity = new ClaimsIdentity(claims, "TestAuth");
@@ -64,6 +105,7 @@ public class UserSubscriptionServiceTests
         _service = new UserSubscriptionService(
             _unitOfWorkMock.Object,
             _payOsMock.Object,
+            _subscriptionPlanQuotaRepositoryMock.Object,
             _httpContextAccessorMock.Object);
     }
 
@@ -185,7 +227,7 @@ public class UserSubscriptionServiceTests
 
     [Test]
     [Category("A")]
-    public async Task CheckoutAsync_AlreadyHasActiveSubscription_ReturnsError()
+    public async Task CheckoutAsync_ExistingActivePackage_AllowsStackedPackageCheckout()
     {
         // Arrange
         var planId = Guid.NewGuid();
@@ -197,16 +239,104 @@ public class UserSubscriptionServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(plan);
 
-        var activeSub = new UserSubscription { Id = Guid.NewGuid(), UserId = _userId };
-        _subscriptionsMock.Setup(r => r.GetCurrentActiveByUserAsync(_userId, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(activeSub);
+        _payOsMock.Setup(p => p.CreatePaymentLinkAsync(
+                It.IsAny<PayOSCreatePaymentRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PayOSCreatePaymentResult
+            {
+                PaymentLinkId = "stacked-package-link",
+                Status = "PENDING",
+                CheckoutUrl = "https://pay.test/stacked-package"
+            });
 
         // Act
         var result = await _service.CheckoutAsync(req);
 
         // Assert
-        Assert.That(result.Succeeded, Is.False);
-        Assert.That(result.Errors, Contains.Item("You already have an active subscription."));
+        Assert.That(result.Succeeded, Is.True);
+        _subscriptionsMock.Verify(r => r.Add(It.Is<UserSubscription>(subscription =>
+            subscription.UserId == _userId &&
+            subscription.PlanId == planId &&
+            subscription.Status == SubscriptionStatus.Pending)), Times.Once);
+        _unitOfWorkMock.Verify(u => u.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task CheckoutAsync_LockedPlanMissingOrInactive_ReturnsErrorAndRollsBack(bool missing)
+    {
+        var planId = Guid.NewGuid();
+        var plan = new SubscriptionPlan
+        {
+            Id = planId,
+            IsActive = true,
+            IsDeleted = false,
+            Price = 100000
+        };
+        _plansMock.Setup(repository => repository.FirstOrDefaultAsync(
+                It.IsAny<Expression<Func<SubscriptionPlan, bool>>>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(plan);
+        _subscriptionPlanQuotaRepositoryMock.Setup(repository => repository.GetPlanForUpdateAsync(
+                planId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(missing ? null : new SubscriptionPlan { Id = planId, IsActive = false });
+
+        var result = await _service.CheckoutAsync(new CheckoutSubscriptionRequest { PlanId = planId });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Errors, Contains.Item("Subscription plan is not active."));
+        });
+        _unitOfWorkMock.Verify(u => u.RollbackTransactionAsync(CancellationToken.None), Times.Once);
+        _subscriptionsMock.Verify(r => r.Add(It.IsAny<UserSubscription>()), Times.Never);
+    }
+
+    [Test]
+    public async Task CheckoutAsync_ServiceCreditMappingMissing_ReturnsConfigurationErrorAndRollsBack()
+    {
+        var plan = SetupActivePaidPlan();
+        _subscriptionPlanQuotaRepositoryMock.Setup(repository => repository.GetActivePlanQuotaByCodeAsync(
+                plan.Id,
+                IServiceCreditService.QuotaCode,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SubscriptionPlanQuota?)null);
+
+        var result = await _service.CheckoutAsync(new CheckoutSubscriptionRequest { PlanId = plan.Id });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Errors, Contains.Item("SERVICE_CREDIT_NOT_CONFIGURED"));
+        });
+        _unitOfWorkMock.Verify(u => u.RollbackTransactionAsync(CancellationToken.None), Times.Once);
+        _subscriptionsMock.Verify(r => r.Add(It.IsAny<UserSubscription>()), Times.Never);
+    }
+
+    [TestCase(0)]
+    [TestCase(-1)]
+    public async Task CheckoutAsync_ServiceCreditLimitNotPositive_ReturnsConfigurationErrorAndRollsBack(
+        int limitValue)
+    {
+        var plan = SetupActivePaidPlan();
+        _subscriptionPlanQuotaRepositoryMock.Setup(repository => repository.GetActivePlanQuotaByCodeAsync(
+                plan.Id,
+                IServiceCreditService.QuotaCode,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SubscriptionPlanQuota
+            {
+                PlanId = plan.Id,
+                QuotaId = _serviceCreditQuotaId,
+                LimitValue = limitValue,
+                IsActive = true
+            });
+
+        var result = await _service.CheckoutAsync(new CheckoutSubscriptionRequest { PlanId = plan.Id });
+
+        Assert.That(result.Errors, Contains.Item("SERVICE_CREDIT_NOT_CONFIGURED"));
+        _unitOfWorkMock.Verify(u => u.RollbackTransactionAsync(CancellationToken.None), Times.Once);
     }
 
     [Test]
@@ -222,9 +352,6 @@ public class UserSubscriptionServiceTests
                 It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(plan);
-
-        _subscriptionsMock.Setup(r => r.GetCurrentActiveByUserAsync(_userId, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((UserSubscription?)null);
 
         // Mock OrderCode duplicate to check retry logic
         _transactionsMock.SetupSequence(r => r.GetByTransactionReferenceAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -263,9 +390,6 @@ public class UserSubscriptionServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(plan);
 
-        _subscriptionsMock.Setup(r => r.GetCurrentActiveByUserAsync(_userId, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((UserSubscription?)null);
-
         _transactionsMock.Setup(r => r.GetByTransactionReferenceAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((PaymentTransaction?)null);
 
@@ -279,6 +403,16 @@ public class UserSubscriptionServiceTests
         _payOsMock.Setup(p => p.CreatePaymentLinkAsync(It.IsAny<PayOSCreatePaymentRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(payOsResult);
 
+        UserSubscription? createdSubscription = null;
+        Payment? createdPayment = null;
+        PaymentTransaction? createdTransaction = null;
+        _subscriptionsMock.Setup(repository => repository.Add(It.IsAny<UserSubscription>()))
+            .Callback<UserSubscription>(subscription => createdSubscription = subscription);
+        _paymentsMock.Setup(repository => repository.Add(It.IsAny<Payment>()))
+            .Callback<Payment>(payment => createdPayment = payment);
+        _transactionsMock.Setup(repository => repository.Add(It.IsAny<PaymentTransaction>()))
+            .Callback<PaymentTransaction>(transaction => createdTransaction = transaction);
+
         // Act
         var result = await _service.CheckoutAsync(req);
 
@@ -286,7 +420,29 @@ public class UserSubscriptionServiceTests
         Assert.That(result.Succeeded, Is.True);
         Assert.That(result.Data, Is.Not.Null);
         Assert.That(result.Data.PaymentUrl, Is.EqualTo("checkout_url_abc"));
-        
+        Assert.Multiple(() =>
+        {
+            Assert.That(createdSubscription, Is.Not.Null);
+            Assert.That(createdSubscription!.Status, Is.EqualTo(SubscriptionStatus.Pending));
+            Assert.That(createdSubscription.StartDate, Is.Null);
+            Assert.That(createdSubscription.EndDate, Is.Null);
+            Assert.That(createdSubscription.AutoRenew, Is.False);
+            Assert.That(createdPayment, Is.Not.Null);
+            Assert.That(createdPayment!.UserSubscriptionId, Is.EqualTo(createdSubscription.Id));
+            Assert.That(createdPayment.Status, Is.EqualTo(PaymentStatus.Pending));
+            Assert.That(createdTransaction, Is.Not.Null);
+            Assert.That(createdTransaction!.UserSubscriptionId, Is.EqualTo(createdSubscription.Id));
+            Assert.That(createdTransaction.PaymentId, Is.EqualTo(createdPayment.Id));
+        });
+
+        _quotaUsageRepositoryMock.Verify(repository => repository.GetOrCreateAsync(
+            createdSubscription!.Id,
+            _serviceCreditQuotaId,
+            It.IsAny<DateTime>(),
+            null,
+            10,
+            It.IsAny<DateTime>(),
+            It.IsAny<CancellationToken>()), Times.Once);
         _unitOfWorkMock.Verify(u => u.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
         _unitOfWorkMock.Verify(u => u.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -435,11 +591,11 @@ public class UserSubscriptionServiceTests
 
     [Test]
     [Category("N")]
-    public async Task CancelAsync_ActiveSubscription_CancelsAndReturnsUpdated()
+    public async Task CancelAsync_PendingSubscription_CancelsAndReturnsUpdated()
     {
         // Arrange
         var subId = Guid.NewGuid();
-        var sub = new UserSubscription { Id = subId, UserId = _userId, Status = SubscriptionStatus.Active, AutoRenew = true };
+        var sub = new UserSubscription { Id = subId, UserId = _userId, Status = SubscriptionStatus.Pending, AutoRenew = true };
         var updatedSub = new UserSubscription { Id = subId, UserId = _userId, Status = SubscriptionStatus.Cancelled, AutoRenew = false };
 
         _subscriptionsMock.SetupSequence(r => r.GetByIdWithPlanAsync(subId, It.IsAny<CancellationToken>()))
@@ -456,5 +612,47 @@ public class UserSubscriptionServiceTests
         Assert.That(result.Data.AutoRenew, Is.False);
 
         _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task CancelAsync_ActiveSubscription_ReturnsPendingOnlyError()
+    {
+        var subId = Guid.NewGuid();
+        _subscriptionsMock.Setup(repository => repository.GetByIdWithPlanAsync(
+                subId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserSubscription
+            {
+                Id = subId,
+                UserId = _userId,
+                Status = SubscriptionStatus.Active
+            });
+
+        var result = await _service.CancelAsync(subId);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Errors, Contains.Item("Only pending subscriptions can be cancelled."));
+        });
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private SubscriptionPlan SetupActivePaidPlan()
+    {
+        var plan = new SubscriptionPlan
+        {
+            Id = Guid.NewGuid(),
+            IsActive = true,
+            IsDeleted = false,
+            Price = 100000,
+            PlanName = "Gold"
+        };
+        _plansMock.Setup(repository => repository.FirstOrDefaultAsync(
+                It.IsAny<Expression<Func<SubscriptionPlan, bool>>>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(plan);
+        return plan;
     }
 }

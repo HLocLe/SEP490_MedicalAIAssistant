@@ -227,7 +227,7 @@ public class DoctorServiceTests
 
         // Assert
         Assert.That(result.Succeeded, Is.False);
-        Assert.That(result.Errors, Contains.Item("Doctor with same full name already exists in this facility department."));
+        Assert.That(result.Errors, Contains.Item("Bác sĩ cùng họ tên đã tồn tại trong khoa này"));
     }
 
     [Test]

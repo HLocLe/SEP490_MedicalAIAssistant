@@ -64,6 +64,10 @@ public class RecoveryPlanServiceTests
             .Returns(Task.CompletedTask);
         _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
+        _requestRepoMock.Setup(repository => repository.LockUserRecoveryPlanWorkflowAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         _realtimeNotifierMock.Setup(n => n.TryNotifyPlanChangedAsync(
                 It.IsAny<RecoveryPlanLifecycleRealtimeNotification>(),

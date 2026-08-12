@@ -2,6 +2,7 @@ using AutoMapper;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Requests;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
+using MedMateAI.Application.DTOs.Users.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models.Payments;
 using MedMateAI.Application.Service;
@@ -107,6 +108,13 @@ public class SymptomAnalysisServiceTests
     {
         // Arrange
         var session = new SymptomAnalysisSession { Id = _sessionId, UserId = _userId, Status = SymptomAnalysisSessionStatus.Completed };
+        _userServiceMock.Setup(service => service.GetCurrentUserAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId });
+        _userServiceMock.Setup(service => service.IsInRoleAsync(
+                _userId,
+                "Admin",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
         _sessionsMock.Setup(r => r.GetByIdAsync(_sessionId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
 
@@ -147,12 +155,13 @@ public class SymptomAnalysisServiceTests
 
     [Test]
     [Category("B")]
-    public async Task SuggestClinicalQuestionAsync_EmptyInput_ReturnsEmptyResponse()
+    public void SuggestClinicalQuestionAsync_EmptyInput_ThrowsArgumentException()
     {
         var req = new SuggestClinicalQuestionRequest { UserInput = "  " };
-        var result = await _service.SuggestClinicalQuestionAsync(req);
+        var exception = Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SuggestClinicalQuestionAsync(req));
 
-        Assert.That(result.Questions, Is.Null.Or.Empty);
+        Assert.That(exception!.Message, Is.EqualTo("Nội dung triệu chứng là bắt buộc"));
     }
 
     [Test]

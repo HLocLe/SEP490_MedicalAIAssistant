@@ -195,7 +195,7 @@ public class FeedbackReviewServiceTests
         var (succeeded, errors, data) = await _service.CreateFeedbackReviewAsync(null!);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Request body is required."));
+        Assert.That(errors, Contains.Item("Request body là bắt buộc"));
     }
 
     [Test]
@@ -212,9 +212,9 @@ public class FeedbackReviewServiceTests
         var (succeeded, errors, data) = await _service.CreateFeedbackReviewAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("FacilityId is required."));
-        Assert.That(errors, Contains.Item("Rating must be between 1 and 5."));
-        Assert.That(errors, Contains.Item("Comment must be less than or equal to 1000 characters."));
+        Assert.That(errors, Contains.Item("FacilityId là bắt buộc"));
+        Assert.That(errors, Contains.Item("Rating phải từ 1 đến 5"));
+        Assert.That(errors, Contains.Item("Comment không được vượt quá 1000 ký tự."));
     }
 
     [Test]
@@ -228,7 +228,7 @@ public class FeedbackReviewServiceTests
         var (succeeded, errors, data) = await _service.CreateFeedbackReviewAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("User is not authenticated."));
+        Assert.That(errors, Contains.Item("Người dùng chưa đăng nhập"));
     }
 
     [Test]
@@ -246,7 +246,7 @@ public class FeedbackReviewServiceTests
         var (succeeded, errors, data) = await _service.CreateFeedbackReviewAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Medical facility not found."));
+        Assert.That(errors, Contains.Item("Không tìm thấy cơ sở y tế"));
     }
 
     [Test]
@@ -264,7 +264,7 @@ public class FeedbackReviewServiceTests
         var (succeeded, errors, data) = await _service.CreateFeedbackReviewAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Medical facility is not active."));
+        Assert.That(errors, Contains.Item("Cơ sở y tế không hoạt động"));
     }
 
     [Test]
@@ -286,7 +286,7 @@ public class FeedbackReviewServiceTests
         var (succeeded, errors, data) = await _service.CreateFeedbackReviewAsync(request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("You have already reviewed this facility."));
+        Assert.That(errors, Contains.Item("Bạn đã đánh giá cơ sở y tế này"));
     }
 
     [Test]
@@ -338,7 +338,7 @@ public class FeedbackReviewServiceTests
             Guid.Empty, new UpdateFeedbackReviewRequest());
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid feedback review id."));
+        Assert.That(errors, Contains.Item("Id feedback không hợp lệ"));
     }
 
     [Test]
@@ -348,7 +348,7 @@ public class FeedbackReviewServiceTests
         var (succeeded, notFound, errors, data) = await _service.UpdateFeedbackReviewAsync(Guid.NewGuid(), null!);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Request body is required."));
+        Assert.That(errors, Contains.Item("Request body là bắt buộc"));
     }
 
     [Test]
@@ -372,13 +372,13 @@ public class FeedbackReviewServiceTests
     {
         var id = Guid.NewGuid();
         _feedbackRepoMock.Setup(r => r.GetByIdAsync(id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MakeReview(id));
+            .ReturnsAsync(MakeReview(id, userId: _userId));
 
         var (succeeded, notFound, errors, data) = await _service.UpdateFeedbackReviewAsync(
             id, new UpdateFeedbackReviewRequest { Rating = 6 });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Rating must be between 1 and 5."));
+        Assert.That(errors, Contains.Item("Rating phải từ 1 đến 5"));
     }
 
     [Test]
@@ -386,7 +386,7 @@ public class FeedbackReviewServiceTests
     public async Task UpdateFeedbackReviewAsync_TooManyImages_ReturnsError()
     {
         var id = Guid.NewGuid();
-        var existing = MakeReview(id);
+        var existing = MakeReview(id, userId: _userId);
         existing.ImageUrls = new Dictionary<string, string>
         {
             { "1", "https://a.com/1.jpg" },
@@ -406,7 +406,7 @@ public class FeedbackReviewServiceTests
         var (succeeded, notFound, errors, data) = await _service.UpdateFeedbackReviewAsync(id, request);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("ImageUrls cannot contain more than 5 images."));
+        Assert.That(errors, Contains.Item("ImageUrls không được chứa quá 5 ảnh"));
     }
 
     [Test]
@@ -414,7 +414,7 @@ public class FeedbackReviewServiceTests
     public async Task UpdateFeedbackReviewAsync_ImageUrlPatchNullRemovesKey_UpdatesSuccessfully()
     {
         var id = Guid.NewGuid();
-        var existing = MakeReview(id);
+        var existing = MakeReview(id, userId: _userId);
         existing.ImageUrls = new Dictionary<string, string> { { "main", "https://a.com/1.jpg" } };
         _feedbackRepoMock.Setup(r => r.GetByIdAsync(id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
@@ -438,7 +438,7 @@ public class FeedbackReviewServiceTests
     public async Task UpdateFeedbackReviewAsync_ValidRequest_UpdatesAndInvalidatesCache()
     {
         var id = Guid.NewGuid();
-        var existing = MakeReview(id);
+        var existing = MakeReview(id, userId: _userId);
         _feedbackRepoMock.Setup(r => r.GetByIdAsync(id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
         _feedbackRepoMock.Setup(r => r.GetByIdWithDetailsAsync(id, It.IsAny<CancellationToken>()))
@@ -464,7 +464,7 @@ public class FeedbackReviewServiceTests
             Guid.Empty, new UpdateFeedbackReviewStatusRequest { Status = "Hidden" });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid feedback review id."));
+        Assert.That(errors, Contains.Item("Id feedback không hợp lệ"));
     }
 
     [Test]
@@ -494,7 +494,7 @@ public class FeedbackReviewServiceTests
             id, new UpdateFeedbackReviewStatusRequest { Status = "Unknown" });
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Status is invalid."));
+        Assert.That(errors, Contains.Item("Status không hợp lệ"));
     }
 
     [Test]
@@ -525,7 +525,7 @@ public class FeedbackReviewServiceTests
         var (succeeded, notFound, errors) = await _service.SoftDeleteFeedbackReviewAsync(Guid.Empty);
 
         Assert.That(succeeded, Is.False);
-        Assert.That(errors, Contains.Item("Invalid feedback review id."));
+        Assert.That(errors, Contains.Item("Id feedback không hợp lệ"));
     }
 
     [Test]
