@@ -26,6 +26,7 @@ public class ConsultationSessionServiceTests
     private Mock<IChecklistItemService> _checklistItemServiceMock = null!;
     private Mock<ISmsSender> _smsSenderMock = null!;
     private Mock<IConsultationSessionJobScheduler> _jobSchedulerMock = null!;
+    private Mock<IConsultationSessionQuotaService> _quotaServiceMock = null!;
     private ConsultationSessionService _service = null!;
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _departmentId = Guid.NewGuid();
@@ -45,6 +46,7 @@ public class ConsultationSessionServiceTests
         _checklistItemServiceMock = new Mock<IChecklistItemService>();
         _smsSenderMock = new Mock<ISmsSender>();
         _jobSchedulerMock = new Mock<IConsultationSessionJobScheduler>();
+        _quotaServiceMock = new Mock<IConsultationSessionQuotaService>();
 
         _service = new ConsultationSessionService(
             _medicalDepartmentServiceMock.Object,
@@ -57,7 +59,8 @@ public class ConsultationSessionServiceTests
             _userServiceMock.Object,
             _checklistItemServiceMock.Object,
             _smsSenderMock.Object,
-            _jobSchedulerMock.Object);
+            _jobSchedulerMock.Object,
+            _quotaServiceMock.Object);
     }
 
     private ConsultationSession MakeSession(

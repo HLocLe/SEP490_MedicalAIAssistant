@@ -3,6 +3,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.LabTests.Requests;
 using MedMateAI.Application.DTOs.LabTests.Responses;
 using MedMateAI.Application.IService;
+using MedMateAI.Application.Models.ServiceCredits;
 using MedMateAI.Application.Service;
 using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
@@ -23,6 +24,7 @@ public class LabTestServiceTests
     private Mock<IGenericRepository<LabTestOcrExtract>> _ocrExtractsMock = null!;
     private Mock<ILabTestJobScheduler> _schedulerMock = null!;
     private Mock<ILabTestResultAnalyzer> _analyzerMock = null!;
+    private Mock<ILabTestQuotaService> _quotaServiceMock = null!;
     private LabTestService _service = null!;
     private readonly Guid _userId = Guid.NewGuid();
 
@@ -35,6 +37,7 @@ public class LabTestServiceTests
         _ocrExtractsMock = new Mock<IGenericRepository<LabTestOcrExtract>>();
         _schedulerMock = new Mock<ILabTestJobScheduler>();
         _analyzerMock = new Mock<ILabTestResultAnalyzer>();
+        _quotaServiceMock = new Mock<ILabTestQuotaService>();
 
         _unitOfWorkMock.Setup(u => u.LabTestSessions).Returns(_sessionsMock.Object);
         _unitOfWorkMock.Setup(u => u.LabTestSessionDetails).Returns(_sessionDetailsMock.Object);
@@ -46,7 +49,8 @@ public class LabTestServiceTests
         _service = new LabTestService(
             _unitOfWorkMock.Object,
             _schedulerMock.Object,
-            _analyzerMock.Object);
+            _analyzerMock.Object,
+            _quotaServiceMock.Object);
     }
 
     // â”€â”€ AnalyzeFromDocumentUrlAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -119,6 +123,19 @@ public class LabTestServiceTests
         LabTestSession? savedSession = null;
         _sessionsMock.Setup(r => r.Add(It.IsAny<LabTestSession>()))
             .Callback<LabTestSession>(s => savedSession = s);
+        _quotaServiceMock.Setup(q => q.ReserveAsync(
+                _userId,
+                It.IsAny<Guid>(),
+                _userId,
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceCreditOperationResult<UserSubscriptionUsage>.Ok(
+                new UserSubscriptionUsage
+                {
+                    Id = Guid.NewGuid(),
+                    UserSubscriptionId = Guid.NewGuid(),
+                    QuotaId = Guid.NewGuid()
+                }));
 
         // Act
         var result = await _service.AnalyzeFromDocumentUrlAsync(_userId, req);
