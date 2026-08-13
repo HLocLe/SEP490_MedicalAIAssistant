@@ -10,7 +10,11 @@ public sealed class ConsultationSessionConfiguration : IEntityTypeConfiguration<
 {
     public void Configure(EntityTypeBuilder<ConsultationSession> builder)
     {
-        builder.ToTable("ConsultationSession");
+        builder.ToTable("ConsultationSession", table =>
+            table.HasCheckConstraint(
+                "CK_ConsultationSession_ServiceCreditLinkage",
+                "(\"UserSubscriptionId\" IS NULL AND \"UserSubscriptionUsageId\" IS NULL) OR "
+                + "(\"UserSubscriptionId\" IS NOT NULL AND \"UserSubscriptionUsageId\" IS NOT NULL)"));
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("ConsultationSessionId").ValueGeneratedOnAdd();
@@ -34,6 +38,8 @@ public sealed class ConsultationSessionConfiguration : IEntityTypeConfiguration<
             .HasColumnType("timestamp with time zone");
 
         builder.HasIndex(x => x.FacilityId);
+        builder.HasIndex(x => x.UserSubscriptionId);
+        builder.HasIndex(x => x.UserSubscriptionUsageId);
 
         builder.HasOne<ApplicationUser>()
             .WithMany(x => x.ConsultationSessions)
@@ -49,6 +55,16 @@ public sealed class ConsultationSessionConfiguration : IEntityTypeConfiguration<
             .WithMany(x => x.ConsultationSessions)
             .HasForeignKey(x => x.FacilityId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasOne(x => x.UserSubscription)
+            .WithMany()
+            .HasForeignKey(x => x.UserSubscriptionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(x => x.UserSubscriptionUsage)
+            .WithMany()
+            .HasForeignKey(x => x.UserSubscriptionUsageId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasMany(x => x.ConsultationQuestions)
             .WithOne(x => x.ConsultationSession)

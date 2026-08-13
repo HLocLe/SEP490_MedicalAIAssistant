@@ -6,6 +6,10 @@ public sealed class LabTestSession : BaseEntity
 {
     public Guid UserId { get; set; }
 
+    public Guid? UserSubscriptionId { get; set; }
+
+    public Guid? UserSubscriptionUsageId { get; set; }
+
     public string? DocumentUrl { get; set; }
 
     public string? RawOcrText { get; set; }
@@ -21,6 +25,10 @@ public sealed class LabTestSession : BaseEntity
     public string? FacilityName { get; set; }
 
     public DateTime? ProcessedAt { get; set; }
+
+    public UserSubscription? UserSubscription { get; set; }
+
+    public UserSubscriptionUsage? UserSubscriptionUsage { get; set; }
 
     public ICollection<LabTestOcrExtract> LabTestOcrExtracts { get; set; } = new List<LabTestOcrExtract>();
 

@@ -64,6 +64,7 @@ public static class DependencyInjection
         services.AddScoped<IIcdChapterService, IcdChapterService>();
         services.AddScoped<ILabIndicatorService, LabIndicatorService>();
         services.AddScoped<ILabTestService, LabTestService>();
+        services.AddScoped<ILabTestQuotaService, LabTestQuotaService>();
         services.AddScoped<ILabTestResultAnalyzer, LabTestResultAnalyzer>();
         services.AddScoped<ILabTestOcrStructurer, LabTestOcrStructurer>();
         services.AddScoped<IClinicalQuestionService, ClinicalQuestionService>();
@@ -85,6 +86,7 @@ public static class DependencyInjection
         services.AddScoped<IWebChatbotService, WebChatbotService>();
         services.AddScoped<ISymptomAnalysisService, SymptomAnalysisService>();
         services.AddScoped<IConsultationSessionService, ConsultationSessionService>();
+        services.AddScoped<IConsultationSessionQuotaService, ConsultationSessionQuotaService>();
         services.AddScoped<IPayOSService, PayOSService>();
         services.AddScoped<IUserSubscriptionService, UserSubscriptionService>();
         services.AddScoped<IPaymentService, PaymentService>();

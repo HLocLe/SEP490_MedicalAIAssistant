@@ -9,7 +9,11 @@ public sealed class LabTestSessionConfiguration : IEntityTypeConfiguration<LabTe
 {
     public void Configure(EntityTypeBuilder<LabTestSession> builder)
     {
-        builder.ToTable("LabTestSession");
+        builder.ToTable("LabTestSession", table =>
+            table.HasCheckConstraint(
+                "CK_LabTestSession_ServiceCreditLinkage",
+                "(\"UserSubscriptionId\" IS NULL AND \"UserSubscriptionUsageId\" IS NULL) OR "
+                + "(\"UserSubscriptionId\" IS NOT NULL AND \"UserSubscriptionUsageId\" IS NOT NULL)"));
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("TestSessionId").ValueGeneratedOnAdd();
@@ -17,9 +21,22 @@ public sealed class LabTestSessionConfiguration : IEntityTypeConfiguration<LabTe
         builder.Property(x => x.DocumentUrl).HasMaxLength(2048);
         builder.Property(x => x.FacilityName).HasMaxLength(255);
 
+        builder.HasIndex(x => x.UserSubscriptionId);
+        builder.HasIndex(x => x.UserSubscriptionUsageId);
+
         builder.HasOne<ApplicationUser>()
             .WithMany(x => x.LabTestSessions)
             .HasForeignKey(x => x.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(x => x.UserSubscription)
+            .WithMany()
+            .HasForeignKey(x => x.UserSubscriptionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(x => x.UserSubscriptionUsage)
+            .WithMany()
+            .HasForeignKey(x => x.UserSubscriptionUsageId)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasMany(x => x.LabTestOcrExtracts)
