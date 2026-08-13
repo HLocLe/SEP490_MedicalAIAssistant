@@ -12,6 +12,8 @@ using MedMateAI.Application.DTOs.WebChatbot.Responses;
 
 using MedMateAI.Application.IService;
 
+using MedMateAI.Application.Models.ServiceCredits;
+
 using MedMateAI.Domain.Entities;
 
 using MedMateAI.Domain.Enums;
@@ -65,6 +67,8 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
 
     private readonly IConsultationSessionJobScheduler _jobScheduler;
 
+    private readonly IConsultationSessionQuotaService _quotaService;
+
 
 
     public ConsultationSessionService(
@@ -89,7 +93,9 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
 
         ISmsSender smsSender,
 
-        IConsultationSessionJobScheduler jobScheduler)
+        IConsultationSessionJobScheduler jobScheduler,
+
+        IConsultationSessionQuotaService quotaService)
 
     {
 
@@ -114,6 +120,8 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
         _smsSender = smsSender;
 
         _jobScheduler = jobScheduler;
+
+        _quotaService = quotaService;
 
     }
 
@@ -243,11 +251,35 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
 
         };
 
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
+        try
+        {
+            var reserveResult = await _quotaService.ReserveAsync(
+                userId,
+                session.Id,
+                userId,
+                utcNow,
+                cancellationToken);
 
-        _consultationSessions.Add(session);
+            if (!reserveResult.Success || reserveResult.Data is null)
+            {
+                await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+                return (false, new[] { reserveResult.Error.ToStableCode() }, null);
+            }
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+            session.UserSubscriptionId = reserveResult.Data.UserSubscriptionId;
+            session.UserSubscriptionUsageId = reserveResult.Data.Id;
+
+            _consultationSessions.Add(session);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
 
 
 

@@ -6,6 +6,10 @@ public sealed class ConsultationSession : BaseEntity
 {
     public Guid UserId { get; set; }
 
+    public Guid? UserSubscriptionId { get; set; }
+
+    public Guid? UserSubscriptionUsageId { get; set; }
+
     public Guid DepartmentId { get; set; }
 
     public Guid? FacilityId { get; set; }
@@ -23,6 +27,10 @@ public sealed class ConsultationSession : BaseEntity
     public MedicalDepartment Department { get; set; } = null!;
 
     public MedicalFacility? Facility { get; set; }
+
+    public UserSubscription? UserSubscription { get; set; }
+
+    public UserSubscriptionUsage? UserSubscriptionUsage { get; set; }
 
     public ICollection<ConsultationQuestion> ConsultationQuestions { get; set; } = new List<ConsultationQuestion>();
 

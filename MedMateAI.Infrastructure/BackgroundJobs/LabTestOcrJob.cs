@@ -5,14 +5,25 @@ namespace MedMateAI.Infrastructure.BackgroundJobs;
 public sealed class LabTestOcrJob
 {
     private readonly ILabTestOcrProcessor _processor;
+    private readonly ILabTestQuotaService _quotaService;
 
-    public LabTestOcrJob(ILabTestOcrProcessor processor)
+    public LabTestOcrJob(
+        ILabTestOcrProcessor processor,
+        ILabTestQuotaService quotaService)
     {
         _processor = processor;
+        _quotaService = quotaService;
     }
 
-    public Task ExecuteAsync(Guid sessionId)
+    public async Task ExecuteAsync(Guid sessionId)
     {
-        return _processor.ProcessAsync(sessionId);
+        try
+        {
+            await _processor.ProcessAsync(sessionId);
+        }
+        finally
+        {
+            await _quotaService.FinalizeAsync(sessionId);
+        }
     }
 }

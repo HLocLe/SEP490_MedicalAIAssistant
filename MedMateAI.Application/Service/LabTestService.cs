@@ -4,6 +4,7 @@ using MedMateAI.Application.DTOs.LabTests.Requests;
 using MedMateAI.Application.DTOs.LabTests.Responses;
 using MedMateAI.Application.Helpers;
 using MedMateAI.Application.IService;
+using MedMateAI.Application.Models.ServiceCredits;
 using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
@@ -27,15 +28,18 @@ public sealed class LabTestService : ILabTestService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILabTestJobScheduler _jobScheduler;
     private readonly ILabTestResultAnalyzer _resultAnalyzer;
+    private readonly ILabTestQuotaService _quotaService;
 
     public LabTestService(
         IUnitOfWork unitOfWork,
         ILabTestJobScheduler jobScheduler,
-        ILabTestResultAnalyzer resultAnalyzer)
+        ILabTestResultAnalyzer resultAnalyzer,
+        ILabTestQuotaService quotaService)
     {
         _unitOfWork = unitOfWork;
         _jobScheduler = jobScheduler;
         _resultAnalyzer = resultAnalyzer;
+        _quotaService = quotaService;
     }
 
     public async Task<(bool Succeeded, IEnumerable<string> Errors, LabTestUploadResponse? Data)> AnalyzeFromDocumentUrlAsync(
@@ -78,8 +82,36 @@ public sealed class LabTestService : ILabTestService
             CreatedAt = DateTime.UtcNow,
         };
 
-        _unitOfWork.LabTestSessions.Add(session);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            var quotaUtcNow = DateTime.UtcNow;
+            var reserveResult = await _quotaService.ReserveAsync(
+                userId,
+                sessionId,
+                userId,
+                quotaUtcNow,
+                cancellationToken);
+
+            if (!reserveResult.Success || reserveResult.Data is null)
+            {
+                await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+                return (false, new[] { reserveResult.Error.ToStableCode() }, null);
+            }
+
+            session.UserSubscriptionId = reserveResult.Data.UserSubscriptionId;
+            session.UserSubscriptionUsageId = reserveResult.Data.Id;
+
+            _unitOfWork.LabTestSessions.Add(session);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
 
         _jobScheduler.EnqueueOcr(sessionId);
 
