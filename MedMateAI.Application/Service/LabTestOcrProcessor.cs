@@ -57,8 +57,20 @@ public sealed class LabTestOcrProcessor : ILabTestOcrProcessor
                 session.DocumentUrl,
                 cancellationToken);
 
+            if (string.IsNullOrWhiteSpace(rawOcrText))
+            {
+                _logger.LogWarning(
+                    "dịch vụ lab test ocr trả về kết quả rỗng. {SessionId}",
+                    sessionId);
+
+                session.Status = LabTestSessionStatus.Failed;
+                session.UpdatedAt = DateTime.UtcNow;
+                _unitOfWork.LabTestSessions.Update(session);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
             session.RawOcrText = rawOcrText;
-            session.Status = LabTestSessionStatus.Completed;
             session.ProcessedAt = DateTime.UtcNow;
             session.UpdatedAt = DateTime.UtcNow;
 

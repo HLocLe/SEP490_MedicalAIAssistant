@@ -134,7 +134,7 @@ public sealed class LabTestService : ILabTestService
             return null;
         }
 
-        if (session.Status == LabTestSessionStatus.Completed
+        if ((session.Status == LabTestSessionStatus.Completed)
             && session.LabTestResultDetails.Count == 0
             && !string.IsNullOrWhiteSpace(session.RawOcrText))
         {

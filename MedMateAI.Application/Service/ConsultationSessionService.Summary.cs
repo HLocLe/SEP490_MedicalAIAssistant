@@ -179,7 +179,7 @@ public sealed partial class ConsultationSessionService
             && !string.IsNullOrWhiteSpace(user.PhoneNumber)
             && session.AppointmentTime.HasValue)
         {
-            // Remind 1 hour before appointment; if already within 1 hour, send immediately.
+           
             var remindAtUtc = session.AppointmentTime.Value.ToUniversalTime().AddHours(-1);
             if (remindAtUtc > DateTime.UtcNow)
             {

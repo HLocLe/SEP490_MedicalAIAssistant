@@ -1,5 +1,9 @@
 using System.Linq.Expressions;
+using MedMateAI.Application.DTOs.ChecklistItems.Responses;
+using MedMateAI.Application.DTOs.ConsultationSessions.Requests;
 using MedMateAI.Application.DTOs.MedicalDepartments.Responses;
+using MedMateAI.Application.DTOs.MedicalFacilities.Responses;
+using MedMateAI.Application.DTOs.Users.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Service;
 using MedMateAI.Domain.Common;
@@ -194,5 +198,499 @@ public class ConsultationSessionServiceTests
         Assert.That(data.DepartmentName, Is.EqualTo("Cardiology"));
         Assert.That(data.Questions, Has.Count.EqualTo(1));
         Assert.That(data.Questions[0].QuestionText, Is.EqualTo("Any chest pain?"));
+    }
+
+    // ── RegisterReminderAsync ─────────────────────────────────────────────────
+
+    [Test]
+    [Category("B")]
+    public async Task RegisterReminderAsync_EmptyIds_ReturnsNotFound()
+    {
+        var (succeeded, notFound, errors) = await _service.RegisterReminderAsync(
+            Guid.Empty, Guid.Empty, new RegisterConsultationReminderRequest(), CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.False);
+            Assert.That(notFound, Is.True);
+            Assert.That(errors, Is.Empty);
+        });
+    }
+
+    [Test]
+    [Category("B")]
+    public async Task RegisterReminderAsync_NullRequest_ReturnsValidationError()
+    {
+        var (succeeded, notFound, errors) = await _service.RegisterReminderAsync(
+            _userId, _sessionId, null!, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.False);
+            Assert.That(notFound, Is.False);
+            Assert.That(errors, Is.Not.Empty);
+        });
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task RegisterReminderAsync_SessionNotFound_ReturnsNotFound()
+    {
+        SetupSessionLookup(null);
+
+        var (succeeded, notFound, _) = await _service.RegisterReminderAsync(
+            _userId, _sessionId, new RegisterConsultationReminderRequest(), CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.False);
+            Assert.That(notFound, Is.True);
+        });
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task RegisterReminderAsync_SessionNotCompleted_ReturnsValidationError()
+    {
+        SetupSessionLookup(MakeSession(status: ConsultationSessionStatus.Processing));
+
+        var (succeeded, notFound, errors) = await _service.RegisterReminderAsync(
+            _userId, _sessionId, new RegisterConsultationReminderRequest(), CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.False);
+            Assert.That(notFound, Is.False);
+            Assert.That(errors, Is.Not.Empty);
+        });
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task RegisterReminderAsync_DisableReminder_UpdatesSessionAndSaves()
+    {
+        var session = MakeSession();
+        session.IsReminderEnabled = true;
+        SetupSessionLookup(session);
+
+        var (succeeded, notFound, errors) = await _service.RegisterReminderAsync(
+            _userId, _sessionId, new RegisterConsultationReminderRequest { EnableReminder = false }, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.True);
+            Assert.That(notFound, Is.False);
+            Assert.That(errors, Is.Empty);
+            Assert.That(session.IsReminderEnabled, Is.False);
+        });
+        _sessionsRepoMock.Verify(r => r.Update(session), Times.Once);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task RegisterReminderAsync_EnableReminderWithPhoneUpdateFailure_ReturnsErrors()
+    {
+        SetupSessionLookup(MakeSession());
+        _userServiceMock.Setup(u => u.UpdateCurrentUserPhoneAsync(_userId, "0900000000", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((false, new[] { "Invalid phone" }));
+
+        var (succeeded, notFound, errors) = await _service.RegisterReminderAsync(
+            _userId, _sessionId,
+            new RegisterConsultationReminderRequest { EnableReminder = true, PhoneNumber = "0900000000" },
+            CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.False);
+            Assert.That(notFound, Is.False);
+            Assert.That(errors, Has.Some.Contains("Invalid phone"));
+        });
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task RegisterReminderAsync_EnableReminderNoPhoneOnFile_ReturnsValidationError()
+    {
+        SetupSessionLookup(MakeSession());
+        _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, PhoneNumber = null });
+
+        var (succeeded, notFound, errors) = await _service.RegisterReminderAsync(
+            _userId, _sessionId,
+            new RegisterConsultationReminderRequest { EnableReminder = true },
+            CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.False);
+            Assert.That(notFound, Is.False);
+            Assert.That(errors, Is.Not.Empty);
+        });
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task RegisterReminderAsync_EnableReminderValidPhone_EnablesReminderAndSaves()
+    {
+        var session = MakeSession();
+        SetupSessionLookup(session);
+        _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, PhoneNumber = "0900000000" });
+
+        var (succeeded, notFound, errors) = await _service.RegisterReminderAsync(
+            _userId, _sessionId,
+            new RegisterConsultationReminderRequest { EnableReminder = true },
+            CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.True);
+            Assert.That(notFound, Is.False);
+            Assert.That(errors, Is.Empty);
+            Assert.That(session.IsReminderEnabled, Is.True);
+        });
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── GetSummaryAsync ──────────────────────────────────────────────────────
+
+    [Test]
+    [Category("B")]
+    public async Task GetSummaryAsync_EmptyIds_ReturnsNotFound()
+    {
+        var (notFound, data) = await _service.GetSummaryAsync(Guid.Empty, Guid.Empty, CancellationToken.None);
+
+        Assert.That(notFound, Is.True);
+        Assert.That(data, Is.Null);
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task GetSummaryAsync_SessionNotCompleted_ReturnsNotFound()
+    {
+        SetupSessionLookup(MakeSession(status: ConsultationSessionStatus.Processing));
+
+        var (notFound, data) = await _service.GetSummaryAsync(_userId, _sessionId, CancellationToken.None);
+
+        Assert.That(notFound, Is.True);
+        Assert.That(data, Is.Null);
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task GetSummaryAsync_ValidSession_ReturnsSummaryWithoutSendingReminder()
+    {
+        var appointment = DateTime.UtcNow.AddHours(5);
+        var session = MakeSession();
+        session.IsReminderEnabled = true;
+        session.AppointmentTime = appointment;
+        SetupSessionLookup(session);
+        SetupSummaryDependencies();
+
+        var (notFound, data) = await _service.GetSummaryAsync(_userId, _sessionId, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(notFound, Is.False);
+            Assert.That(data, Is.Not.Null);
+            Assert.That(data!.SessionId, Is.EqualTo(_sessionId));
+            Assert.That(data.DepartmentName, Is.EqualTo("Cardiology"));
+        });
+        _jobSchedulerMock.Verify(s => s.ScheduleReminderSms(It.IsAny<Guid>(), It.IsAny<DateTime>()), Times.Never);
+        _jobSchedulerMock.Verify(s => s.EnqueueReminderSms(It.IsAny<Guid>()), Times.Never);
+    }
+
+    // ── CompleteSummaryAsync ─────────────────────────────────────────────────
+
+    [Test]
+    [Category("B")]
+    public async Task CompleteSummaryAsync_EmptyIds_ReturnsNotFound()
+    {
+        var (succeeded, notFound, errors, data) = await _service.CompleteSummaryAsync(
+            Guid.Empty, Guid.Empty, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.False);
+            Assert.That(notFound, Is.True);
+            Assert.That(errors, Is.Empty);
+            Assert.That(data, Is.Null);
+        });
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task CompleteSummaryAsync_SessionNotFound_ReturnsNotFound()
+    {
+        SetupSessionLookup(null);
+
+        var (succeeded, notFound, _, data) = await _service.CompleteSummaryAsync(_userId, _sessionId, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.False);
+            Assert.That(notFound, Is.True);
+            Assert.That(data, Is.Null);
+        });
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task CompleteSummaryAsync_SessionNotCompleted_ReturnsValidationError()
+    {
+        SetupSessionLookup(MakeSession(status: ConsultationSessionStatus.Failed));
+
+        var (succeeded, notFound, errors, data) = await _service.CompleteSummaryAsync(_userId, _sessionId, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.False);
+            Assert.That(notFound, Is.False);
+            Assert.That(errors, Is.Not.Empty);
+            Assert.That(data, Is.Null);
+        });
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task CompleteSummaryAsync_UserMissing_ReturnsNotFound()
+    {
+        SetupSessionLookup(MakeSession());
+        _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ApplicationUserResponse?)null);
+
+        var (succeeded, notFound, _, data) = await _service.CompleteSummaryAsync(_userId, _sessionId, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.False);
+            Assert.That(notFound, Is.True);
+            Assert.That(data, Is.Null);
+        });
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task CompleteSummaryAsync_ReminderDueSoon_EnqueuesImmediateSmsAndSaves()
+    {
+        var session = MakeSession();
+        session.IsReminderEnabled = true;
+        session.AppointmentTime = DateTime.UtcNow.AddMinutes(30);
+        SetupSessionLookup(session);
+        SetupSummaryDependencies();
+
+        var (succeeded, notFound, errors, data) = await _service.CompleteSummaryAsync(_userId, _sessionId, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.True);
+            Assert.That(notFound, Is.False);
+            Assert.That(errors, Is.Empty);
+            Assert.That(data, Is.Not.Null);
+            Assert.That(session.ReminderSmsSentAt, Is.Not.Null);
+        });
+        _jobSchedulerMock.Verify(s => s.EnqueueReminderSms(_sessionId), Times.Once);
+        _jobSchedulerMock.Verify(s => s.ScheduleReminderSms(It.IsAny<Guid>(), It.IsAny<DateTime>()), Times.Never);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task CompleteSummaryAsync_ReminderFarInFuture_SchedulesSmsForOneHourBefore()
+    {
+        var appointment = DateTime.UtcNow.AddHours(5);
+        var session = MakeSession();
+        session.IsReminderEnabled = true;
+        session.AppointmentTime = appointment;
+        SetupSessionLookup(session);
+        SetupSummaryDependencies();
+
+        var (succeeded, _, _, _) = await _service.CompleteSummaryAsync(_userId, _sessionId, CancellationToken.None);
+
+        Assert.That(succeeded, Is.True);
+        _jobSchedulerMock.Verify(s => s.ScheduleReminderSms(
+            _sessionId,
+            It.Is<DateTime>(dt => Math.Abs((dt - appointment.AddHours(-1)).TotalSeconds) < 1)), Times.Once);
+        _jobSchedulerMock.Verify(s => s.EnqueueReminderSms(It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task CompleteSummaryAsync_MergesChecklistItemsAndFacilityOverridesDepartment()
+    {
+        var facilityId = Guid.NewGuid();
+        var session = MakeSession();
+        session.FacilityId = facilityId;
+        SetupSessionLookup(session);
+        SetupSummaryDependencies(facilityId: facilityId);
+
+        var sharedId = Guid.NewGuid();
+        _checklistItemServiceMock.Setup(c => c.GetByDepartmentIdAsync(_departmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ChecklistItemResponse>
+            {
+                new() { Id = sharedId, Content = "department version", IsMandatory = false },
+                new() { Id = Guid.NewGuid(), Content = "department only", IsMandatory = true },
+            });
+        _checklistItemServiceMock.Setup(c => c.GetByFacilityIdAsync(facilityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ChecklistItemResponse>
+            {
+                new() { Id = sharedId, Content = "facility version", IsMandatory = true },
+            });
+
+        var (succeeded, _, _, data) = await _service.CompleteSummaryAsync(_userId, _sessionId, CancellationToken.None);
+
+        Assert.That(succeeded, Is.True);
+        Assert.That(data!.ChecklistItems, Has.Count.EqualTo(2));
+        var sharedResult = data.ChecklistItems.Single(item => item.Id == sharedId);
+        Assert.That(sharedResult.Content, Is.EqualTo("facility version"));
+    }
+
+    // ── ProcessSendReminderSmsAsync ──────────────────────────────────────────
+
+    [Test]
+    [Category("B")]
+    public async Task ProcessSendReminderSmsAsync_EmptySessionId_DoesNothing()
+    {
+        await _service.ProcessSendReminderSmsAsync(Guid.Empty, CancellationToken.None);
+
+        _sessionsRepoMock.Verify(r => r.FirstOrDefaultAsync(
+            It.IsAny<Expression<Func<ConsultationSession, bool>>>(),
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task ProcessSendReminderSmsAsync_SessionNotFound_DoesNothing()
+    {
+        SetupSessionLookup(null);
+
+        await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
+
+        _smsSenderMock.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task ProcessSendReminderSmsAsync_ReminderDisabled_DoesNothing()
+    {
+        var session = MakeSession();
+        session.IsReminderEnabled = false;
+        session.AppointmentTime = DateTime.UtcNow.AddHours(1);
+        SetupSessionLookup(session);
+
+        await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
+
+        _smsSenderMock.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task ProcessSendReminderSmsAsync_AppointmentAlreadyPassed_DoesNothing()
+    {
+        var session = MakeSession();
+        session.IsReminderEnabled = true;
+        session.AppointmentTime = DateTime.UtcNow.AddMinutes(-5);
+        SetupSessionLookup(session);
+
+        await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
+
+        _smsSenderMock.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task ProcessSendReminderSmsAsync_UserPhoneMissing_DoesNothing()
+    {
+        var session = MakeSession();
+        session.IsReminderEnabled = true;
+        session.AppointmentTime = DateTime.UtcNow.AddHours(1);
+        SetupSessionLookup(session);
+        _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, PhoneNumber = null });
+
+        await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
+
+        _smsSenderMock.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task ProcessSendReminderSmsAsync_SendFails_DoesNotMarkSentOrSave()
+    {
+        var session = MakeSession();
+        session.IsReminderEnabled = true;
+        session.AppointmentTime = DateTime.UtcNow.AddHours(1);
+        SetupSessionLookup(session);
+        _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, PhoneNumber = "0900000000" });
+        _smsSenderMock.Setup(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
+
+        Assert.That(session.ReminderSmsSentAt, Is.Null);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task ProcessSendReminderSmsAsync_SendSucceeds_MarksSentAndSaves()
+    {
+        var session = MakeSession();
+        session.IsReminderEnabled = true;
+        session.AppointmentTime = DateTime.UtcNow.AddHours(1);
+        SetupSessionLookup(session);
+        _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, DisplayName = "Nguyen Van A", PhoneNumber = "0900000000" });
+        _medicalDepartmentServiceMock.Setup(m => m.GetMedicalDepartmentByIdAsync(_departmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MedicalDepartmentResponse { Id = _departmentId, DepartmentName = "Cardiology" });
+        _smsSenderMock.Setup(s => s.SendAsync("0900000000", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
+
+        Assert.That(session.ReminderSmsSentAt, Is.Not.Null);
+        _sessionsRepoMock.Verify(r => r.Update(session), Times.Once);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private void SetupSessionLookup(ConsultationSession? session)
+    {
+        _sessionsRepoMock.Setup(r => r.FirstOrDefaultAsync(
+                It.IsAny<Expression<Func<ConsultationSession, bool>>>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+    }
+
+    private void SetupSummaryDependencies(Guid? facilityId = null)
+    {
+        _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, DisplayName = "Nguyen Van A", PhoneNumber = "0900000000" });
+        _medicalDepartmentServiceMock.Setup(m => m.GetMedicalDepartmentByIdAsync(_departmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MedicalDepartmentResponse { Id = _departmentId, DepartmentName = "Cardiology" });
+        if (facilityId.HasValue)
+        {
+            _medicalFacilityServiceMock.Setup(m => m.GetMedicalFacilityByIdAsync(facilityId.Value, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new MedicalFacilityResponse { Id = facilityId.Value, FacilityName = "General Hospital" });
+        }
+        _checklistItemServiceMock.Setup(c => c.GetByDepartmentIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ChecklistItemResponse>());
+        _checklistItemServiceMock.Setup(c => c.GetByFacilityIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ChecklistItemResponse>());
+        _questionsRepoMock.Setup(r => r.GetPagedAsync(
+                1, 100,
+                It.IsAny<Expression<Func<ConsultationQuestion, bool>>>(),
+                It.IsAny<Func<IQueryable<ConsultationQuestion>, IOrderedQueryable<ConsultationQuestion>>>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PagedResult<ConsultationQuestion>
+            {
+                PageNumber = 1,
+                PageSize = 100,
+                Items = Array.Empty<ConsultationQuestion>(),
+            });
     }
 }

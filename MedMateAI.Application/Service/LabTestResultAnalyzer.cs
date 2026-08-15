@@ -26,8 +26,19 @@ public sealed class LabTestResultAnalyzer : ILabTestResultAnalyzer
     public async Task AnalyzeAndPersistAsync(Guid sessionId, CancellationToken cancellationToken = default)
     {
         var session = await _unitOfWork.LabTestSessions.GetByIdAsync(sessionId, cancellationToken);
-        if (session is null || string.IsNullOrWhiteSpace(session.RawOcrText))
+        if (session is null)
         {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(session.RawOcrText))
+        {
+            _logger.LogWarning(
+                "Ocr rỗng. {SessionId}",
+                sessionId);
+
+            MarkSessionFailed(session);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
             return;
         }
 
@@ -37,13 +48,22 @@ public sealed class LabTestResultAnalyzer : ILabTestResultAnalyzer
 
         if (alreadyAnalyzed is not null)
         {
+            if (session.Status != LabTestSessionStatus.Completed)
+            {
+                MarkSessionCompleted(session);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+
             return;
         }
 
         var parsedRows = await _ocrStructurer.StructureAsync(session.RawOcrText, cancellationToken);
         if (parsedRows.Count == 0)
         {
-            _logger.LogWarning("No lab rows parsed from OCR text for session {SessionId}.", sessionId);
+            _logger.LogWarning("Không có dữ liệu lab từ ocr. {SessionId}", sessionId);
+
+            MarkSessionFailed(session);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
             return;
         }
 
@@ -141,7 +161,23 @@ public sealed class LabTestResultAnalyzer : ILabTestResultAnalyzer
             });
         }
 
+        MarkSessionCompleted(session);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    private void MarkSessionCompleted(LabTestSession session)
+    {
+        session.Status = LabTestSessionStatus.Completed;
+        session.ProcessedAt = DateTime.UtcNow;
+        session.UpdatedAt = DateTime.UtcNow;
+        _unitOfWork.LabTestSessions.Update(session);
+    }
+
+    private void MarkSessionFailed(LabTestSession session)
+    {
+        session.Status = LabTestSessionStatus.Failed;
+        session.UpdatedAt = DateTime.UtcNow;
+        _unitOfWork.LabTestSessions.Update(session);
     }
 
     private static AgeGroup? ResolveAgeGroup(int? patientAgeAtTest)
