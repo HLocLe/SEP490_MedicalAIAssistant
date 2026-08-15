@@ -74,7 +74,9 @@ internal static class RecoveryPlanHttpResultMapper
             or RecoveryPlanErrorCode.RecoveryPlanIncomplete
             or RecoveryPlanErrorCode.InvalidPlanStructure => StatusCodes.Status400BadRequest,
         RecoveryPlanErrorCode.RecoveryPlanWorkflowAlreadyActive
-            or RecoveryPlanErrorCode.RecoveryPlanNotCancellable =>
+            or RecoveryPlanErrorCode.RecoveryPlanNotCancellable
+            or RecoveryPlanErrorCode.RecoveryPlanNotCompleted
+            or RecoveryPlanErrorCode.RecoveryPlanFeedbackAlreadySubmitted =>
             StatusCodes.Status409Conflict,
         _ => StatusCodes.Status409Conflict
     };

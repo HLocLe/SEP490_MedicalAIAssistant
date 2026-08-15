@@ -36,6 +36,12 @@ public sealed class RecoveryPlan : BaseEntity
 
     public DateTime? CompletedAt { get; set; }
 
+    public int? FeedbackRating { get; set; }
+
+    public string? FeedbackNote { get; set; }
+
+    public DateTime? FeedbackSubmittedAt { get; set; }
+
     public DateTime? CancelledAt { get; set; }
 
     public Guid? CancelledByUserId { get; set; }
