@@ -108,7 +108,7 @@ public sealed class LabTestOcrStructurer : ILabTestOcrStructurer
         return rows;
     }
 
-    // LLMs often wrap JSON output in markdown code fences or add surrounding prose.
+  
     private static string ExtractJsonObject(string content)
     {
         var trimmed = content.Trim();
@@ -125,7 +125,7 @@ public sealed class LabTestOcrStructurer : ILabTestOcrStructurer
         return trimmed[start..(end + 1)];
     }
 
-    // "ket_qua" may use a Vietnamese decimal comma, e.g. "5,1".
+   
     private static double? ParseValue(string? rawValue)
     {
         if (string.IsNullOrWhiteSpace(rawValue))
