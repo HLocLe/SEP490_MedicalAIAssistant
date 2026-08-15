@@ -917,7 +917,7 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
 
 
 
-        lines.Add("Department consultation questions (select the 6 most relevant for the patient to ask the doctor):");
+        lines.Add("Department consultation questions (select exactly 5 questions in total, with exactly 1 question from each of the 5 categories: Diagnosis, Tests, Treatment, Lifestyle, Follow-up. If a category has no questions available in the list, select an additional question from another category to ensure the total is exactly 5 questions)");
 
         var index = 1;
 
