@@ -1,0 +1,115 @@
+using MedMateAI.Application.IRepository;
+using MedMateAI.Application.Models.LabTests.Analytics;
+using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
+using Microsoft.EntityFrameworkCore;
+
+namespace MedMateAI.Infrastructure.Repositories;
+
+public sealed class LabTestAnalyticsRepository : ILabTestAnalyticsRepository
+{
+    private readonly ApplicationDbContext _context;
+
+    public LabTestAnalyticsRepository(ApplicationDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<IReadOnlyList<LabTestTrendIndicatorData>>
+        GetAvailableIndicatorsAsync(
+            Guid userId,
+            DateOnly? from,
+            DateOnly? to,
+            CancellationToken cancellationToken = default)
+    {
+        var query = ApplyDateRange(BuildChartableMeasurements(userId), from, to);
+
+        return await query
+            .GroupBy(detail => new
+            {
+                IndicatorId = detail.IndicatorId!.Value,
+                detail.Indicator!.Symbol,
+                Name = detail.Indicator.FullName,
+                detail.Indicator.Unit
+            })
+            .Select(group => new LabTestTrendIndicatorData(
+                group.Key.IndicatorId,
+                group.Key.Symbol,
+                group.Key.Name,
+                group.Key.Unit,
+                group.Count(),
+                group.Min(detail => detail.TestSession.TestDate!.Value),
+                group.Max(detail => detail.TestSession.TestDate!.Value)))
+            .OrderBy(indicator => indicator.Symbol)
+            .ThenBy(indicator => indicator.IndicatorId)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<LabTestTrendMeasurementData>>
+        GetIndicatorMeasurementsAsync(
+            Guid userId,
+            Guid indicatorId,
+            DateOnly? from,
+            DateOnly? to,
+            CancellationToken cancellationToken = default)
+    {
+        var query = ApplyDateRange(BuildChartableMeasurements(userId), from, to)
+            .Where(detail => detail.IndicatorId == indicatorId);
+
+        return await query
+            .OrderBy(detail => detail.TestSession.TestDate)
+            .ThenBy(detail => detail.TestSessionId)
+            .ThenBy(detail => detail.Id)
+            .Select(detail => new LabTestTrendMeasurementData(
+                detail.Id,
+                detail.TestSessionId,
+                detail.IndicatorId!.Value,
+                detail.Indicator!.Symbol,
+                detail.Indicator.FullName,
+                detail.Indicator.Unit,
+                detail.TestSession.TestDate!.Value,
+                detail.UserValue!.Value,
+                detail.Status,
+                detail.ReferenceMinUsed,
+                detail.ReferenceMaxUsed,
+                detail.ReferenceUnitUsed,
+                detail.DeviationPercent,
+                detail.TestSession.FacilityName))
+            .ToListAsync(cancellationToken);
+    }
+
+    private IQueryable<LabTestResultDetail> BuildChartableMeasurements(Guid userId)
+    {
+        return _context.LabTestResultDetails
+            .AsNoTracking()
+            .Where(detail =>
+                !detail.IsDeleted
+                && detail.IsMatched
+                && detail.IndicatorId.HasValue
+                && detail.UserValue.HasValue
+                && detail.Indicator != null
+                && !detail.Indicator.IsDeleted
+                && !detail.TestSession.IsDeleted
+                && detail.TestSession.UserId == userId
+                && detail.TestSession.Status == LabTestSessionStatus.Completed
+                && detail.TestSession.TestDate.HasValue);
+    }
+
+    private static IQueryable<LabTestResultDetail> ApplyDateRange(
+        IQueryable<LabTestResultDetail> query,
+        DateOnly? from,
+        DateOnly? to)
+    {
+        if (from.HasValue)
+        {
+            query = query.Where(detail => detail.TestSession.TestDate >= from.Value);
+        }
+
+        if (to.HasValue)
+        {
+            query = query.Where(detail => detail.TestSession.TestDate <= to.Value);
+        }
+
+        return query;
+    }
+}

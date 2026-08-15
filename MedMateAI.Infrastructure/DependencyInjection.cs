@@ -11,6 +11,7 @@ using MedMateAI.Infrastructure.Auth.Providers;
 using MedMateAI.Infrastructure.Auth.Services;
 using MedMateAI.Application.Mapping;
 using MedMateAI.Application.Common;
+using MedMateAI.Application.IRepository;
 using MedMateAI.Infrastructure.Mapping;
 using MedMateAI.Infrastructure.Persistence.Seeder;
 using MedMateAI.Infrastructure.Repositories;
@@ -64,6 +65,8 @@ public static class DependencyInjection
         services.AddScoped<IIcdChapterService, IcdChapterService>();
         services.AddScoped<ILabIndicatorService, LabIndicatorService>();
         services.AddScoped<ILabTestService, LabTestService>();
+        services.AddScoped<ILabTestAnalyticsRepository, LabTestAnalyticsRepository>();
+        services.AddScoped<ILabTestAnalyticsService, LabTestAnalyticsService>();
         services.AddScoped<ILabTestQuotaService, LabTestQuotaService>();
         services.AddScoped<ILabTestResultAnalyzer, LabTestResultAnalyzer>();
         services.AddScoped<ILabTestOcrStructurer, LabTestOcrStructurer>();
@@ -95,6 +98,12 @@ public static class DependencyInjection
         services.AddScoped<IRecoveryPlanRequestService, RecoveryPlanRequestService>();
         services.AddScoped<IRecoveryPlanClinicalContextService, RecoveryPlanClinicalContextService>();
         services.AddScoped<IRecoveryPlanService, RecoveryPlanService>();
+        services.AddScoped<
+            IRecoveryPlanFeedbackAnalyticsRepository,
+            RecoveryPlanFeedbackAnalyticsRepository>();
+        services.AddScoped<
+            IRecoveryPlanFeedbackAnalyticsService,
+            RecoveryPlanFeedbackAnalyticsService>();
         services.AddScoped<IUserMedicationService, UserMedicationService>();
         services.AddScoped<IRecoveryPlanRealtimeAccessService, RecoveryPlanRealtimeAccessService>();
         services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
