@@ -18,7 +18,8 @@ public enum RecoveryPlanErrorCode
     DoctorCapacityReached, AssignmentExpired, QuotaMutationFailed, Conflict,
     RecoveryPlanIncomplete, InvalidPlanStructure, RecoveryPlanNotEditable,
     InvalidUserTimeZone, RecoveryPlanWorkflowAlreadyActive,
-    RecoveryPlanNotCancellable
+    RecoveryPlanNotCancellable, RecoveryPlanNotCompleted,
+    RecoveryPlanFeedbackAlreadySubmitted
 }
 
 public sealed record RecoveryPlanOperationResult<T>(

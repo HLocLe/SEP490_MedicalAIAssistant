@@ -817,6 +817,85 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
         }
     }
 
+    public async Task<RecoveryPlanOperationResult<RecoveryPlanDetailResponse>>
+        SubmitFeedbackAsync(
+            Guid userId,
+            Guid planId,
+            SubmitRecoveryPlanFeedbackRequest request,
+            CancellationToken cancellationToken)
+    {
+        if (planId == Guid.Empty || request.Rating is < 1 or > 5)
+        {
+            return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Fail(
+                RecoveryPlanErrorCode.InvalidRequest,
+                "Rating must be between 1 and 5.");
+        }
+
+        var note = RecoveryPlanValidation.NormalizeOptional(request.Note);
+        if (note?.Length > RecoveryPlanValidation.MaximumFeedbackNoteLength)
+        {
+            return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Fail(
+                RecoveryPlanErrorCode.InvalidRequest,
+                "Feedback note must not exceed 1000 characters.");
+        }
+
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var lockedPlan = await _unitOfWork.RecoveryPlans.GetByIdForUpdateAsync(
+                planId,
+                cancellationToken);
+            if (lockedPlan is null
+                || lockedPlan.UserId != userId)
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                    RecoveryPlanErrorCode.NotFound);
+            }
+
+            if (lockedPlan.Status != RecoveryPlanStatus.Completed)
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                    RecoveryPlanErrorCode.RecoveryPlanNotCompleted,
+                    "Only a completed recovery plan can receive feedback.");
+            }
+
+            if (lockedPlan.FeedbackSubmittedAt.HasValue)
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                    RecoveryPlanErrorCode.RecoveryPlanFeedbackAlreadySubmitted,
+                    "Recovery plan feedback has already been submitted.");
+            }
+
+            var plan = await _unitOfWork.RecoveryPlans.GetTrackedDetailAsync(
+                planId,
+                cancellationToken);
+            if (plan is null)
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                    RecoveryPlanErrorCode.NotFound);
+            }
+
+            var utcNow = DateTime.UtcNow;
+            plan.FeedbackRating = request.Rating;
+            plan.FeedbackNote = note;
+            plan.FeedbackSubmittedAt = utcNow;
+            plan.UpdatedAt = utcNow;
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            var response = RecoveryPlanMapping.ToDetail(plan);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Ok(
+                response,
+                message: "Recovery plan feedback submitted.");
+        }
+        catch
+        {
+            await RollbackAsync();
+            throw;
+        }
+    }
+
     private async Task<RecoveryPlanOperationResult<TResponse>> ExecuteDraftWriteAsync<TResponse>(
         Guid doctorUserId,
         Guid planId,

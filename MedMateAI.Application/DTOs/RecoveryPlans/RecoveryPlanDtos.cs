@@ -55,6 +55,9 @@ public sealed class RecoveryPlanSummaryResponse
     public DateTime? PublishedAt { get; set; }
     public DateTime? ActivatedAt { get; set; }
     public DateTime? CancelledAt { get; set; }
+    public int? FeedbackRating { get; set; }
+    public string? FeedbackNote { get; set; }
+    public DateTime? FeedbackSubmittedAt { get; set; }
     public DateOnly? StartDate { get; set; }
     public DateOnly? EndDate { get; set; }
     public bool IsCurrent { get; set; }
@@ -73,6 +76,9 @@ public sealed class RecoveryPlanDetailResponse
     public DateOnly? StartDate { get; set; }
     public DateOnly? EndDate { get; set; }
     public DateTime? CompletedAt { get; set; }
+    public int? FeedbackRating { get; set; }
+    public string? FeedbackNote { get; set; }
+    public DateTime? FeedbackSubmittedAt { get; set; }
     public DateTime? CancelledAt { get; set; }
     public string? CancellationReasonCode { get; set; }
     public string? CancellationReason { get; set; }

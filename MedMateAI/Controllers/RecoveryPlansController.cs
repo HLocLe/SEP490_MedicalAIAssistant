@@ -50,6 +50,14 @@ public sealed class RecoveryPlansController : ControllerBase
         await WithUser(userId =>
             _service.CancelAsync(userId, planId, request, cancellationToken));
 
+    [HttpPost("{planId:guid}/feedback")]
+    public async Task<IActionResult> SubmitFeedback(
+        Guid planId,
+        [FromBody] SubmitRecoveryPlanFeedbackRequest request,
+        CancellationToken cancellationToken) =>
+        await WithUser(userId =>
+            _service.SubmitFeedbackAsync(userId, planId, request, cancellationToken));
+
     private async Task<IActionResult> WithUser<T>(
         Func<Guid, Task<RecoveryPlanOperationResult<T>>> action)
     {

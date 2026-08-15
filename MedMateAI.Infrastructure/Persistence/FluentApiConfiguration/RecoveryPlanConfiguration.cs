@@ -10,7 +10,10 @@ public sealed class RecoveryPlanConfiguration : IEntityTypeConfiguration<Recover
 {
     public void Configure(EntityTypeBuilder<RecoveryPlan> builder)
     {
-        builder.ToTable("RecoveryPlan");
+        builder.ToTable("RecoveryPlan", table =>
+            table.HasCheckConstraint(
+                "CK_RecoveryPlan_FeedbackRating",
+                "\"FeedbackRating\" IS NULL OR (\"FeedbackRating\" >= 1 AND \"FeedbackRating\" <= 5)"));
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("RecoveryPlanId").ValueGeneratedOnAdd();
@@ -19,6 +22,7 @@ public sealed class RecoveryPlanConfiguration : IEntityTypeConfiguration<Recover
         builder.Property(x => x.RecheckInstruction).HasMaxLength(2000);
         builder.Property(x => x.CancellationReasonCode).HasMaxLength(100);
         builder.Property(x => x.CancellationReason).HasMaxLength(2000);
+        builder.Property(x => x.FeedbackNote).HasMaxLength(1000);
         builder.Property(x => x.ClinicalSnapshotJson).HasColumnType("jsonb");
         builder.Property(x => x.StartDate).HasColumnType("date");
         builder.Property(x => x.EndDate).HasColumnType("date");

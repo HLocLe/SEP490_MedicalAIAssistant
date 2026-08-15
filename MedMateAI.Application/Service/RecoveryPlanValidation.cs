@@ -17,6 +17,7 @@ internal static class RecoveryPlanValidation
     public const int MaximumFoodNameLength = 256;
     public const int MaximumSuggestedServingLength = 256;
     public const int MaximumFoodNoteLength = 1000;
+    public const int MaximumFeedbackNoteLength = 1000;
 
     public static RecoveryPlanErrorCode ValidateDraftHeader(
         string planName,
