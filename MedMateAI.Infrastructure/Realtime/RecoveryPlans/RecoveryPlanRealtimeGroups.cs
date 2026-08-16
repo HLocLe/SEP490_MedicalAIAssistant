@@ -1,4 +1,4 @@
-namespace MedMateAI.Realtime.RecoveryPlans;
+namespace MedMateAI.Infrastructure.Realtime.RecoveryPlans;
 
 internal static class RecoveryPlanRealtimeGroups
 {

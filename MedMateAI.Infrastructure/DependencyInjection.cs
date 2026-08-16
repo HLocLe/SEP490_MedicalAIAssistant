@@ -26,6 +26,7 @@ using MedMateAI.Infrastructure.BackgroundJobs.RecoveryPlans;
 using MedMateAI.Infrastructure.ComputerVision;
 using MedMateAI.Infrastructure.ComputerVision.Options;
 using MedMateAI.Infrastructure.Payments.PayOS;
+using MedMateAI.Infrastructure.Realtime.RecoveryPlans;
 using MedMateAI.Infrastructure.NationalInstitutesofHealth;
 using MedMateAI.Infrastructure.NationalInstitutesofHealth.Options;
 using MedMateAI.Infrastructure.Translation;
@@ -52,6 +53,8 @@ public static class DependencyInjection
         
         services.AddDbContext<ApplicationDbContext>(options =>
         options.UseNpgsql(connectionString));
+
+        services.AddRecoveryPlanRealtime(configuration);
         
         //
         services.AddScoped<IUnitOfWork, UnitOfWork>();

@@ -2,8 +2,9 @@ using MedMateAI.Application.Common;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models.RecoveryPlans;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 
-namespace MedMateAI.Realtime.RecoveryPlans;
+namespace MedMateAI.Infrastructure.Realtime.RecoveryPlans;
 
 public sealed class RecoveryPlanSignalRNotifier : IRecoveryPlanRealtimeNotifier
 {
