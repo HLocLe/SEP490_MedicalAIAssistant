@@ -1,6 +1,6 @@
 using MedMateAI.Application.Models.RecoveryPlans;
 
-namespace MedMateAI.Realtime.RecoveryPlans;
+namespace MedMateAI.Infrastructure.Realtime.RecoveryPlans;
 
 public interface IRecoveryPlanHubClient
 {

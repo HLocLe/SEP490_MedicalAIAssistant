@@ -3,8 +3,9 @@ using MedMateAI.Application.Common;
 using MedMateAI.Application.IService;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 
-namespace MedMateAI.Realtime.RecoveryPlans;
+namespace MedMateAI.Infrastructure.Realtime.RecoveryPlans;
 
 [Authorize]
 public sealed class RecoveryPlanHub : Hub<IRecoveryPlanHubClient>
