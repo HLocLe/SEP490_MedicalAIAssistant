@@ -24,13 +24,24 @@ public sealed class LabTestAnalyticsRepository : ILabTestAnalyticsRepository
     {
         var query = ApplyDateRange(BuildChartableMeasurements(userId), from, to);
 
-        return await query
-            .GroupBy(detail => new
+        var rows = await query
+            .Select(detail => new
             {
                 IndicatorId = detail.IndicatorId!.Value,
-                detail.Indicator!.Symbol,
+                Symbol = detail.Indicator!.Symbol,
                 Name = detail.Indicator.FullName,
-                detail.Indicator.Unit
+                Unit = detail.Indicator.Unit,
+                TestDate = detail.TestSession.TestDate!.Value
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .GroupBy(row => new
+            {
+                row.IndicatorId,
+                row.Symbol,
+                row.Name,
+                row.Unit
             })
             .Select(group => new LabTestTrendIndicatorData(
                 group.Key.IndicatorId,
@@ -38,11 +49,11 @@ public sealed class LabTestAnalyticsRepository : ILabTestAnalyticsRepository
                 group.Key.Name,
                 group.Key.Unit,
                 group.Count(),
-                group.Min(detail => detail.TestSession.TestDate!.Value),
-                group.Max(detail => detail.TestSession.TestDate!.Value)))
+                group.Min(row => row.TestDate),
+                group.Max(row => row.TestDate)))
             .OrderBy(indicator => indicator.Symbol)
             .ThenBy(indicator => indicator.IndicatorId)
-            .ToListAsync(cancellationToken);
+            .ToList();
     }
 
     public async Task<IReadOnlyList<LabTestTrendMeasurementData>>
