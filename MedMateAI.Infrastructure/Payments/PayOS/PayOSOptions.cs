@@ -18,7 +18,7 @@ public sealed class PayOSOptions
 
     public int PaymentLinkExpirationMinutes { get; set; } = 15;
 
-    public int PendingReconciliationIntervalMinutes { get; set; } = 5;
+    public int PendingReconciliationIntervalMinutes { get; set; } = 15;
 
     public int PendingReconciliationMinimumAgeMinutes { get; set; } = 1;
 
