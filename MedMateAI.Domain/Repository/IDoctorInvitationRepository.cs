@@ -1,4 +1,6 @@
+using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
 
 namespace MedMateAI.Domain.Repository;
 
@@ -14,5 +16,13 @@ public interface IDoctorInvitationRepository : IGenericRepository<DoctorInvitati
 
     Task<DoctorInvitation?> GetPendingByDoctorIdAsync(
         Guid doctorId,
+        CancellationToken cancellationToken = default);
+
+    Task<PagedResult<DoctorInvitation>> GetAdminPagedAsync(
+        int pageNumber,
+        int pageSize,
+        DoctorInvitationStatus? status,
+        string? search,
+        DateTime utcNow,
         CancellationToken cancellationToken = default);
 }

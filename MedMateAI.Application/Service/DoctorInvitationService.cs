@@ -1,6 +1,7 @@
 using System.Net.Mail;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.DoctorInvitations.Requests;
 using MedMateAI.Application.DTOs.DoctorInvitations.Responses;
 using MedMateAI.Application.IService;
@@ -378,6 +379,36 @@ public sealed class DoctorInvitationService : IDoctorInvitationService
         return MapToResponse(invitation);
     }
 
+    public async Task<(bool Succeeded, IEnumerable<string> Errors, PagedResponse<DoctorInvitationResponse>? Data)>
+        GetAdminInvitationsAsync(
+            int pageNumber,
+            int pageSize,
+            string? status,
+            string? search,
+            CancellationToken cancellationToken = default)
+    {
+        if (!TryParseStatus(status, out DoctorInvitationStatus? parsedStatus))
+        {
+            return (false, new[] { "Invalid doctor invitation status." }, null);
+        }
+
+        var utcNow = DateTime.UtcNow;
+        var paged = await _unitOfWork.DoctorInvitations.GetAdminPagedAsync(
+            pageNumber,
+            pageSize,
+            parsedStatus,
+            search,
+            utcNow,
+            cancellationToken);
+
+        return (
+            true,
+            Array.Empty<string>(),
+            PagedResponse<DoctorInvitationResponse>.From(
+                paged,
+                invitation => MapToAdminResponse(invitation, utcNow)));
+    }
+
     private async Task<(DoctorInvitation? Invitation, ValidateDoctorInvitationResponse Response)> ValidateInvitationInternalAsync(
         string token,
         bool markExpired,
@@ -647,5 +678,70 @@ public sealed class DoctorInvitationService : IDoctorInvitationService
             CreatedAt = invitation.CreatedAt,
             UsedAt = invitation.UsedAt,
         };
+    }
+
+    private static DoctorInvitationResponse MapToAdminResponse(
+        DoctorInvitation invitation,
+        DateTime utcNow)
+    {
+        var linkedDoctor = invitation.Doctor;
+
+        return new DoctorInvitationResponse
+        {
+            Id = invitation.Id,
+            Email = invitation.Email,
+            DoctorId = invitation.DoctorId,
+            DoctorName = linkedDoctor?.FullName,
+            IsLinkedToExistingDoctorProfile = invitation.DoctorId.HasValue,
+            ExpiresAt = invitation.ExpiresAt,
+            Status = GetEffectiveStatus(invitation, utcNow)
+                .ToString()
+                .ToLowerInvariant(),
+            CreatedAt = invitation.CreatedAt,
+            UsedAt = invitation.UsedAt,
+        };
+    }
+
+    private static DoctorInvitationStatus GetEffectiveStatus(
+        DoctorInvitation invitation,
+        DateTime utcNow)
+    {
+        if (invitation.Status == DoctorInvitationStatus.Used || invitation.UsedAt is not null)
+        {
+            return DoctorInvitationStatus.Used;
+        }
+
+        if (invitation.Status == DoctorInvitationStatus.Revoked || invitation.RevokedAt is not null)
+        {
+            return DoctorInvitationStatus.Revoked;
+        }
+
+        if (invitation.Status == DoctorInvitationStatus.Expired
+            || (invitation.Status == DoctorInvitationStatus.Pending
+                && invitation.ExpiresAt <= utcNow))
+        {
+            return DoctorInvitationStatus.Expired;
+        }
+
+        return invitation.Status;
+    }
+
+    private static bool TryParseStatus<TStatus>(string? value, out TStatus? status)
+        where TStatus : struct, Enum
+    {
+        status = null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        if (!Enum.TryParse<TStatus>(value.Trim(), ignoreCase: true, out var parsed)
+            || !Enum.IsDefined(parsed))
+        {
+            return false;
+        }
+
+        status = parsed;
+        return true;
     }
 }

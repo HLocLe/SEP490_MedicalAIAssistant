@@ -2,6 +2,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.UserSubscriptions.Requests;
 using MedMateAI.Application.DTOs.UserSubscriptions.Responses;
 using MedMateAI.Application.IService;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MedMateAI.Controllers;
@@ -17,6 +18,48 @@ public sealed class UserSubscriptionsController : ControllerBase
     public UserSubscriptionsController(IUserSubscriptionService userSubscriptionService)
     {
         _userSubscriptionService = userSubscriptionService;
+    }
+
+    [HttpGet("/api/admin/user-subscriptions")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(
+        typeof(ApiResponse<PagedResponse<UserSubscriptionResponse>>),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(
+        typeof(ApiResponse<PagedResponse<UserSubscriptionResponse>>),
+        StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetAdminSubscriptions(
+        [FromQuery] PaginationQuery pagination,
+        [FromQuery] string? status,
+        [FromQuery] bool currentOnly = false,
+        CancellationToken cancellationToken = default)
+    {
+        var (succeeded, errors, data) = await _userSubscriptionService.GetAdminSubscriptionsAsync(
+            pagination.PageNumber,
+            pagination.PageSize,
+            status,
+            currentOnly,
+            cancellationToken);
+
+        if (!succeeded || data is null)
+        {
+            var errorList = errors.ToList();
+            return BadRequest(new ApiResponse<PagedResponse<UserSubscriptionResponse>>
+            {
+                Success = false,
+                Message = "List user subscriptions failed.",
+                Errors = errorList,
+            });
+        }
+
+        return Ok(new ApiResponse<PagedResponse<UserSubscriptionResponse>>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data,
+        });
     }
 
     [HttpPost("checkout")]

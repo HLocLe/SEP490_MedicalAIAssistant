@@ -1,3 +1,4 @@
+using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
 
 namespace MedMateAI.Domain.Repository;
@@ -14,5 +15,14 @@ public interface IPaymentTransactionRepository : IGenericRepository<PaymentTrans
 
     Task<IReadOnlyList<PaymentTransaction>> GetByPaymentIdAsync(
         Guid paymentId,
+        CancellationToken cancellationToken = default);
+
+    Task<PaymentTransaction?> GetLatestPayOSByUserSubscriptionIdAsync(
+        Guid userSubscriptionId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<PendingPayOSPaymentCandidate>> GetPendingPayOSCandidatesAsync(
+        DateTime createdBeforeOrAt,
+        int batchSize,
         CancellationToken cancellationToken = default);
 }

@@ -121,7 +121,24 @@ public static class DependencyInjection
         services.AddScoped<IMedicationReminderScheduler, MedicationReminderScheduler>();
 
         //
-        services.Configure<PayOSOptions>(configuration.GetSection("PayOS"));
+        services.AddOptions<PayOSOptions>()
+            .Bind(configuration.GetSection(PayOSOptions.SectionName))
+            .Validate(
+                options => options.PaymentLinkExpirationMinutes is >= 5 and <= 120,
+                "PayOS PaymentLinkExpirationMinutes must be between 5 and 120.")
+            .Validate(
+                options => options.PendingReconciliationIntervalMinutes is >= 1 and <= 60,
+                "PayOS PendingReconciliationIntervalMinutes must be between 1 and 60.")
+            .Validate(
+                options => options.PendingReconciliationMinimumAgeMinutes is >= 0 and <= 30,
+                "PayOS PendingReconciliationMinimumAgeMinutes must be between 0 and 30.")
+            .Validate(
+                options => options.PendingCleanupGraceMinutes is >= 0 and <= 30,
+                "PayOS PendingCleanupGraceMinutes must be between 0 and 30.")
+            .Validate(
+                options => options.PendingReconciliationBatchSize is >= 1 and <= 500,
+                "PayOS PendingReconciliationBatchSize must be between 1 and 500.")
+            .ValidateOnStart();
        
         //
         services.Configure<AzureTranslatorOptions>(configuration.GetSection(AzureTranslatorOptions.SectionName));

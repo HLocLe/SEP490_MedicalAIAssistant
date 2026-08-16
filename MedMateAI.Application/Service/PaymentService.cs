@@ -169,6 +169,230 @@ public sealed class PaymentService : IPaymentService
                 "Authentication is required.");
         }
 
+        return await ReconcilePayOSPaymentCoreAsync(
+            orderCode,
+            currentUserId.Value,
+            cancelPendingAtProvider: false,
+            cancellationReason: null,
+            cancellationToken);
+    }
+
+    public async Task<PaymentReconciliationResult<PayOSPaymentStatusResponse>>
+        CancelPendingPayOSCheckoutAsync(
+            Guid userSubscriptionId,
+            Guid userId,
+            CancellationToken cancellationToken = default)
+    {
+        if (userSubscriptionId == Guid.Empty || userId == Guid.Empty)
+        {
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                PaymentReconciliationErrorCode.InvalidRequest,
+                "Invalid pending checkout cancellation request.");
+        }
+
+        var transaction = await _unitOfWork.PaymentTransactions
+            .GetLatestPayOSByUserSubscriptionIdAsync(
+                userSubscriptionId,
+                cancellationToken);
+        if (transaction is null
+            || transaction.UserSubscriptionId != userSubscriptionId
+            || transaction.Payment is null
+            || transaction.Payment.UserSubscription is null
+            || transaction.Payment.UserSubscriptionId != userSubscriptionId)
+        {
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                PaymentReconciliationErrorCode.NotFound,
+                "Pending payOS checkout was not found.");
+        }
+
+        if (transaction.UserId != userId
+            || transaction.Payment.UserId != userId
+            || transaction.Payment.UserSubscription.UserId != userId)
+        {
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                PaymentReconciliationErrorCode.Forbidden,
+                "Pending checkout does not belong to the current user.");
+        }
+
+        if (transaction.Payment.UserSubscription.Status != SubscriptionStatus.Pending)
+        {
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                PaymentReconciliationErrorCode.Conflict,
+                "Only pending checkouts can be cancelled.");
+        }
+
+        if (!TryParseOrderCode(transaction.TransactionReference, out var orderCode))
+        {
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                PaymentReconciliationErrorCode.Conflict,
+                "Pending checkout has an invalid payOS order code.");
+        }
+
+        var reconciliation = await ReconcilePayOSPaymentCoreAsync(
+            orderCode,
+            userId,
+            cancelPendingAtProvider: true,
+            cancellationReason: "Cancelled by user.",
+            cancellationToken);
+        if (!reconciliation.Success || reconciliation.Data is null)
+        {
+            return reconciliation;
+        }
+
+        var data = reconciliation.Data;
+        if (data.IsPaid || data.IsActive)
+        {
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                PaymentReconciliationErrorCode.Conflict,
+                "Payment already completed; the package is active and cannot be cancelled.");
+        }
+
+        if (data.IsCancelled
+            || string.Equals(data.PaymentStatus, PaymentStatus.Failed.ToString(), StringComparison.OrdinalIgnoreCase))
+        {
+            return reconciliation;
+        }
+
+        return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+            PaymentReconciliationErrorCode.Conflict,
+            "payOS has not confirmed that this checkout is closed. Please try again later.");
+    }
+
+    public async Task<PayOSPendingReconciliationSummary> ReconcilePendingPayOSPaymentsAsync(
+        PayOSPendingReconciliationSettings settings,
+        CancellationToken cancellationToken = default)
+    {
+        ValidatePendingReconciliationSettings(settings);
+
+        var utcNow = DateTime.UtcNow;
+        var candidates = await _unitOfWork.PaymentTransactions.GetPendingPayOSCandidatesAsync(
+            utcNow.AddMinutes(-settings.MinimumAgeMinutes),
+            settings.BatchSize,
+            cancellationToken);
+
+        var paidCount = 0;
+        var cancelledCount = 0;
+        var failedCount = 0;
+        var stillPendingCount = 0;
+        var providerUnavailableCount = 0;
+        var rateLimitedCount = 0;
+        var invalidCount = 0;
+
+        foreach (var candidate in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!TryParseOrderCode(candidate.TransactionReference, out var orderCode))
+            {
+                invalidCount++;
+                _logger.LogWarning(
+                    "Skipping pending payOS transaction {PaymentTransactionId} because its order code is invalid.",
+                    candidate.PaymentTransactionId);
+                continue;
+            }
+
+            var staleAt = candidate.CreatedAt.AddMinutes(
+                settings.PaymentLinkExpirationMinutes + settings.CleanupGraceMinutes);
+            var cancelPendingAtProvider = DateTime.UtcNow >= staleAt;
+
+            PaymentReconciliationResult<PayOSPaymentStatusResponse> reconciliation;
+            try
+            {
+                reconciliation = await ReconcilePayOSPaymentCoreAsync(
+                    orderCode,
+                    currentUserId: null,
+                    cancelPendingAtProvider,
+                    cancellationReason: "MediMate payment window expired.",
+                    cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                invalidCount++;
+                _logger.LogWarning(
+                    "Pending payOS maintenance failed for order {OrderCode}, transaction {PaymentTransactionId}, payment {PaymentId}, subscription {UserSubscriptionId}; category {ErrorCategory}.",
+                    orderCode,
+                    candidate.PaymentTransactionId,
+                    candidate.PaymentId,
+                    candidate.UserSubscriptionId,
+                    ex.GetType().Name);
+                continue;
+            }
+
+            if (!reconciliation.Success || reconciliation.Data is null)
+            {
+                switch (reconciliation.Error)
+                {
+                    case PaymentReconciliationErrorCode.ProviderRateLimited:
+                        rateLimitedCount++;
+                        break;
+                    case PaymentReconciliationErrorCode.ProviderUnavailable:
+                        providerUnavailableCount++;
+                        break;
+                    default:
+                        invalidCount++;
+                        break;
+                }
+
+                if (reconciliation.Error == PaymentReconciliationErrorCode.ProviderRateLimited)
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            var data = reconciliation.Data;
+            if (data.IsPaid && data.IsActive)
+            {
+                paidCount++;
+            }
+            else if (data.IsCancelled)
+            {
+                cancelledCount++;
+            }
+            else if (string.Equals(
+                         data.PaymentStatus,
+                         PaymentStatus.Failed.ToString(),
+                         StringComparison.OrdinalIgnoreCase))
+            {
+                failedCount++;
+            }
+            else
+            {
+                stillPendingCount++;
+            }
+        }
+
+        return new PayOSPendingReconciliationSummary(
+            candidates.Count,
+            paidCount,
+            cancelledCount,
+            failedCount,
+            stillPendingCount,
+            providerUnavailableCount,
+            rateLimitedCount,
+            invalidCount);
+    }
+
+    private async Task<PaymentReconciliationResult<PayOSPaymentStatusResponse>>
+        ReconcilePayOSPaymentCoreAsync(
+            long orderCode,
+            Guid? currentUserId,
+            bool cancelPendingAtProvider,
+            string? cancellationReason,
+            CancellationToken cancellationToken)
+    {
+        if (orderCode <= 0)
+        {
+            return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                PaymentReconciliationErrorCode.InvalidRequest,
+                "Invalid orderCode.");
+        }
+
         var transactionReference = orderCode.ToString(CultureInfo.InvariantCulture);
         PaymentTransaction? snapshot;
         try
@@ -192,7 +416,7 @@ public sealed class PaymentService : IPaymentService
                 "Payment state could not be verified.");
         }
 
-        var localError = ValidateLocalSnapshot(snapshot, orderCode, currentUserId.Value);
+        var localError = ValidateLocalSnapshot(snapshot, orderCode, currentUserId);
         if (localError != PaymentReconciliationErrorCode.None)
         {
             return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
@@ -247,6 +471,74 @@ public sealed class PaymentService : IPaymentService
                 BuildReconciliationFailureMessage(providerValidationError));
         }
 
+        if (cancelPendingAtProvider
+            && string.Equals(providerState.Status, PendingStatus, StringComparison.Ordinal))
+        {
+            PayOSPaymentLinkLookupResult cancellation;
+            try
+            {
+                // Provider cancellation is deliberately completed before opening the database transaction.
+                cancellation = await _payOsService.CancelPaymentLinkAsync(
+                    orderCode,
+                    cancellationReason,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    "payOS cancellation failed for order {OrderCode}; category {ErrorCategory}.",
+                    orderCode,
+                    ex.GetType().Name);
+                return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                    PaymentReconciliationErrorCode.ProviderUnavailable,
+                    "payOS is temporarily unavailable.");
+            }
+
+            if (!cancellation.Success || cancellation.Data is null)
+            {
+                var cancellationError = MapLookupError(cancellation.Error);
+                if (cancellationError == PaymentReconciliationErrorCode.ProviderRateLimited)
+                {
+                    return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                        cancellationError,
+                        BuildReconciliationFailureMessage(cancellationError));
+                }
+
+                // Cancellation may race with payment completion. Re-read provider truth
+                // before deciding that the local checkout must remain pending.
+                var refreshed = await _payOsService.GetPaymentLinkAsync(
+                    orderCode,
+                    cancellationToken);
+                if (!refreshed.Success || refreshed.Data is null)
+                {
+                    return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                        cancellationError,
+                        BuildReconciliationFailureMessage(cancellationError));
+                }
+
+                providerState = refreshed.Data;
+            }
+            else
+            {
+                providerState = cancellation.Data;
+            }
+
+            providerValidationError = ValidateProviderAgainstLocalSnapshot(
+                providerState,
+                snapshot!,
+                orderCode);
+            if (providerValidationError != PaymentReconciliationErrorCode.None)
+            {
+                return PaymentReconciliationResult<PayOSPaymentStatusResponse>.Fail(
+                    providerValidationError,
+                    BuildReconciliationFailureMessage(providerValidationError));
+            }
+        }
+
         _unitOfWork.ClearTrackedChanges();
         try
         {
@@ -259,7 +551,7 @@ public sealed class PaymentService : IPaymentService
                 transaction,
                 orderCode,
                 providerState,
-                currentUserId.Value);
+                currentUserId);
             if (lockedValidationError != PaymentReconciliationErrorCode.None)
             {
                 return await RollbackReconciliationFailureAsync(
@@ -464,7 +756,7 @@ public sealed class PaymentService : IPaymentService
     private static PaymentReconciliationErrorCode ValidateLocalSnapshot(
         PaymentTransaction? transaction,
         long orderCode,
-        Guid currentUserId)
+        Guid? currentUserId)
     {
         if (transaction is null
             || transaction.IsDeleted
@@ -485,9 +777,10 @@ public sealed class PaymentService : IPaymentService
 
         var payment = transaction.Payment;
         var subscription = payment.UserSubscription;
-        if (transaction.UserId != currentUserId
-            || payment.UserId != currentUserId
-            || subscription.UserId != currentUserId)
+        if (currentUserId.HasValue
+            && (transaction.UserId != currentUserId.Value
+                || payment.UserId != currentUserId.Value
+                || subscription.UserId != currentUserId.Value))
         {
             return PaymentReconciliationErrorCode.Forbidden;
         }
@@ -880,6 +1173,32 @@ public sealed class PaymentService : IPaymentService
         }
 
         return long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out orderCode);
+    }
+
+    private static bool TryParseOrderCode(string? value, out long orderCode)
+    {
+        return long.TryParse(
+            value,
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out orderCode)
+            && orderCode > 0;
+    }
+
+    private static void ValidatePendingReconciliationSettings(
+        PayOSPendingReconciliationSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        if (settings.PaymentLinkExpirationMinutes is < 5 or > 120
+            || settings.MinimumAgeMinutes is < 0 or > 30
+            || settings.CleanupGraceMinutes is < 0 or > 30
+            || settings.BatchSize is < 1 or > 500)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(settings),
+                "Pending payOS reconciliation settings are outside the supported range.");
+        }
     }
 
     private static string? GetQueryValue(IReadOnlyDictionary<string, string> queryParameters, string key)

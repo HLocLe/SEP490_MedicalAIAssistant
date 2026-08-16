@@ -2,8 +2,11 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Service;
+using MedMateAI.Infrastructure.Payments.PayOS;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace MedMateAI.Infrastructure.BackgroundJobs;
 
@@ -37,6 +40,32 @@ public static class HangfireDependencyInjection
         services.AddScoped<ConsultationReminderSmsJob>();
         services.AddSingleton<IConsultationSessionJobScheduler, HangfireConsultationSessionJobScheduler>();
 
+        services.AddScoped<PayOSPendingPaymentReconciliationJob>();
+
         return services;
+    }
+
+    public static IApplicationBuilder UsePayOSPendingPaymentMaintenance(
+        this IApplicationBuilder app)
+    {
+        var options = app.ApplicationServices
+            .GetRequiredService<IOptions<PayOSOptions>>()
+            .Value;
+        var recurringJobManager = app.ApplicationServices
+            .GetRequiredService<IRecurringJobManager>();
+        var cronExpression = options.PendingReconciliationIntervalMinutes == 60
+            ? Cron.Hourly()
+            : $"*/{options.PendingReconciliationIntervalMinutes} * * * *";
+
+        recurringJobManager.AddOrUpdate<PayOSPendingPaymentReconciliationJob>(
+            "payos-pending-payment-maintenance",
+            job => job.ExecuteAsync(CancellationToken.None),
+            cronExpression,
+            new RecurringJobOptions
+            {
+                TimeZone = TimeZoneInfo.Utc,
+            });
+
+        return app;
     }
 }

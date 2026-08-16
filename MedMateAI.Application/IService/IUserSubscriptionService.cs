@@ -1,3 +1,4 @@
+using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.UserSubscriptions.Requests;
 using MedMateAI.Application.DTOs.UserSubscriptions.Responses;
 
@@ -19,4 +20,12 @@ public interface IUserSubscriptionService
     Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, UserSubscriptionResponse? Data)> CancelAsync(
         Guid id,
         CancellationToken cancellationToken = default);
+
+    Task<(bool Succeeded, IEnumerable<string> Errors, PagedResponse<UserSubscriptionResponse>? Data)>
+        GetAdminSubscriptionsAsync(
+            int pageNumber,
+            int pageSize,
+            string? status,
+            bool currentOnly,
+            CancellationToken cancellationToken = default);
 }

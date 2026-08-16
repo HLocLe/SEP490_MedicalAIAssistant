@@ -1,9 +1,11 @@
 using System.Linq.Expressions;
 using System.Security.Claims;
 using MedMateAI.Application.DTOs.Payments.PayOS;
+using MedMateAI.Application.DTOs.Payments.Responses;
 using MedMateAI.Application.DTOs.UserSubscriptions.Requests;
 using MedMateAI.Application.DTOs.UserSubscriptions.Responses;
 using MedMateAI.Application.IService;
+using MedMateAI.Application.Models.Payments;
 using MedMateAI.Application.Service;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
@@ -26,6 +28,7 @@ public class UserSubscriptionServiceTests
     private Mock<IQuotaUsageRepository> _quotaUsageRepositoryMock = null!;
     private Mock<ISubscriptionPlanQuotaRepository> _subscriptionPlanQuotaRepositoryMock = null!;
     private Mock<IPayOSService> _payOsMock = null!;
+    private Mock<IPaymentService> _paymentServiceMock = null!;
     private Mock<IHttpContextAccessor> _httpContextAccessorMock = null!;
     private UserSubscriptionService _service = null!;
     private readonly Guid _userId = Guid.NewGuid();
@@ -42,6 +45,7 @@ public class UserSubscriptionServiceTests
         _quotaUsageRepositoryMock = new Mock<IQuotaUsageRepository>();
         _subscriptionPlanQuotaRepositoryMock = new Mock<ISubscriptionPlanQuotaRepository>();
         _payOsMock = new Mock<IPayOSService>();
+        _paymentServiceMock = new Mock<IPaymentService>();
         _httpContextAccessorMock = new Mock<IHttpContextAccessor>();
 
         _unitOfWorkMock.Setup(u => u.UserSubscriptions).Returns(_subscriptionsMock.Object);
@@ -105,6 +109,7 @@ public class UserSubscriptionServiceTests
         _service = new UserSubscriptionService(
             _unitOfWorkMock.Object,
             _payOsMock.Object,
+            _paymentServiceMock.Object,
             _subscriptionPlanQuotaRepositoryMock.Object,
             _httpContextAccessorMock.Object);
     }
@@ -601,6 +606,20 @@ public class UserSubscriptionServiceTests
         _subscriptionsMock.SetupSequence(r => r.GetByIdWithPlanAsync(subId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(sub)
             .ReturnsAsync(updatedSub);
+        _paymentServiceMock
+            .Setup(service => service.CancelPendingPayOSCheckoutAsync(
+                subId,
+                _userId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+                PaymentReconciliationResult<PayOSPaymentStatusResponse>.Ok(
+                    new PayOSPaymentStatusResponse
+                    {
+                        SubscriptionId = subId,
+                        IsCancelled = true,
+                        PaymentStatus = PaymentStatus.Cancelled.ToString(),
+                        SubscriptionStatus = SubscriptionStatus.Cancelled.ToString()
+                    }));
 
         // Act
         var result = await _service.CancelAsync(subId);
@@ -611,7 +630,15 @@ public class UserSubscriptionServiceTests
         Assert.That(result.Data.Status, Is.EqualTo(SubscriptionStatus.Cancelled));
         Assert.That(result.Data.AutoRenew, Is.False);
 
-        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _paymentServiceMock.Verify(
+            service => service.CancelPendingPayOSCheckoutAsync(
+                subId,
+                _userId,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        _unitOfWorkMock.Verify(
+            u => u.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Test]
