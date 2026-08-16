@@ -1,4 +1,6 @@
+using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
+using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Repository;
 using Microsoft.EntityFrameworkCore;
 
@@ -101,6 +103,65 @@ public sealed class PaymentTransactionRepository
             .Where(x => x.PaymentId == paymentId)
             .OrderByDescending(x => x.CreatedAt)
             .ThenByDescending(x => x.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<PaymentTransaction?> GetLatestPayOSByUserSubscriptionIdAsync(
+        Guid userSubscriptionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (userSubscriptionId == Guid.Empty)
+        {
+            return null;
+        }
+
+        return await _context.PaymentTransactions
+            .AsNoTracking()
+            .Include(transaction => transaction.Payment)
+            .ThenInclude(payment => payment!.UserSubscription)
+            .ThenInclude(subscription => subscription.Plan)
+            .Include(transaction => transaction.UserSubscription)
+            .ThenInclude(subscription => subscription.Plan)
+            .Where(transaction =>
+                !transaction.IsDeleted
+                && transaction.UserSubscriptionId == userSubscriptionId
+                && transaction.PaymentProvider != null
+                && transaction.PaymentProvider.ToLower() == "payos"
+                && transaction.TransactionReference != null)
+            .OrderByDescending(transaction => transaction.CreatedAt)
+            .ThenByDescending(transaction => transaction.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PendingPayOSPaymentCandidate>> GetPendingPayOSCandidatesAsync(
+        DateTime createdBeforeOrAt,
+        int batchSize,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedBatchSize = Math.Clamp(batchSize, 1, 500);
+
+        return await _context.PaymentTransactions
+            .AsNoTracking()
+            .Where(transaction =>
+                !transaction.IsDeleted
+                && transaction.PaymentProvider != null
+                && transaction.PaymentProvider.ToLower() == "payos"
+                && transaction.TransactionReference != null
+                && transaction.Payment != null
+                && !transaction.Payment.IsDeleted
+                && transaction.Payment.Status == PaymentStatus.Pending
+                && !transaction.UserSubscription.IsDeleted
+                && transaction.UserSubscription.Status == SubscriptionStatus.Pending
+                && transaction.CreatedAt <= createdBeforeOrAt)
+            .OrderBy(transaction => transaction.CreatedAt)
+            .ThenBy(transaction => transaction.Id)
+            .Take(normalizedBatchSize)
+            .Select(transaction => new PendingPayOSPaymentCandidate(
+                transaction.Id,
+                transaction.PaymentId,
+                transaction.UserSubscriptionId,
+                transaction.TransactionReference!,
+                transaction.CreatedAt))
             .ToListAsync(cancellationToken);
     }
 

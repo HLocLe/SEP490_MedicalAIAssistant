@@ -1,6 +1,7 @@
 using MedMateAI.Application.Common;
 using MedMateAI.Application.IService;
 using MedMateAI.Infrastructure;
+using MedMateAI.Infrastructure.BackgroundJobs;
 using Hangfire;
 using MedMateAI.Realtime.RecoveryPlans;
 using Microsoft.OpenApi.Models;
@@ -110,6 +111,8 @@ public class Program
         });
 
         var app = builder.Build();
+
+        app.UsePayOSPendingPaymentMaintenance();
 
         app.UseSwagger();
         app.UseSwaggerUI(c =>

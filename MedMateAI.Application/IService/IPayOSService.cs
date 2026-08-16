@@ -12,6 +12,11 @@ public interface IPayOSService
         long orderCode,
         CancellationToken cancellationToken = default);
 
+    Task<PayOSPaymentLinkLookupResult> CancelPaymentLinkAsync(
+        long orderCode,
+        string? cancellationReason,
+        CancellationToken cancellationToken = default);
+
     Task<PayOSWebhookResult> VerifyWebhookAsync(
         string rawBody,
         CancellationToken cancellationToken = default);

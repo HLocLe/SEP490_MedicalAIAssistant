@@ -17,6 +17,48 @@ public sealed class DoctorInvitationsController : ControllerBase
         _doctorInvitationService = doctorInvitationService;
     }
 
+    [HttpGet("/api/admin/doctor-invitations")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(
+        typeof(ApiResponse<PagedResponse<DoctorInvitationResponse>>),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(
+        typeof(ApiResponse<PagedResponse<DoctorInvitationResponse>>),
+        StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetInvitations(
+        [FromQuery] PaginationQuery pagination,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        CancellationToken cancellationToken = default)
+    {
+        var (succeeded, errors, data) = await _doctorInvitationService.GetAdminInvitationsAsync(
+            pagination.PageNumber,
+            pagination.PageSize,
+            status,
+            search,
+            cancellationToken);
+
+        if (!succeeded || data is null)
+        {
+            var errorList = errors.ToList();
+            return BadRequest(new ApiResponse<PagedResponse<DoctorInvitationResponse>>
+            {
+                Success = false,
+                Message = "List doctor invitations failed.",
+                Errors = errorList,
+            });
+        }
+
+        return Ok(new ApiResponse<PagedResponse<DoctorInvitationResponse>>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data,
+        });
+    }
+
     [HttpPost("/api/admin/doctor-invitations")]
     [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(ApiResponse<DoctorInvitationResponse>), StatusCodes.Status200OK)]

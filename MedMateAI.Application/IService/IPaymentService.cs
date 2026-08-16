@@ -27,6 +27,16 @@ public interface IPaymentService
             long orderCode,
             CancellationToken cancellationToken = default);
 
+    Task<PaymentReconciliationResult<PayOSPaymentStatusResponse>>
+        CancelPendingPayOSCheckoutAsync(
+            Guid userSubscriptionId,
+            Guid userId,
+            CancellationToken cancellationToken = default);
+
+    Task<PayOSPendingReconciliationSummary> ReconcilePendingPayOSPaymentsAsync(
+        PayOSPendingReconciliationSettings settings,
+        CancellationToken cancellationToken = default);
+
     Task<PagedResponse<PaymentResponse>> GetAllPaymentsAsync(
         int pageNumber,
         int pageSize,

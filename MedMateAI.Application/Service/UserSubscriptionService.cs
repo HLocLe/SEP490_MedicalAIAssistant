@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Claims;
+using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Payments.PayOS;
 using MedMateAI.Application.DTOs.UserSubscriptions.Requests;
 using MedMateAI.Application.DTOs.UserSubscriptions.Responses;
@@ -16,17 +17,20 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPayOSService _payOsService;
+    private readonly IPaymentService _paymentService;
     private readonly ISubscriptionPlanQuotaRepository _subscriptionPlanQuotaRepository;
     private readonly IHttpContextAccessor _httpContextAccessor;
 
     public UserSubscriptionService(
         IUnitOfWork unitOfWork,
         IPayOSService payOsService,
+        IPaymentService paymentService,
         ISubscriptionPlanQuotaRepository subscriptionPlanQuotaRepository,
         IHttpContextAccessor httpContextAccessor)
     {
         _unitOfWork = unitOfWork;
         _payOsService = payOsService;
+        _paymentService = paymentService;
         _subscriptionPlanQuotaRepository = subscriptionPlanQuotaRepository;
         _httpContextAccessor = httpContextAccessor;
     }
@@ -292,16 +296,50 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
                 null);
         }
 
-        subscription.Status = SubscriptionStatus.Cancelled;
-        subscription.AutoRenew = false;
-        subscription.UpdatedAt = DateTime.UtcNow;
-        _unitOfWork.UserSubscriptions.Update(subscription);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        var cancellation = await _paymentService.CancelPendingPayOSCheckoutAsync(
+            subscription.Id,
+            userId.Value,
+            cancellationToken);
+        if (!cancellation.Success)
+        {
+            return (
+                false,
+                false,
+                new[] { cancellation.Message ?? "Cancel subscription failed." },
+                null);
+        }
 
         var updated = await _unitOfWork.UserSubscriptions.GetByIdWithPlanAsync(id, cancellationToken);
         return updated is null
             ? (false, true, Array.Empty<string>(), null)
             : (true, false, Array.Empty<string>(), MapToResponse(updated));
+    }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors, PagedResponse<UserSubscriptionResponse>? Data)>
+        GetAdminSubscriptionsAsync(
+            int pageNumber,
+            int pageSize,
+            string? status,
+            bool currentOnly,
+            CancellationToken cancellationToken = default)
+    {
+        if (!TryParseStatus(status, out SubscriptionStatus? parsedStatus))
+        {
+            return (false, new[] { "Invalid user subscription status." }, null);
+        }
+
+        var paged = await _unitOfWork.UserSubscriptions.GetAdminPagedAsync(
+            pageNumber,
+            pageSize,
+            parsedStatus,
+            currentOnly,
+            DateTime.UtcNow,
+            cancellationToken);
+
+        return (
+            true,
+            Array.Empty<string>(),
+            PagedResponse<UserSubscriptionResponse>.From(paged, MapToResponse));
     }
 
     private async Task<long> GenerateOrderCodeAsync(CancellationToken cancellationToken)
@@ -357,5 +395,24 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
             CreatedAt = subscription.CreatedAt,
             UpdatedAt = subscription.UpdatedAt,
         };
+    }
+
+    private static bool TryParseStatus<TStatus>(string? value, out TStatus? status)
+        where TStatus : struct, Enum
+    {
+        status = null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        if (!Enum.TryParse<TStatus>(value.Trim(), ignoreCase: true, out var parsed)
+            || !Enum.IsDefined(parsed))
+        {
+            return false;
+        }
+
+        status = parsed;
+        return true;
     }
 }

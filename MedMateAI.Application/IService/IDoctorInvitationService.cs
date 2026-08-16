@@ -1,3 +1,4 @@
+using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.DoctorInvitations.Requests;
 using MedMateAI.Application.DTOs.DoctorInvitations.Responses;
 
@@ -20,4 +21,12 @@ public interface IDoctorInvitationService
     Task<DoctorInvitationResponse?> RevokeInvitationAsync(
         Guid invitationId,
         CancellationToken cancellationToken = default);
+
+    Task<(bool Succeeded, IEnumerable<string> Errors, PagedResponse<DoctorInvitationResponse>? Data)>
+        GetAdminInvitationsAsync(
+            int pageNumber,
+            int pageSize,
+            string? status,
+            string? search,
+            CancellationToken cancellationToken = default);
 }
