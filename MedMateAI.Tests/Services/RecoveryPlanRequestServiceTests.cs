@@ -96,14 +96,19 @@ public class RecoveryPlanRequestServiceTests
     public async Task CreateAsync_InvalidDiseaseGroup_ReturnsFail()
     {
         // Arrange
-        var req = new CreateRecoveryPlanRequest { DiseaseGroup = (RecoveryPlanDiseaseGroup)99 };
+        SetupValidReadinessProfile();
+        var req = new CreateRecoveryPlanRequest
+        {
+            DiseaseGroup = (RecoveryPlanDiseaseGroup)99,
+            RequestNote = "Valid request note"
+        };
 
         // Act
         var result = await _service.CreateAsync(_userId, "valid-key", req, CancellationToken.None);
 
         // Assert
         Assert.That(result.Success, Is.False);
-        Assert.That(result.Error, Is.EqualTo(RecoveryPlanErrorCode.InvalidRequest));
+        Assert.That(result.Error, Is.EqualTo(RecoveryPlanErrorCode.RecoveryPlanRequestNotReady));
     }
 
     [Test]
@@ -116,6 +121,8 @@ public class RecoveryPlanRequestServiceTests
             DiseaseGroup = RecoveryPlanDiseaseGroup.Respiratory,
             RequestNote = "Notes here"
         };
+
+        SetupValidReadinessProfile();
 
         _quotaUsageRepoMock.Setup(q => q.GetLogByIdempotencyKeyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserSubscriptionLog?)null);
@@ -151,6 +158,7 @@ public class RecoveryPlanRequestServiceTests
     public async Task CreateAsync_ReserveFailure_RollsBackAndReturnsQuotaError(
         RecoveryPlanErrorCode quotaError)
     {
+        SetupValidReadinessProfile();
         _quotaMock.Setup(q => q.ReserveUsageAsync(
                 _userId,
                 It.IsAny<Guid>(),
@@ -163,7 +171,11 @@ public class RecoveryPlanRequestServiceTests
         var result = await _service.CreateAsync(
             _userId,
             "reserve-failure-key",
-            new CreateRecoveryPlanRequest { DiseaseGroup = RecoveryPlanDiseaseGroup.Respiratory },
+            new CreateRecoveryPlanRequest
+            {
+                DiseaseGroup = RecoveryPlanDiseaseGroup.Respiratory,
+                RequestNote = "Recovery plan request note"
+            },
             CancellationToken.None);
 
         Assert.Multiple(() =>
@@ -179,6 +191,7 @@ public class RecoveryPlanRequestServiceTests
     [Test]
     public async Task CreateAsync_ReserveReplay_RollsBackAndReturnsExistingRequest()
     {
+        SetupValidReadinessProfile();
         var existingRequest = MakeRequest();
         var usage = MakeUsage();
         _quotaUsageRepoMock.SetupSequence(q => q.GetLogByIdempotencyKeyAsync(
@@ -203,7 +216,11 @@ public class RecoveryPlanRequestServiceTests
         var result = await _service.CreateAsync(
             _userId,
             "reserve-replay-key",
-            new CreateRecoveryPlanRequest { DiseaseGroup = RecoveryPlanDiseaseGroup.Respiratory },
+            new CreateRecoveryPlanRequest
+            {
+                DiseaseGroup = RecoveryPlanDiseaseGroup.Respiratory,
+                RequestNote = "Recovery plan request note"
+            },
             CancellationToken.None);
 
         Assert.Multiple(() =>
@@ -320,6 +337,18 @@ public class RecoveryPlanRequestServiceTests
         UserSubscriptionId = Guid.NewGuid(),
         QuotaId = Guid.NewGuid()
     };
+
+    private void SetupValidReadinessProfile()
+    {
+        _requestRepoMock
+            .Setup(r => r.GetPatientProfileReadinessAsync(
+                _userId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RecoveryPlanRequestReadinessProfileData(
+                Guid.NewGuid(),
+                170,
+                65));
+    }
 
     // ── GetMineAsync ─────────────────────────────────────────────────────────
 
@@ -443,44 +472,6 @@ public class RecoveryPlanRequestServiceTests
         Assert.That(result.Success, Is.True);
         Assert.That(request.Status, Is.EqualTo(RecoveryPlanRequestStatus.Cancelled));
         _unitOfWorkMock.Verify(u => u.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    // ── ProvideInformationAsync ──────────────────────────────────────────────
-
-    [Test]
-    [Category("B")]
-    public async Task ProvideInformationAsync_InformationEmpty_ReturnsInvalidRequest()
-    {
-        var result = await _service.ProvideInformationAsync(_userId, _requestId, "  ", CancellationToken.None);
-
-        Assert.That(result.Error, Is.EqualTo(RecoveryPlanErrorCode.InvalidRequest));
-    }
-
-    [Test]
-    [Category("A")]
-    public async Task ProvideInformationAsync_StatusNotNeedMoreInformation_ReturnsInvalidRequestState()
-    {
-        _requestRepoMock.Setup(r => r.GetByIdForUpdateAsync(_requestId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MakeRequest(RecoveryPlanRequestStatus.InReview));
-
-        var result = await _service.ProvideInformationAsync(_userId, _requestId, "More info", CancellationToken.None);
-
-        Assert.That(result.Error, Is.EqualTo(RecoveryPlanErrorCode.InvalidRequestState));
-    }
-
-    [Test]
-    [Category("N")]
-    public async Task ProvideInformationAsync_ValidRequest_TransitionsToInReview()
-    {
-        var request = MakeRequest(RecoveryPlanRequestStatus.NeedMoreInformation);
-        _requestRepoMock.Setup(r => r.GetByIdForUpdateAsync(_requestId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(request);
-
-        var result = await _service.ProvideInformationAsync(_userId, _requestId, "More info", CancellationToken.None);
-
-        Assert.That(result.Success, Is.True);
-        Assert.That(request.Status, Is.EqualTo(RecoveryPlanRequestStatus.InReview));
-        Assert.That(request.RequestNote, Is.EqualTo("More info"));
     }
 
     // ── GetOpenAsync ─────────────────────────────────────────────────────────
@@ -733,47 +724,6 @@ public class RecoveryPlanRequestServiceTests
         Assert.That(request.Status, Is.EqualTo(RecoveryPlanRequestStatus.WaitingForDoctor));
         Assert.That(request.AssignedDoctorId, Is.Null);
         _unitOfWorkMock.Verify(u => u.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    // ── RequestInformationAsync ──────────────────────────────────────────────
-
-    [Test]
-    [Category("B")]
-    public async Task RequestInformationAsync_ReasonEmpty_ReturnsInvalidRequest()
-    {
-        var result = await _service.RequestInformationAsync(_doctorUserId, _requestId, "  ", CancellationToken.None);
-
-        Assert.That(result.Error, Is.EqualTo(RecoveryPlanErrorCode.InvalidRequest));
-    }
-
-    [Test]
-    [Category("A")]
-    public async Task RequestInformationAsync_StatusNotInReview_ReturnsInvalidRequestState()
-    {
-        _requestRepoMock.Setup(r => r.GetDoctorByUserIdAsync(_doctorUserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MakeDoctor());
-        _requestRepoMock.Setup(r => r.GetByIdForUpdateAsync(_requestId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MakeRequest(RecoveryPlanRequestStatus.Assigned, assignedDoctorId: _doctorId));
-
-        var result = await _service.RequestInformationAsync(_doctorUserId, _requestId, "Need more", CancellationToken.None);
-
-        Assert.That(result.Error, Is.EqualTo(RecoveryPlanErrorCode.InvalidRequestState));
-    }
-
-    [Test]
-    [Category("N")]
-    public async Task RequestInformationAsync_ValidRequest_TransitionsToNeedMoreInformation()
-    {
-        var request = MakeRequest(RecoveryPlanRequestStatus.InReview, assignedDoctorId: _doctorId);
-        _requestRepoMock.Setup(r => r.GetDoctorByUserIdAsync(_doctorUserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MakeDoctor());
-        _requestRepoMock.Setup(r => r.GetByIdForUpdateAsync(_requestId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(request);
-
-        var result = await _service.RequestInformationAsync(_doctorUserId, _requestId, "Need labs", CancellationToken.None);
-
-        Assert.That(result.Success, Is.True);
-        Assert.That(request.Status, Is.EqualTo(RecoveryPlanRequestStatus.NeedMoreInformation));
     }
 
     // ── RejectAsync ──────────────────────────────────────────────────────────

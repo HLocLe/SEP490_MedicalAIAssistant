@@ -87,10 +87,6 @@ internal static class RecoveryPlanRealtimeTransitions
         RecoveryPlanOutboxEventTypes.Cancelled,
         RecoveryPlanQueueChangeRule.RemovedWhenPreviouslyWaiting);
 
-    public static readonly RecoveryPlanRealtimeTransitionDescriptor InformationProvided = new(
-        RecoveryPlanOutboxEventTypes.InformationProvided,
-        RecoveryPlanQueueChangeRule.None);
-
     public static readonly RecoveryPlanRealtimeTransitionDescriptor ReviewStarted = new(
         RecoveryPlanOutboxEventTypes.ReviewStarted,
         RecoveryPlanQueueChangeRule.None);
@@ -102,11 +98,6 @@ internal static class RecoveryPlanRealtimeTransitions
     public static readonly RecoveryPlanRealtimeTransitionDescriptor Reopened = new(
         RecoveryPlanOutboxEventTypes.Reopened,
         RecoveryPlanQueueChangeRule.Added);
-
-    public static readonly RecoveryPlanRealtimeTransitionDescriptor MoreInformationRequested =
-        new(
-            RecoveryPlanOutboxEventTypes.MoreInformationRequested,
-            RecoveryPlanQueueChangeRule.None);
 
     public static readonly RecoveryPlanRealtimeTransitionDescriptor Rejected = new(
         RecoveryPlanOutboxEventTypes.Rejected,

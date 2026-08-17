@@ -13,6 +13,11 @@ public interface IRecoveryPlanRequestService
         CreateRecoveryPlanRequest request,
         CancellationToken cancellationToken);
 
+    Task<RecoveryPlanOperationResult<RecoveryPlanRequestReadinessResponse>> CheckReadinessAsync(
+        Guid userId,
+        RecoveryPlanRequestReadinessRequest request,
+        CancellationToken cancellationToken);
+
     Task<RecoveryPlanOperationResult<PagedResponse<RecoveryPlanRequestResponse>>> GetMineAsync(
         Guid userId,
         PaginationQuery page,
@@ -29,12 +34,6 @@ public interface IRecoveryPlanRequestService
     Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> CancelAsync(
         Guid userId,
         Guid requestId,
-        CancellationToken cancellationToken);
-
-    Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> ProvideInformationAsync(
-        Guid userId,
-        Guid requestId,
-        string information,
         CancellationToken cancellationToken);
 
     Task<RecoveryPlanOperationResult<PagedResponse<OpenRecoveryPlanRequestResponse>>> GetOpenAsync(
@@ -68,12 +67,6 @@ public interface IRecoveryPlanRequestService
         Guid doctorUserId,
         Guid requestId,
         string? reason,
-        CancellationToken cancellationToken);
-
-    Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> RequestInformationAsync(
-        Guid doctorUserId,
-        Guid requestId,
-        string reason,
         CancellationToken cancellationToken);
 
     Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> RejectAsync(
