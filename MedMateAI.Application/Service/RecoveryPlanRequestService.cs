@@ -1199,6 +1199,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         Id = request.Id,
         DiseaseGroup = request.DiseaseGroup,
         Status = request.Status,
+        RequestNote = request.RequestNote,
         RequestedAt = request.RequestedAt
     };
 

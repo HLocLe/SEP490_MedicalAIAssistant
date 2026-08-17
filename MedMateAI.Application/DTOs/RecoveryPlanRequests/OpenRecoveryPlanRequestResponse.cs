@@ -10,5 +10,7 @@ public sealed class OpenRecoveryPlanRequestResponse
 
     public RecoveryPlanRequestStatus Status { get; set; }
 
+    public string? RequestNote { get; set; }
+
     public DateTime RequestedAt { get; set; }
 }
