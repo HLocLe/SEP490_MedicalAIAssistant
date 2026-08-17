@@ -103,14 +103,6 @@ public sealed class DoctorRecoveryPlanRequestsController : ControllerBase
         await WithUser(userId =>
             _service.ReleaseAsync(userId, requestId, request.Reason, cancellationToken));
 
-    [HttpPost("{id:guid}/request-more-information")]
-    public async Task<IActionResult> RequestInformation(
-        [FromRoute(Name = "id")] Guid requestId,
-        [FromBody] RequestMoreInformationRequest request,
-        CancellationToken cancellationToken) =>
-        await WithUser(userId =>
-            _service.RequestInformationAsync(userId, requestId, request.Reason, cancellationToken));
-
     [HttpPost("{id:guid}/reject")]
     public async Task<IActionResult> Reject(
         [FromRoute(Name = "id")] Guid requestId,

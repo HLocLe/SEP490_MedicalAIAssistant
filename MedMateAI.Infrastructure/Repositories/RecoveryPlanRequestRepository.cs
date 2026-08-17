@@ -87,6 +87,18 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
                 cancellationToken);
     }
 
+    public Task<RecoveryPlanRequestReadinessProfileData?> GetPatientProfileReadinessAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default) =>
+        _context.PatientProfiles
+            .AsNoTracking()
+            .Where(profile => !profile.IsDeleted && profile.UserId == userId)
+            .Select(profile => new RecoveryPlanRequestReadinessProfileData(
+                profile.Id,
+                profile.Height,
+                profile.Weight))
+            .SingleOrDefaultAsync(cancellationToken);
+
     public async Task<IReadOnlyList<Guid>> GetExpiredAssignmentIdsAsync(
         DateTime utcNow,
         int batchSize,

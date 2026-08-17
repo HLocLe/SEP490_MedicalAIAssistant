@@ -71,6 +71,7 @@ internal static class RecoveryPlanHttpResultMapper
             or RecoveryPlanErrorCode.DoctorProfileNotFound => StatusCodes.Status404NotFound,
         RecoveryPlanErrorCode.InvalidRequest
             or RecoveryPlanErrorCode.IdempotencyKeyInvalid
+            or RecoveryPlanErrorCode.RecoveryPlanRequestNotReady
             or RecoveryPlanErrorCode.RecoveryPlanIncomplete
             or RecoveryPlanErrorCode.InvalidPlanStructure => StatusCodes.Status400BadRequest,
         RecoveryPlanErrorCode.RecoveryPlanWorkflowAlreadyActive

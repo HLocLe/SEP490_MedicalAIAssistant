@@ -19,7 +19,7 @@ public enum RecoveryPlanErrorCode
     RecoveryPlanIncomplete, InvalidPlanStructure, RecoveryPlanNotEditable,
     InvalidUserTimeZone, RecoveryPlanWorkflowAlreadyActive,
     RecoveryPlanNotCancellable, RecoveryPlanNotCompleted,
-    RecoveryPlanFeedbackAlreadySubmitted
+    RecoveryPlanFeedbackAlreadySubmitted, RecoveryPlanRequestNotReady
 }
 
 public sealed record RecoveryPlanOperationResult<T>(

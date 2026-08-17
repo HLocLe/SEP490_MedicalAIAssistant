@@ -21,8 +21,6 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
     private const int MaximumIdempotencyKeyLength = 100;
     private const int MaximumReasonCodeLength = 100;
     private const int MaximumRequestTextLength = 2000;
-    private const string AdditionalInformationProvidedEventReason =
-        "Additional information provided by request owner.";
     private const string RejectedByDoctorEventReason =
         "Recovery plan request rejected by assigned doctor.";
 
@@ -55,11 +53,26 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(RecoveryPlanErrorCode.IdempotencyKeyInvalid);
         }
 
-        var requestNote = request.RequestNote?.Trim();
-        if (!Enum.IsDefined(request.DiseaseGroup) || requestNote?.Length > MaximumRequestTextLength)
+        var scopedIdempotencyKey = BuildCreateIdempotencyKey(userId, idempotencyKey);
+        var replay = await LoadIdempotentReplayAsync(userId, scopedIdempotencyKey, cancellationToken);
+        if (replay is not null)
         {
-            return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(RecoveryPlanErrorCode.InvalidRequest);
+            return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(replay), true);
         }
+
+        var readiness = await EvaluateReadinessAsync(
+            userId,
+            request.DiseaseGroup,
+            request.RequestNote,
+            cancellationToken);
+        if (!readiness.IsReady)
+        {
+            return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(
+                RecoveryPlanErrorCode.RecoveryPlanRequestNotReady,
+                "Recovery plan request does not meet minimum readiness requirements.");
+        }
+
+        var requestNote = request.RequestNote!.Trim();
 
         if (request.TreatmentJourneyId.HasValue &&
             !await _uow.RecoveryPlanRequests.IsOwnedTreatmentJourneyAsync(
@@ -77,13 +90,6 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
                 cancellationToken))
         {
             return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(RecoveryPlanErrorCode.NotFound);
-        }
-
-        var scopedIdempotencyKey = BuildCreateIdempotencyKey(userId, idempotencyKey);
-        var replay = await LoadIdempotentReplayAsync(userId, scopedIdempotencyKey, cancellationToken);
-        if (replay is not null)
-        {
-            return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Ok(Map(replay), true);
         }
 
         var requestId = Guid.NewGuid();
@@ -152,13 +158,13 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             {
                 Id = requestId,
                 UserId = userId,
-                DiseaseGroup = request.DiseaseGroup,
+                DiseaseGroup = request.DiseaseGroup!.Value,
                 TreatmentJourneyId = request.TreatmentJourneyId,
                 PrimaryLabTestSessionId = request.PrimaryLabTestSessionId,
                 UserSubscriptionId = usage.UserSubscriptionId,
                 UserSubscriptionUsageId = usage.Id,
                 Status = RecoveryPlanRequestStatus.WaitingForDoctor,
-                RequestNote = EmptyToNull(requestNote),
+                RequestNote = requestNote,
                 RequestedAt = utcNow,
                 CreatedAt = utcNow,
                 Version = 0
@@ -204,6 +210,22 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             await RollbackAsync();
             throw;
         }
+    }
+
+    public async Task<RecoveryPlanOperationResult<RecoveryPlanRequestReadinessResponse>> CheckReadinessAsync(
+        Guid userId,
+        RecoveryPlanRequestReadinessRequest request,
+        CancellationToken cancellationToken)
+    {
+        var readiness = await EvaluateReadinessAsync(
+            userId,
+            request.DiseaseGroup,
+            request.RequestNote,
+            cancellationToken);
+
+        return RecoveryPlanOperationResult<RecoveryPlanRequestReadinessResponse>.Ok(
+            readiness,
+            message: "Recovery plan request readiness checked.");
     }
 
     public async Task<RecoveryPlanOperationResult<PagedResponse<RecoveryPlanRequestResponse>>> GetMineAsync(
@@ -264,27 +286,6 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             cancellationToken,
             RecoveryPlanRealtimeTransitions.Cancelled,
             CancelRequestAsync);
-
-    public Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> ProvideInformationAsync(
-        Guid userId,
-        Guid requestId,
-        string information,
-        CancellationToken cancellationToken)
-    {
-        var normalizedInformation = information?.Trim() ?? string.Empty;
-        if (normalizedInformation.Length is < 1 or > MaximumRequestTextLength)
-        {
-            return InvalidRequestTask();
-        }
-
-        return UserTransitionAsync(
-            userId,
-            requestId,
-            cancellationToken,
-            RecoveryPlanRealtimeTransitions.InformationProvided,
-            (request, actorUserId, utcNow) =>
-                ProvideMoreInformation(request, actorUserId, normalizedInformation, utcNow));
-    }
 
     public async Task<RecoveryPlanOperationResult<PagedResponse<OpenRecoveryPlanRequestResponse>>> GetOpenAsync(
         Guid doctorUserId,
@@ -488,27 +489,6 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
                     transitionCancellationToken));
     }
 
-    public Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> RequestInformationAsync(
-        Guid doctorUserId,
-        Guid requestId,
-        string reason,
-        CancellationToken cancellationToken)
-    {
-        var normalizedReason = reason?.Trim() ?? string.Empty;
-        if (normalizedReason.Length is < 1 or > MaximumRequestTextLength)
-        {
-            return InvalidRequestTask();
-        }
-
-        return DoctorTransitionAsync(
-            doctorUserId,
-            requestId,
-            cancellationToken,
-            RecoveryPlanRealtimeTransitions.MoreInformationRequested,
-            (request, doctor, utcNow) =>
-                RequestMoreInformation(request, doctor, normalizedReason, utcNow));
-    }
-
     public async Task<RecoveryPlanOperationResult<RecoveryPlanRequestResponse>> RejectAsync(
         Guid doctorUserId,
         Guid requestId,
@@ -594,35 +574,6 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             null,
             utcNow);
         AddOutboxMessage(request, RecoveryPlanOutboxEventTypes.Cancelled, utcNow);
-
-        return RecoveryPlanErrorCode.None;
-    }
-
-    private RecoveryPlanErrorCode ProvideMoreInformation(
-        RecoveryPlanRequest request,
-        Guid userId,
-        string information,
-        DateTime utcNow)
-    {
-        if (request.Status != RecoveryPlanRequestStatus.NeedMoreInformation)
-        {
-            return RecoveryPlanErrorCode.InvalidRequestState;
-        }
-
-        request.RequestNote = information;
-        request.Status = RecoveryPlanRequestStatus.InReview;
-        MarkUpdated(request, utcNow);
-
-        AddRequestEvent(
-            request,
-            RecoveryPlanRequestEventType.Reopened,
-            RecoveryPlanRequestStatus.NeedMoreInformation,
-            request.Status,
-            userId,
-            null,
-            AdditionalInformationProvidedEventReason,
-            utcNow);
-        AddOutboxMessage(request, RecoveryPlanOutboxEventTypes.InformationProvided, utcNow);
 
         return RecoveryPlanErrorCode.None;
     }
@@ -738,39 +689,6 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             && plan.RecoveryPlanRequestId == requestId
             && plan.DoctorId == doctorId
             && plan.Status == RecoveryPlanStatus.Draft;
-    }
-
-    private RecoveryPlanErrorCode RequestMoreInformation(
-        RecoveryPlanRequest request,
-        Doctor doctor,
-        string reason,
-        DateTime utcNow)
-    {
-        if (request.Status == RecoveryPlanRequestStatus.NeedMoreInformation)
-        {
-            return RecoveryPlanErrorCode.None;
-        }
-
-        if (request.Status != RecoveryPlanRequestStatus.InReview)
-        {
-            return RecoveryPlanErrorCode.InvalidRequestState;
-        }
-
-        request.Status = RecoveryPlanRequestStatus.NeedMoreInformation;
-        MarkUpdated(request, utcNow);
-
-        AddRequestEvent(
-            request,
-            RecoveryPlanRequestEventType.MoreInformationRequested,
-            RecoveryPlanRequestStatus.InReview,
-            request.Status,
-            null,
-            doctor.Id,
-            reason,
-            utcNow);
-        AddOutboxMessage(request, RecoveryPlanOutboxEventTypes.MoreInformationRequested, utcNow);
-
-        return RecoveryPlanErrorCode.None;
     }
 
     private async Task<RecoveryPlanErrorCode> RejectRequestAsync(
@@ -1028,6 +946,106 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
 
         return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(fallbackError);
     }
+
+    private async Task<RecoveryPlanRequestReadinessResponse> EvaluateReadinessAsync(
+        Guid userId,
+        RecoveryPlanDiseaseGroup? diseaseGroup,
+        string? requestNote,
+        CancellationToken cancellationToken)
+    {
+        var issues = new List<RecoveryPlanRequestReadinessIssueResponse>();
+        var profile = await _uow.RecoveryPlanRequests.GetPatientProfileReadinessAsync(
+            userId,
+            cancellationToken);
+
+        if (profile is null)
+        {
+            issues.Add(ReadinessIssue(
+                "PATIENT_PROFILE_REQUIRED",
+                "patientProfile",
+                "Patient profile is required."));
+        }
+        else
+        {
+            if (!profile.Height.HasValue)
+            {
+                issues.Add(ReadinessIssue(
+                    "HEIGHT_REQUIRED",
+                    "height",
+                    "Height is required."));
+            }
+            else if (!(profile.Height.Value > 0))
+            {
+                issues.Add(ReadinessIssue(
+                    "HEIGHT_INVALID",
+                    "height",
+                    "Height must be greater than zero."));
+            }
+
+            if (!profile.Weight.HasValue)
+            {
+                issues.Add(ReadinessIssue(
+                    "WEIGHT_REQUIRED",
+                    "weight",
+                    "Weight is required."));
+            }
+            else if (!(profile.Weight.Value > 0))
+            {
+                issues.Add(ReadinessIssue(
+                    "WEIGHT_INVALID",
+                    "weight",
+                    "Weight must be greater than zero."));
+            }
+        }
+
+        if (!diseaseGroup.HasValue)
+        {
+            issues.Add(ReadinessIssue(
+                "DISEASE_GROUP_REQUIRED",
+                "diseaseGroup",
+                "Disease group is required."));
+        }
+        else if (!Enum.IsDefined(diseaseGroup.Value))
+        {
+            issues.Add(ReadinessIssue(
+                "DISEASE_GROUP_INVALID",
+                "diseaseGroup",
+                "Disease group is invalid."));
+        }
+
+        var normalizedRequestNote = requestNote?.Trim();
+        if (string.IsNullOrEmpty(normalizedRequestNote))
+        {
+            issues.Add(ReadinessIssue(
+                "REQUEST_NOTE_REQUIRED",
+                "requestNote",
+                "Request note is required."));
+        }
+        else if (normalizedRequestNote.Length > MaximumRequestTextLength)
+        {
+            issues.Add(ReadinessIssue(
+                "REQUEST_NOTE_TOO_LONG",
+                "requestNote",
+                $"Request note must not exceed {MaximumRequestTextLength} characters."));
+        }
+
+        return new RecoveryPlanRequestReadinessResponse
+        {
+            IsReady = issues.Count == 0,
+            Issues = issues
+        };
+    }
+
+    private static RecoveryPlanRequestReadinessIssueResponse ReadinessIssue(
+        string code,
+        string field,
+        string message) =>
+        new()
+        {
+            Code = code,
+            Field = field,
+            Message = message
+        };
 
     private void AddRequestEvent(
         RecoveryPlanRequest request,

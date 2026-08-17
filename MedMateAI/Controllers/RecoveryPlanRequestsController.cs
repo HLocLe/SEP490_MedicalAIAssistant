@@ -20,6 +20,24 @@ public sealed class RecoveryPlanRequestsController : ControllerBase
         _service = service;
     }
 
+    [HttpPost("readiness")]
+    public async Task<IActionResult> CheckReadiness(
+        [FromBody] RecoveryPlanRequestReadinessRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryUserId(out var userId))
+        {
+            return this.UnauthorizedResult();
+        }
+
+        var result = await _service.CheckReadinessAsync(
+            userId,
+            request,
+            cancellationToken);
+
+        return this.ToActionResult(result);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create(
         [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
@@ -103,26 +121,6 @@ public sealed class RecoveryPlanRequestsController : ControllerBase
         }
 
         var result = await _service.CancelAsync(userId, requestId, cancellationToken);
-        return this.ToActionResult(result);
-    }
-
-    [HttpPost("{id:guid}/provide-more-information")]
-    public async Task<IActionResult> ProvideInformation(
-        [FromRoute(Name = "id")] Guid requestId,
-        [FromBody] ProvideMoreInformationRequest request,
-        CancellationToken cancellationToken)
-    {
-        if (!TryUserId(out var userId))
-        {
-            return this.UnauthorizedResult();
-        }
-
-        var result = await _service.ProvideInformationAsync(
-            userId,
-            requestId,
-            request.AdditionalInformation,
-            cancellationToken);
-
         return this.ToActionResult(result);
     }
 

@@ -86,6 +86,10 @@ public interface IRecoveryPlanRequestRepository
         Guid userId,
         CancellationToken cancellationToken = default);
 
+    Task<RecoveryPlanRequestReadinessProfileData?> GetPatientProfileReadinessAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
     void Add(RecoveryPlanRequest request);
 
     void AddEvent(RecoveryPlanRequestEvent requestEvent);
