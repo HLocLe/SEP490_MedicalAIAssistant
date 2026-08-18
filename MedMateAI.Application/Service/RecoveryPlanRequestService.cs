@@ -1200,7 +1200,8 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             RecoveryPlanErrorCode.InvalidRequestState);
     }
 
-    private static RecoveryPlanRequestResponse Map(RecoveryPlanRequest request) => new()
+    private static RecoveryPlanRequestResponse Map(RecoveryPlanRequest request) =>
+        WithPrescriptionImageUrl<RecoveryPlanRequestResponse>(new()
     {
         Id = request.Id,
         UserId = request.UserId,
@@ -1210,7 +1211,6 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         PrimaryLabTestSessionId = request.PrimaryLabTestSessionId,
         Status = request.Status,
         RequestNote = request.RequestNote,
-        PrescriptionImageUrl = request.PrescriptionImageUrl,
         RequestedAt = request.RequestedAt,
         AcceptedAt = request.AcceptedAt,
         ReviewStartedAt = request.ReviewStartedAt,
@@ -1220,7 +1220,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         RejectionReasonCode = request.RejectionReasonCode,
         RejectionReason = request.RejectionReason,
         Version = request.Version
-    };
+    }, request.PrescriptionImageUrl);
 
     private static OpenRecoveryPlanRequestResponse MapOpen(RecoveryPlanRequest request) => new()
     {
@@ -1232,7 +1232,8 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
     };
 
     private static DoctorRecoveryPlanRequestResponse MapDoctorRequest(
-        DoctorRecoveryPlanRequestData request) => new()
+        DoctorRecoveryPlanRequestData request) =>
+        WithPrescriptionImageUrl<DoctorRecoveryPlanRequestResponse>(new()
         {
             Id = request.Id,
             UserId = request.UserId,
@@ -1242,7 +1243,6 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             PrimaryLabTestSessionId = request.PrimaryLabTestSessionId,
             Status = request.Status,
             RequestNote = request.RequestNote,
-            PrescriptionImageUrl = request.PrescriptionImageUrl,
             RequestedAt = request.RequestedAt,
             AcceptedAt = request.AcceptedAt,
             ReviewStartedAt = request.ReviewStartedAt,
@@ -1254,7 +1254,16 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             Version = request.Version,
             RecoveryPlanId = request.RecoveryPlanId,
             RecoveryPlanStatus = request.RecoveryPlanStatus
-        };
+        }, request.PrescriptionImageUrl);
+
+    private static TResponse WithPrescriptionImageUrl<TResponse>(
+        TResponse response,
+        string? prescriptionImageUrl)
+        where TResponse : RecoveryPlanRequestResponseBase
+    {
+        response.PrescriptionImageUrl = prescriptionImageUrl;
+        return response;
+    }
 
     private static PagedResponse<TOutput> ToPage<TInput, TOutput>(
         PagedResult<TInput> page,
