@@ -133,6 +133,8 @@ public sealed class RecoveryPlanSnapshotChronicDiseaseResponse
 public sealed class RecoveryPlanSnapshotPrimaryLabTestResponse
 {
     public Guid TestSessionId { get; set; }
+    public DateOnly? TestDate { get; set; }
+    public string? FacilityName { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? UpdatedAtUtc { get; set; }
     public IReadOnlyList<RecoveryPlanSnapshotLabResultResponse> Results { get; set; } =
@@ -247,6 +249,8 @@ public sealed class RecoveryPlanChronicDiseaseResponse
 public sealed class RecoveryPlanLabTestResponse
 {
     public Guid TestSessionId { get; set; }
+    public DateOnly? TestDate { get; set; }
+    public string? FacilityName { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public IReadOnlyList<RecoveryPlanLabResultResponse> Results { get; set; } =
