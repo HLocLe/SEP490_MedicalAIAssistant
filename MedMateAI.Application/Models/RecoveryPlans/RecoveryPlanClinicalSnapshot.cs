@@ -38,6 +38,8 @@ public sealed class RecoveryPlanSnapshotChronicDisease
 public sealed class RecoveryPlanSnapshotPrimaryLabTest
 {
     public Guid TestSessionId { get; set; }
+    public DateOnly? TestDate { get; set; }
+    public string? FacilityName { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? UpdatedAtUtc { get; set; }
     public IReadOnlyList<RecoveryPlanSnapshotLabResult> Results { get; set; } =
