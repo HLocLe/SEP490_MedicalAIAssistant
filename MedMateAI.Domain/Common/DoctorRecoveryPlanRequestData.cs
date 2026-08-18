@@ -21,4 +21,5 @@ public sealed record DoctorRecoveryPlanRequestData(
     string? RejectionReason,
     int Version,
     Guid? RecoveryPlanId,
-    RecoveryPlanStatus? RecoveryPlanStatus);
+    RecoveryPlanStatus? RecoveryPlanStatus,
+    string? PrescriptionImageUrl = null);

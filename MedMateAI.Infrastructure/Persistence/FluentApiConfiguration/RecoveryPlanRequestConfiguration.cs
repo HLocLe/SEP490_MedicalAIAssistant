@@ -15,6 +15,7 @@ public sealed class RecoveryPlanRequestConfiguration : IEntityTypeConfiguration<
         builder.Property(x => x.DiseaseGroup).HasConversion<string>().HasMaxLength(40).IsRequired();
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(40).IsRequired();
         builder.Property(x => x.RequestNote).HasMaxLength(2000);
+        builder.Property(x => x.PrescriptionImageUrl).HasMaxLength(2048);
         builder.Property(x => x.RejectionReasonCode).HasMaxLength(100);
         builder.Property(x => x.RejectionReason).HasMaxLength(2000);
         builder.Property(x => x.Version).HasDefaultValue(0).IsConcurrencyToken();

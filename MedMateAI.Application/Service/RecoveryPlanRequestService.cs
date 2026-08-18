@@ -21,6 +21,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
     private const int MaximumIdempotencyKeyLength = 100;
     private const int MaximumReasonCodeLength = 100;
     private const int MaximumRequestTextLength = 2000;
+    private const int MaximumPrescriptionImageUrlLength = 2048;
     private const string RejectedByDoctorEventReason =
         "Recovery plan request rejected by assigned doctor.";
 
@@ -73,6 +74,13 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         }
 
         var requestNote = request.RequestNote!.Trim();
+        if (!TryNormalizePrescriptionImageUrl(
+                request.PrescriptionImageUrl,
+                out var prescriptionImageUrl))
+        {
+            return RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(
+                RecoveryPlanErrorCode.InvalidRequest);
+        }
 
         if (request.TreatmentJourneyId.HasValue &&
             !await _uow.RecoveryPlanRequests.IsOwnedTreatmentJourneyAsync(
@@ -165,6 +173,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
                 UserSubscriptionUsageId = usage.Id,
                 Status = RecoveryPlanRequestStatus.WaitingForDoctor,
                 RequestNote = requestNote,
+                PrescriptionImageUrl = prescriptionImageUrl,
                 RequestedAt = utcNow,
                 CreatedAt = utcNow,
                 Version = 0
@@ -1201,6 +1210,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
         PrimaryLabTestSessionId = request.PrimaryLabTestSessionId,
         Status = request.Status,
         RequestNote = request.RequestNote,
+        PrescriptionImageUrl = request.PrescriptionImageUrl,
         RequestedAt = request.RequestedAt,
         AcceptedAt = request.AcceptedAt,
         ReviewStartedAt = request.ReviewStartedAt,
@@ -1232,6 +1242,7 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             PrimaryLabTestSessionId = request.PrimaryLabTestSessionId,
             Status = request.Status,
             RequestNote = request.RequestNote,
+            PrescriptionImageUrl = request.PrescriptionImageUrl,
             RequestedAt = request.RequestedAt,
             AcceptedAt = request.AcceptedAt,
             ReviewStartedAt = request.ReviewStartedAt,
@@ -1255,6 +1266,28 @@ public sealed class RecoveryPlanRequestService : IRecoveryPlanRequestService
             TotalPages = (int)Math.Ceiling(page.TotalCount / (double)page.PageSize),
             Items = page.Items.Select(map).ToList()
         };
+
+    private static bool TryNormalizePrescriptionImageUrl(
+        string? value,
+        out string? normalizedValue)
+    {
+        normalizedValue = null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        var trimmedValue = value.Trim();
+        if (trimmedValue.Length > MaximumPrescriptionImageUrlLength
+            || !Uri.TryCreate(trimmedValue, UriKind.Absolute, out var uri)
+            || uri.Scheme != Uri.UriSchemeHttps)
+        {
+            return false;
+        }
+
+        normalizedValue = trimmedValue;
+        return true;
+    }
 
     private static RecoveryPlanOperationResult<RecoveryPlanRequestResponse> FailNotFound() =>
         RecoveryPlanOperationResult<RecoveryPlanRequestResponse>.Fail(RecoveryPlanErrorCode.NotFound);

@@ -390,7 +390,8 @@ public sealed class RecoveryPlanRequestRepository : IRecoveryPlanRequestReposito
             request.RejectionReason,
             request.Version,
             null,
-            null);
+            null,
+            request.PrescriptionImageUrl);
     }
 
     private async Task<IReadOnlyDictionary<Guid, (Guid PlanId, RecoveryPlanStatus Status)>>

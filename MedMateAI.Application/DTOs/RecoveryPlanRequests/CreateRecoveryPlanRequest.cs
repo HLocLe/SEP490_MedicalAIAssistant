@@ -11,4 +11,6 @@ public sealed class CreateRecoveryPlanRequest
     public Guid? PrimaryLabTestSessionId { get; set; }
 
     public string? RequestNote { get; set; }
+
+    public string? PrescriptionImageUrl { get; set; }
 }

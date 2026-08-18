@@ -13,6 +13,7 @@ public sealed class RecoveryPlanRequest : BaseEntity
     public Guid UserSubscriptionUsageId { get; set; }
     public RecoveryPlanRequestStatus Status { get; set; }
     public string? RequestNote { get; set; }
+    public string? PrescriptionImageUrl { get; set; }
     public DateTime RequestedAt { get; set; }
     public DateTime? AcceptedAt { get; set; }
     public DateTime? ReviewStartedAt { get; set; }
