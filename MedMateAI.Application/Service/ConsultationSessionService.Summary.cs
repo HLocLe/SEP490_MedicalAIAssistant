@@ -45,22 +45,10 @@ public sealed partial class ConsultationSessionService
             return (true, false, Array.Empty<string>());
         }
 
-        if (!string.IsNullOrWhiteSpace(request.PhoneNumber))
-        {
-            var (phoneOk, phoneErrors) = await _userService.UpdateCurrentUserPhoneAsync(
-                userId,
-                request.PhoneNumber,
-                cancellationToken);
-            if (!phoneOk)
-            {
-                return (false, false, phoneErrors);
-            }
-        }
-
         var user = await _userService.GetUserByIdAsync(userId, cancellationToken);
-        if (user is null || string.IsNullOrWhiteSpace(user.PhoneNumber))
+        if (user is null || string.IsNullOrWhiteSpace(user.Email))
         {
-            return (false, false, new[] { "Số điện thoại là bắt buộc để đăng ký nhắc nhở." });
+            return (false, false, new[] { "Email là bắt buộc để đăng ký nhắc nhở." });
         }
 
         session.IsReminderEnabled = true;
@@ -176,7 +164,7 @@ public sealed partial class ConsultationSessionService
         if (sendReminderSms
             && session.IsReminderEnabled
             && !session.ReminderSmsSentAt.HasValue
-            && !string.IsNullOrWhiteSpace(user.PhoneNumber)
+            && !string.IsNullOrWhiteSpace(user.Email)
             && session.AppointmentTime.HasValue)
         {
            
@@ -202,7 +190,7 @@ public sealed partial class ConsultationSessionService
             User = new ConsultationSummaryUserInfoResponse
             {
                 DisplayName = user.DisplayName ?? user.UserName ?? string.Empty,
-                PhoneNumber = user.PhoneNumber,
+                Email = user.Email,
                 DateOfBirth = user.DateOfBirth,
             },
             DepartmentId = session.DepartmentId,
@@ -277,7 +265,7 @@ public sealed partial class ConsultationSessionService
         }
 
         var user = await _userService.GetUserByIdAsync(session.UserId, cancellationToken);
-        if (user is null || string.IsNullOrWhiteSpace(user.PhoneNumber))
+        if (user is null || string.IsNullOrWhiteSpace(user.Email))
         {
             return;
         }
@@ -295,20 +283,22 @@ public sealed partial class ConsultationSessionService
             facilityName = facility?.FacilityName?.Trim();
         }
 
-        var smsContent = ConsultationReminderSmsBuilder.Build(
-            user.DisplayName ?? user.UserName ?? "Ban",
+        var htmlContent = ConsultationReminderEmailBuilder.BuildHtml(
+            user.DisplayName ?? user.UserName ?? "Bạn",
             user.DateOfBirth,
-            user.PhoneNumber,
             department?.DepartmentName ?? string.Empty,
-            facilityName ?? "Chua cap nhat",
+            facilityName ?? "Chưa cập nhật",
             session.AppointmentTime);
 
-        var sent = await _smsSender.SendAsync(
-            user.PhoneNumber,
-            smsContent,
-            cancellationToken);
-
-        if (!sent)
+        try
+        {
+            await _emailSender.SendAsync(
+                user.Email,
+                ConsultationReminderEmailBuilder.Subject,
+                htmlContent,
+                cancellationToken);
+        }
+        catch
         {
             return;
         }

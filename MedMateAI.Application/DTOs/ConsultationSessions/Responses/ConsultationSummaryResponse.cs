@@ -7,7 +7,7 @@ public sealed class ConsultationSummaryUserInfoResponse
 {
     public string DisplayName { get; set; } = string.Empty;
 
-    public string? PhoneNumber { get; set; }
+    public string? Email { get; set; }
 
     public DateOnly? DateOfBirth { get; set; }
 }

@@ -100,6 +100,7 @@ public class Program
         app.UseAuthorization();
 
         app.MapControllers();
+
         app.MapHub<RecoveryPlanHub>(
                 RecoveryPlanRealtimeConstants.HubPath,
                 options => options.CloseOnAuthenticationExpiration = true)
