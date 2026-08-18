@@ -29,7 +29,7 @@ public static class ConsultationReminderEmailBuilder
         return $"""
             <p>Chào {name} (ngày sinh: {Encode(dob)}),</p>
             <p>Bạn có lịch hẹn khám tại <strong>Khoa {department}</strong> - {facility} vào lúc <strong>{Encode(appointment)}</strong>.</p>
-            <p>Vui lòng đăng nhập website MedMateAI để xem chi tiết danh sách cần chuẩn bị và 6 câu hỏi AI gợi ý cho bác sĩ.</p>
+            <p>Vui lòng đăng nhập website MedMateAI để xem chi tiết danh sách cần chuẩn bị và 5 câu hỏi AI gợi ý cho bác sĩ.</p>
             """;
     }
 
