@@ -150,6 +150,7 @@ public static class DependencyInjection
         services.Configure<BrevoOptions>(configuration.GetSection(BrevoOptions.SectionName));
         services.Configure<StringeeOptions>(configuration.GetSection(StringeeOptions.SectionName));
         services.Configure<FrontendOptions>(configuration.GetSection(FrontendOptions.SectionName));
+
         services.AddOptions<RecoveryPlanOptions>()
             .Bind(configuration.GetSection(RecoveryPlanOptions.SectionName))
             .Validate(x => x.AssignmentTimeoutMinutes is > 0 and <= 120,

@@ -63,7 +63,7 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
 
     private readonly IChecklistItemService _checklistItemService;
 
-    private readonly ISmsSender _smsSender;
+    private readonly IEmailSender _emailSender;
 
     private readonly IConsultationSessionJobScheduler _jobScheduler;
 
@@ -91,7 +91,7 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
 
         IChecklistItemService checklistItemService,
 
-        ISmsSender smsSender,
+        IEmailSender emailSender,
 
         IConsultationSessionJobScheduler jobScheduler,
 
@@ -117,7 +117,7 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
 
         _checklistItemService = checklistItemService;
 
-        _smsSender = smsSender;
+        _emailSender = emailSender;
 
         _jobScheduler = jobScheduler;
 

@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using MedMateAI.Application.Common;
 using MedMateAI.Application.DTOs.ChecklistItems.Responses;
 using MedMateAI.Application.DTOs.ConsultationSessions.Requests;
 using MedMateAI.Application.DTOs.MedicalDepartments.Responses;
@@ -28,7 +29,7 @@ public class ConsultationSessionServiceTests
     private Mock<IUnitOfWork> _unitOfWorkMock = null!;
     private Mock<IUserService> _userServiceMock = null!;
     private Mock<IChecklistItemService> _checklistItemServiceMock = null!;
-    private Mock<ISmsSender> _smsSenderMock = null!;
+    private Mock<IEmailSender> _emailSenderMock = null!;
     private Mock<IConsultationSessionJobScheduler> _jobSchedulerMock = null!;
     private Mock<IConsultationSessionQuotaService> _quotaServiceMock = null!;
     private ConsultationSessionService _service = null!;
@@ -48,7 +49,7 @@ public class ConsultationSessionServiceTests
         _unitOfWorkMock = new Mock<IUnitOfWork>();
         _userServiceMock = new Mock<IUserService>();
         _checklistItemServiceMock = new Mock<IChecklistItemService>();
-        _smsSenderMock = new Mock<ISmsSender>();
+        _emailSenderMock = new Mock<IEmailSender>();
         _jobSchedulerMock = new Mock<IConsultationSessionJobScheduler>();
         _quotaServiceMock = new Mock<IConsultationSessionQuotaService>();
 
@@ -62,7 +63,7 @@ public class ConsultationSessionServiceTests
             _unitOfWorkMock.Object,
             _userServiceMock.Object,
             _checklistItemServiceMock.Object,
-            _smsSenderMock.Object,
+            _emailSenderMock.Object,
             _jobSchedulerMock.Object,
             _quotaServiceMock.Object);
     }
@@ -289,32 +290,11 @@ public class ConsultationSessionServiceTests
 
     [Test]
     [Category("A")]
-    public async Task RegisterReminderAsync_EnableReminderWithPhoneUpdateFailure_ReturnsErrors()
-    {
-        SetupSessionLookup(MakeSession());
-        _userServiceMock.Setup(u => u.UpdateCurrentUserPhoneAsync(_userId, "0900000000", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((false, new[] { "Invalid phone" }));
-
-        var (succeeded, notFound, errors) = await _service.RegisterReminderAsync(
-            _userId, _sessionId,
-            new RegisterConsultationReminderRequest { EnableReminder = true, PhoneNumber = "0900000000" },
-            CancellationToken.None);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(succeeded, Is.False);
-            Assert.That(notFound, Is.False);
-            Assert.That(errors, Has.Some.Contains("Invalid phone"));
-        });
-    }
-
-    [Test]
-    [Category("A")]
-    public async Task RegisterReminderAsync_EnableReminderNoPhoneOnFile_ReturnsValidationError()
+    public async Task RegisterReminderAsync_EnableReminderNoEmailOnFile_ReturnsValidationError()
     {
         SetupSessionLookup(MakeSession());
         _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, PhoneNumber = null });
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, Email = null });
 
         var (succeeded, notFound, errors) = await _service.RegisterReminderAsync(
             _userId, _sessionId,
@@ -331,12 +311,12 @@ public class ConsultationSessionServiceTests
 
     [Test]
     [Category("N")]
-    public async Task RegisterReminderAsync_EnableReminderValidPhone_EnablesReminderAndSaves()
+    public async Task RegisterReminderAsync_EnableReminderWithEmail_EnablesReminderAndSaves()
     {
         var session = MakeSession();
         SetupSessionLookup(session);
         _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, PhoneNumber = "0900000000" });
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, Email = "user@gmail.com" });
 
         var (succeeded, notFound, errors) = await _service.RegisterReminderAsync(
             _userId, _sessionId,
@@ -568,7 +548,7 @@ public class ConsultationSessionServiceTests
 
         await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
 
-        _smsSenderMock.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _emailSenderMock.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -582,7 +562,7 @@ public class ConsultationSessionServiceTests
 
         await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
 
-        _smsSenderMock.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _emailSenderMock.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -596,23 +576,23 @@ public class ConsultationSessionServiceTests
 
         await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
 
-        _smsSenderMock.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _emailSenderMock.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
     [Category("A")]
-    public async Task ProcessSendReminderSmsAsync_UserPhoneMissing_DoesNothing()
+    public async Task ProcessSendReminderSmsAsync_UserEmailMissing_DoesNothing()
     {
         var session = MakeSession();
         session.IsReminderEnabled = true;
         session.AppointmentTime = DateTime.UtcNow.AddHours(1);
         SetupSessionLookup(session);
         _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, PhoneNumber = null });
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, Email = null });
 
         await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
 
-        _smsSenderMock.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _emailSenderMock.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -624,9 +604,9 @@ public class ConsultationSessionServiceTests
         session.AppointmentTime = DateTime.UtcNow.AddHours(1);
         SetupSessionLookup(session);
         _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, PhoneNumber = "0900000000" });
-        _smsSenderMock.Setup(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, Email = "user@gmail.com" });
+        _emailSenderMock.Setup(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Brevo failed"));
 
         await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
 
@@ -643,11 +623,15 @@ public class ConsultationSessionServiceTests
         session.AppointmentTime = DateTime.UtcNow.AddHours(1);
         SetupSessionLookup(session);
         _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, DisplayName = "Nguyen Van A", PhoneNumber = "0900000000" });
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, DisplayName = "Nguyen Van A", Email = "user@gmail.com" });
         _medicalDepartmentServiceMock.Setup(m => m.GetMedicalDepartmentByIdAsync(_departmentId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MedicalDepartmentResponse { Id = _departmentId, DepartmentName = "Cardiology" });
-        _smsSenderMock.Setup(s => s.SendAsync("0900000000", It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        _emailSenderMock.Setup(s => s.SendAsync(
+                "user@gmail.com",
+                ConsultationReminderEmailBuilder.Subject,
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
 
@@ -668,7 +652,7 @@ public class ConsultationSessionServiceTests
     private void SetupSummaryDependencies(Guid? facilityId = null)
     {
         _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, DisplayName = "Nguyen Van A", PhoneNumber = "0900000000" });
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, DisplayName = "Nguyen Van A", Email = "user@gmail.com" });
         _medicalDepartmentServiceMock.Setup(m => m.GetMedicalDepartmentByIdAsync(_departmentId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MedicalDepartmentResponse { Id = _departmentId, DepartmentName = "Cardiology" });
         if (facilityId.HasValue)
