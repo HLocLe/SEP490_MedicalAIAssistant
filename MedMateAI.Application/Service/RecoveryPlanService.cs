@@ -2,6 +2,7 @@ using System.Text.Json;
 using MedMateAI.Application.Common;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.RecoveryPlans;
+using MedMateAI.Application.DTOs.RecoveryPlanTemplates;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models;
 using MedMateAI.Domain.Entities;
@@ -809,6 +810,112 @@ public sealed class RecoveryPlanService : IRecoveryPlanService
             return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Ok(
                 response,
                 message: "Recovery plan cancelled.");
+        }
+        catch
+        {
+            await RollbackAsync();
+            throw;
+        }
+    }
+
+    public async Task<RecoveryPlanOperationResult<RecoveryPlanDetailResponse>>
+        CreateDraftFromTemplateAsync(
+            Guid doctorUserId,
+            Guid requestId,
+            CreateRecoveryPlanFromTemplateRequest request,
+            CancellationToken cancellationToken)
+    {
+        if (request.TemplateId == Guid.Empty)
+        {
+            return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Fail(
+                RecoveryPlanErrorCode.InvalidRequest);
+        }
+
+        var doctorResult = await GetActiveDoctorAsync(doctorUserId, cancellationToken);
+        if (doctorResult.Error != RecoveryPlanErrorCode.None)
+        {
+            return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Fail(
+                doctorResult.Error);
+        }
+
+        var doctor = doctorResult.Doctor!;
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var recoveryPlanRequest =
+                await _unitOfWork.RecoveryPlanRequests.GetByIdForUpdateAsync(
+                    requestId,
+                    cancellationToken);
+
+            var accessError = ValidateDraftRequestAccess(recoveryPlanRequest, doctor);
+            if (accessError != RecoveryPlanErrorCode.None)
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(accessError);
+            }
+
+            var existingPlan = await _unitOfWork.RecoveryPlans.GetByRequestIdAsync(
+                requestId,
+                cancellationToken);
+            if (existingPlan is not null)
+            {
+                if (existingPlan.DoctorId != doctor.Id)
+                {
+                    return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                        RecoveryPlanErrorCode.Conflict);
+                }
+
+                await RollbackAsync();
+                var replay = await _unitOfWork.RecoveryPlans.GetDetailByIdAsync(
+                    existingPlan.Id,
+                    cancellationToken);
+                if (replay is null)
+                {
+                    return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Fail(
+                        RecoveryPlanErrorCode.Conflict);
+                }
+
+                return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Ok(
+                    RecoveryPlanMapping.ToDetail(replay),
+                    true);
+            }
+
+            var lockedTemplate = await _unitOfWork.RecoveryPlanTemplates.GetByIdForUpdateAsync(
+                doctor.Id,
+                request.TemplateId,
+                cancellationToken);
+            if (lockedTemplate is null)
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                    RecoveryPlanErrorCode.NotFound);
+            }
+
+            var template = await _unitOfWork.RecoveryPlanTemplates.GetTrackedDetailAsync(
+                doctor.Id,
+                request.TemplateId,
+                cancellationToken);
+            if (template is null)
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                    RecoveryPlanErrorCode.NotFound);
+            }
+
+            if (template.DiseaseGroup != recoveryPlanRequest!.DiseaseGroup)
+            {
+                return await RollbackFailureAsync<RecoveryPlanDetailResponse>(
+                    RecoveryPlanErrorCode.InvalidRequest,
+                    "Recovery plan template disease group does not match the request.");
+            }
+
+            var plan = RecoveryPlanTemplateMapping.ToDraft(
+                template,
+                recoveryPlanRequest,
+                DateTime.UtcNow);
+            _unitOfWork.RecoveryPlans.Add(plan);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            var response = RecoveryPlanMapping.ToDetail(plan);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            return RecoveryPlanOperationResult<RecoveryPlanDetailResponse>.Ok(response);
         }
         catch
         {

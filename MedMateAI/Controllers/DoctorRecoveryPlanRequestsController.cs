@@ -2,6 +2,7 @@ using System.Security.Claims;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.RecoveryPlans;
 using MedMateAI.Application.DTOs.RecoveryPlanRequests;
+using MedMateAI.Application.DTOs.RecoveryPlanTemplates;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models;
 using MedMateAI.Domain.Enums;
@@ -79,6 +80,26 @@ public sealed class DoctorRecoveryPlanRequestsController : ControllerBase
             cancellationToken);
 
         return this.ToCreatedResult(result, "Recovery plan draft created.");
+    }
+
+    [HttpPost("{requestId:guid}/plan/from-template")]
+    public async Task<IActionResult> CreatePlanFromTemplate(
+        Guid requestId,
+        [FromBody] CreateRecoveryPlanFromTemplateRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryUserId(out var userId))
+        {
+            return this.UnauthorizedResult();
+        }
+
+        var result = await _planService.CreateDraftFromTemplateAsync(
+            userId,
+            requestId,
+            request,
+            cancellationToken);
+
+        return this.ToCreatedResult(result, "Recovery plan draft created from template.");
     }
 
     [HttpPost("{id:guid}/accept")]

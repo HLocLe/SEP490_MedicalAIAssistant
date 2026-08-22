@@ -101,6 +101,7 @@ public static class DependencyInjection
         services.AddScoped<IRecoveryPlanRequestService, RecoveryPlanRequestService>();
         services.AddScoped<IRecoveryPlanClinicalContextService, RecoveryPlanClinicalContextService>();
         services.AddScoped<IRecoveryPlanService, RecoveryPlanService>();
+        services.AddScoped<IRecoveryPlanTemplateService, RecoveryPlanTemplateService>();
         services.AddScoped<
             IRecoveryPlanFeedbackAnalyticsRepository,
             RecoveryPlanFeedbackAnalyticsRepository>();

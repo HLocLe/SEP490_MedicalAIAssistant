@@ -27,6 +27,7 @@ public sealed class UnitOfWork : IUnitOfWork
     private IIcdChapterRepository? _icdChapters;
     private IRecoveryPlanRequestRepository? _recoveryPlanRequests;
     private IRecoveryPlanRepository? _recoveryPlans;
+    private IRecoveryPlanTemplateRepository? _recoveryPlanTemplates;
     private IQuotaUsageRepository? _quotaUsages;
     private IUserMedicationRepository? _userMedications;
     private ILabIndicatorRepository? _labIndicators;
@@ -99,6 +100,9 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public IRecoveryPlanRepository RecoveryPlans =>
         _recoveryPlans ??= new RecoveryPlanRepository(_context);
+
+    public IRecoveryPlanTemplateRepository RecoveryPlanTemplates =>
+        _recoveryPlanTemplates ??= new RecoveryPlanTemplateRepository(_context);
 
     public IQuotaUsageRepository QuotaUsages =>
         _quotaUsages ??= new QuotaUsageRepository(_context);

@@ -1,5 +1,6 @@
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.RecoveryPlans;
+using MedMateAI.Application.DTOs.RecoveryPlanTemplates;
 using MedMateAI.Application.Models;
 using MedMateAI.Application.Models.RecoveryPlans;
 using MedMateAI.Domain.Enums;
@@ -121,6 +122,12 @@ public interface IRecoveryPlanService
         Guid userId,
         Guid planId,
         CancelRecoveryPlanRequest request,
+        CancellationToken cancellationToken);
+
+    Task<RecoveryPlanOperationResult<RecoveryPlanDetailResponse>> CreateDraftFromTemplateAsync(
+        Guid doctorUserId,
+        Guid requestId,
+        CreateRecoveryPlanFromTemplateRequest request,
         CancellationToken cancellationToken);
 
     Task<RecoveryPlanOperationResult<RecoveryPlanDetailResponse>> SubmitFeedbackAsync(

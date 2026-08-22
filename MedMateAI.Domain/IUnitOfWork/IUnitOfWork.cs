@@ -31,6 +31,7 @@ public interface IUnitOfWork : IAsyncDisposable
     IIcdChapterRepository IcdChapters { get; }
     IRecoveryPlanRequestRepository RecoveryPlanRequests { get; }
     IRecoveryPlanRepository RecoveryPlans { get; }
+    IRecoveryPlanTemplateRepository RecoveryPlanTemplates { get; }
     IQuotaUsageRepository QuotaUsages { get; }
     IUserMedicationRepository UserMedications { get; }
 
