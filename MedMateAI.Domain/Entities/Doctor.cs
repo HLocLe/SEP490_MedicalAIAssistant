@@ -33,4 +33,7 @@ public sealed class Doctor : BaseEntity
     public ICollection<RecoveryPlanRequest> AssignedRecoveryPlanRequests { get; set; } = new List<RecoveryPlanRequest>();
 
     public ICollection<RecoveryPlan> RecoveryPlans { get; set; } = new List<RecoveryPlan>();
+
+    public ICollection<RecoveryPlanTemplate> RecoveryPlanTemplates { get; set; } =
+        new List<RecoveryPlanTemplate>();
 }
