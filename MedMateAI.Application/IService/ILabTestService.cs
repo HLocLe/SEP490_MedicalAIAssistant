@@ -35,4 +35,9 @@ public interface ILabTestService
         Guid userId,
         Guid sessionId,
         CancellationToken cancellationToken = default);
+
+    Task<(bool Succeeded, IEnumerable<string> Errors, string? Data)> SummarizeSessionAsync(
+        Guid userId,
+        Guid sessionId,
+        CancellationToken cancellationToken = default);
 }

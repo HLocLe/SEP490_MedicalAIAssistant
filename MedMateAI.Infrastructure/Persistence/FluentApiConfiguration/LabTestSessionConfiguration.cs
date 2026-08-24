@@ -20,6 +20,7 @@ public sealed class LabTestSessionConfiguration : IEntityTypeConfiguration<LabTe
 
         builder.Property(x => x.DocumentUrl).HasMaxLength(2048);
         builder.Property(x => x.FacilityName).HasMaxLength(255);
+        builder.Property(x => x.AiSummary);
 
         builder.HasIndex(x => x.UserSubscriptionId);
         builder.HasIndex(x => x.UserSubscriptionUsageId);

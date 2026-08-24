@@ -6,6 +6,10 @@ public sealed class SymptomAnalysisSession : BaseEntity
 {
     public Guid? UserId { get; set; }
 
+    public Guid? UserSubscriptionId { get; set; }
+
+    public Guid? UserSubscriptionUsageId { get; set; }
+
     public string? InputText { get; set; }
 
     public string? SeverityLevel { get; set; }
@@ -17,6 +21,10 @@ public sealed class SymptomAnalysisSession : BaseEntity
     public bool DisclaimerShown { get; set; }
 
     public DateTime? CompletedAt { get; set; }
+
+    public UserSubscription? UserSubscription { get; set; }
+
+    public UserSubscriptionUsage? UserSubscriptionUsage { get; set; }
 
     public ICollection<SessionSymptom> SessionSymptoms { get; set; } = new List<SessionSymptom>();
 

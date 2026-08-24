@@ -34,7 +34,6 @@ public sealed record RecoveryPlanChronicDiseaseData(
 
 public sealed record RecoveryPlanLabTestData(
     Guid TestSessionId,
-    DateOnly? TestDate,
     string? FacilityName,
     DateTime CreatedAt,
     DateTime? UpdatedAt,

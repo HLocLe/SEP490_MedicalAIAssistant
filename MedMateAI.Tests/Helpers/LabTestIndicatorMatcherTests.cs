@@ -119,4 +119,41 @@ public class LabTestIndicatorMatcherTests
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.Confidence, Is.EqualTo(1.0));
     }
+
+    [Test]
+    public void Match_AccentedOcrName_MatchesAsciiSymbol()
+    {
+        var indicator = MakeIndicator("ure", "Urea");
+        var result = LabTestIndicatorMatcher.Match("Uré", new[] { indicator });
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.Confidence, Is.EqualTo(0.95));
+        Assert.That(result.Indicator, Is.EqualTo(indicator));
+    }
+
+    [Test]
+    public void Match_VietnameseAliasWithoutDiacritics_MatchesAccentedAlias()
+    {
+        var indicator = MakeIndicator("RBC", "Red Blood Cell Count", "Hồng cầu");
+        var result = LabTestIndicatorMatcher.Match("hong cau", new[] { indicator });
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.Confidence, Is.EqualTo(1.0));
+    }
+
+    [Test]
+    public void Match_MultipleWhitespaceBetweenTokens_StillMatches()
+    {
+        var indicator = MakeIndicator(null, "Hb A1c");
+        var result = LabTestIndicatorMatcher.Match("Hb    A1c", new[] { indicator });
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.Confidence, Is.EqualTo(1.0));
+    }
+
+    [Test]
+    public void Match_NonBreakingSpace_StillMatches()
+    {
+        var indicator = MakeIndicator(null, "Hb A1c");
+        var result = LabTestIndicatorMatcher.Match("Hb\u00A0A1c", new[] { indicator });
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.Confidence, Is.EqualTo(1.0));
+    }
 }

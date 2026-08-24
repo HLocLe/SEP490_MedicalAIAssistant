@@ -237,7 +237,6 @@ public sealed class RecoveryPlanClinicalContextService : IRecoveryPlanClinicalCo
         return new RecoveryPlanLabTestResponse
         {
             TestSessionId = labTest.TestSessionId,
-            TestDate = labTest.TestDate,
             FacilityName = labTest.FacilityName,
             CreatedAt = labTest.CreatedAt,
             UpdatedAt = labTest.UpdatedAt,
@@ -256,7 +255,6 @@ public sealed class RecoveryPlanClinicalContextService : IRecoveryPlanClinicalCo
         return new RecoveryPlanSnapshotPrimaryLabTest
         {
             TestSessionId = labTest.TestSessionId,
-            TestDate = labTest.TestDate,
             FacilityName = labTest.FacilityName,
             CreatedAtUtc = labTest.CreatedAt,
             UpdatedAtUtc = labTest.UpdatedAt,

@@ -5,6 +5,7 @@ using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
 using MedMateAI.Application.DTOs.Users.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models.Payments;
+using MedMateAI.Application.Models.ServiceCredits;
 using MedMateAI.Application.Service;
 using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
@@ -34,6 +35,7 @@ public class SymptomAnalysisServiceTests
     private Mock<ITranslationService> _translationServiceMock = null!;
     private Mock<IMedGemmaChatService> _medGemmaMock = null!;
     private Mock<IIcdLookupService> _icdLookupMock = null!;
+    private Mock<ISymptomAnalysisQuotaService> _quotaServiceMock = null!;
     private Mock<IMapper> _mapperMock = null!;
     private Mock<ILogger<SymptomAnalysisService>> _loggerMock = null!;
 
@@ -58,6 +60,7 @@ public class SymptomAnalysisServiceTests
         _translationServiceMock = new Mock<ITranslationService>();
         _medGemmaMock = new Mock<IMedGemmaChatService>();
         _icdLookupMock = new Mock<IIcdLookupService>();
+        _quotaServiceMock = new Mock<ISymptomAnalysisQuotaService>();
         _mapperMock = new Mock<IMapper>();
         _loggerMock = new Mock<ILogger<SymptomAnalysisService>>();
 
@@ -72,6 +75,24 @@ public class SymptomAnalysisServiceTests
 
         _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
+        _unitOfWorkMock.Setup(u => u.BeginTransactionAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _unitOfWorkMock.Setup(u => u.CommitTransactionAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _unitOfWorkMock.Setup(u => u.RollbackTransactionAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        _quotaServiceMock.Setup(q => q.ReserveAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceCreditOperationResult<UserSubscriptionUsage>.Ok(new UserSubscriptionUsage
+            {
+                Id = Guid.NewGuid(),
+                UserSubscriptionId = Guid.NewGuid(),
+            }));
 
         _service = new SymptomAnalysisService(
             _unitOfWorkMock.Object,
@@ -79,6 +100,7 @@ public class SymptomAnalysisServiceTests
             _translationServiceMock.Object,
             _medGemmaMock.Object,
             _icdLookupMock.Object,
+            _quotaServiceMock.Object,
             _mapperMock.Object,
             _loggerMock.Object);
     }
@@ -214,6 +236,7 @@ public class SymptomAnalysisServiceTests
         Assert.That(result.Questions[0].QuestionVi, Is.EqualTo("Bạn có bị đau đầu nhiều không?"));
 
         _sessionAnswersMock.Verify(r => r.Add(It.IsAny<SessionClinicalQuestionAnswer>()), Times.Once);
-        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _unitOfWorkMock.Verify(u => u.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 }

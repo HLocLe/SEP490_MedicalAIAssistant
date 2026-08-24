@@ -9,6 +9,4 @@ public sealed class LabTestAnalyzeRequest
     public Gender? PatientGenderAtTest { get; set; }
 
     public int? PatientAgeAtTest { get; set; }
-
-    public DateOnly? TestDate { get; set; }
 }
