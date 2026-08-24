@@ -416,62 +416,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
                 continue;
             }
 
-            var totalScore = 0;
-            var matchedKeywords = new List<string>();
-
-            foreach (var (keyword, weight) in chapter.KeywordWeights)
-            {
-                if (string.IsNullOrWhiteSpace(keyword))
-                {
-                    continue;
-                }
-
-                var normalizedKeyword = NormalizeMatchingText(keyword);
-                if (normalizedKeyword is null)
-                {
-                    continue;
-                }
-
-                var keywordTokens = normalizedKeyword.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (keywordTokens.Length == 0)
-                {
-                    continue;
-                }
-
-                bool isMatch;
-                if (keywordTokens.Length == 1)
-                {
-                    isMatch = inputWords.Contains(keywordTokens[0]);
-                }
-                else if (keywordTokens.Length == 2)
-                {
-                    isMatch = Check2WordDistanceByArray(
-                        inputWords,
-                        keywordTokens[0],
-                        keywordTokens[1],
-                        maxDistance: 2);
-                }
-                else if (keywordTokens.Length == 3)
-                {
-                    isMatch = Check3WordDistanceByArray(
-                        inputWords,
-                        keywordTokens[0],
-                        keywordTokens[1],
-                        keywordTokens[2],
-                        maxDistance: 2);
-                }
-                else
-                {
-                    continue;
-                }
-
-                if (isMatch)
-                {
-                    matchedKeywords.Add(keyword);
-                    totalScore += weight;
-                }
-            }
-
+            var (totalScore, matchedKeywords) = ScoreChapterKeywords(chapter.KeywordWeights, inputWords);
             if (totalScore > 0)
             {
                 chapterMatches[chapter.Id] = (totalScore, matchedKeywords, chapter.ChapterCode);
@@ -479,6 +424,64 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         }
 
         return chapterMatches;
+    }
+
+    private static (int TotalScore, List<string> MatchedKeywords) ScoreChapterKeywords(
+        IReadOnlyDictionary<string, int> keywordWeights,
+        IReadOnlyList<string> inputWords)
+    {
+        var totalScore = 0;
+        var matchedKeywords = new List<string>();
+
+        foreach (var (keyword, weight) in keywordWeights)
+        {
+            if (!IsKeywordMatched(keyword, inputWords))
+            {
+                continue;
+            }
+
+            matchedKeywords.Add(keyword);
+            totalScore += weight;
+        }
+
+        return (totalScore, matchedKeywords);
+    }
+
+    private static bool IsKeywordMatched(string keyword, IReadOnlyList<string> inputWords)
+    {
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            return false;
+        }
+
+        var normalizedKeyword = NormalizeMatchingText(keyword);
+        if (normalizedKeyword is null)
+        {
+            return false;
+        }
+
+        var keywordTokens = normalizedKeyword.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return MatchesKeywordTokens(inputWords, keywordTokens);
+    }
+
+    private static bool MatchesKeywordTokens(IReadOnlyList<string> inputWords, string[] keywordTokens)
+    {
+        return keywordTokens.Length switch
+        {
+            1 => inputWords.Contains(keywordTokens[0]),
+            2 => Check2WordDistanceByArray(
+                inputWords,
+                keywordTokens[0],
+                keywordTokens[1],
+                maxDistance: 2),
+            3 => Check3WordDistanceByArray(
+                inputWords,
+                keywordTokens[0],
+                keywordTokens[1],
+                keywordTokens[2],
+                maxDistance: 2),
+            _ => false,
+        };
     }
 
     //

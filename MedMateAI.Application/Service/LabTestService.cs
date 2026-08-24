@@ -322,52 +322,56 @@ public sealed class LabTestService : ILabTestService
 
         foreach (var detail in session.LabTestResultDetails.OrderBy(x => x.CreatedAt))
         {
-            var name = detail.Indicator?.FullName ?? detail.RawExtractedName ?? "Chưa xác định";
-            var value = detail.UserValue?.ToString(CultureInfo.InvariantCulture)
-                ?? detail.RawExtractedValue
-                ?? "N/A";
-            var unit = detail.ReferenceUnitUsed ?? detail.Indicator?.Unit ?? string.Empty;
-            var statusText = detail.Status switch
-            {
-                LabResultStatus.Normal => "Bình thường",
-                LabResultStatus.High => "Cao (Vượt ngưỡng)",
-                LabResultStatus.Low => "Thấp (Dưới ngưỡng)",
-                _ => "Chưa xác định",
-            };
-
-            var range = detail.ReferenceMinUsed.HasValue || detail.ReferenceMaxUsed.HasValue
-                ? $"Khoảng tham chiếu: {detail.ReferenceMinUsed} - {detail.ReferenceMaxUsed} {unit}".Trim()
-                : "Không có khoảng tham chiếu tiêu chuẩn";
-
-            builder.AppendLine($"- {name}: {value} {unit} | Trạng thái: {statusText} | {range}".Trim());
-
-            if (detail.AdviceCache is null)
-            {
-                continue;
-            }
-
-            if (!string.IsNullOrWhiteSpace(detail.AdviceCache.Summary))
-            {
-                builder.AppendLine($"  * Nhận định y khoa: {detail.AdviceCache.Summary}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(detail.AdviceCache.PossibleCauses))
-            {
-                builder.AppendLine($"  * Nguyên nhân có thể: {detail.AdviceCache.PossibleCauses}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(detail.AdviceCache.LifestyleAdvice))
-            {
-                builder.AppendLine($"  * Lời khuyên lối sống: {detail.AdviceCache.LifestyleAdvice}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(detail.AdviceCache.NutritionalAdvice))
-            {
-                builder.AppendLine($"  * Lời khuyên dinh dưỡng: {detail.AdviceCache.NutritionalAdvice}");
-            }
+            AppendResultDetailLine(builder, detail);
+            AppendAdviceLines(builder, detail.AdviceCache);
         }
 
         return builder.ToString();
+    }
+
+    private static void AppendResultDetailLine(StringBuilder builder, LabTestResultDetail detail)
+    {
+        var name = detail.Indicator?.FullName ?? detail.RawExtractedName ?? "Chưa xác định";
+        var value = detail.UserValue?.ToString(CultureInfo.InvariantCulture)
+            ?? detail.RawExtractedValue
+            ?? "N/A";
+        var unit = detail.ReferenceUnitUsed ?? detail.Indicator?.Unit ?? string.Empty;
+        var statusText = detail.Status switch
+        {
+            LabResultStatus.Normal => "Bình thường",
+            LabResultStatus.High => "Cao (Vượt ngưỡng)",
+            LabResultStatus.Low => "Thấp (Dưới ngưỡng)",
+            _ => "Chưa xác định",
+        };
+
+        var range = detail.ReferenceMinUsed.HasValue || detail.ReferenceMaxUsed.HasValue
+            ? $"Khoảng tham chiếu: {detail.ReferenceMinUsed} - {detail.ReferenceMaxUsed} {unit}".Trim()
+            : "Không có khoảng tham chiếu tiêu chuẩn";
+
+        builder.AppendLine($"- {name}: {value} {unit} | Trạng thái: {statusText} | {range}".Trim());
+    }
+
+    private static void AppendAdviceLines(StringBuilder builder, LabIndicatorAdviceCache? advice)
+    {
+        if (advice is null)
+        {
+            return;
+        }
+
+        AppendAdviceLine(builder, "Nhận định y khoa", advice.Summary);
+        AppendAdviceLine(builder, "Nguyên nhân có thể", advice.PossibleCauses);
+        AppendAdviceLine(builder, "Lời khuyên lối sống", advice.LifestyleAdvice);
+        AppendAdviceLine(builder, "Lời khuyên dinh dưỡng", advice.NutritionalAdvice);
+    }
+
+    private static void AppendAdviceLine(StringBuilder builder, string label, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        builder.AppendLine($"  * {label}: {value}");
     }
 
     private static LabTestUploadResponse MapToResponse(LabTestSession session)
