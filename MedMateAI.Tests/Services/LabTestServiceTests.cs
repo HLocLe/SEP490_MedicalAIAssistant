@@ -1,7 +1,10 @@
 using System.Linq.Expressions;
+using MedMateAI.Application.DTOs.AIConfigs.Responses;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.LabTests.Requests;
 using MedMateAI.Application.DTOs.LabTests.Responses;
+using MedMateAI.Application.DTOs.WebChatbot.Requests;
+using MedMateAI.Application.DTOs.WebChatbot.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models.ServiceCredits;
 using MedMateAI.Application.Service;
@@ -25,6 +28,8 @@ public class LabTestServiceTests
     private Mock<ILabTestJobScheduler> _schedulerMock = null!;
     private Mock<ILabTestResultAnalyzer> _analyzerMock = null!;
     private Mock<ILabTestQuotaService> _quotaServiceMock = null!;
+    private Mock<IAIConfigService> _aiConfigServiceMock = null!;
+    private Mock<IAIChatProvider> _aiChatProviderMock = null!;
     private LabTestService _service = null!;
     private readonly Guid _userId = Guid.NewGuid();
 
@@ -38,6 +43,8 @@ public class LabTestServiceTests
         _schedulerMock = new Mock<ILabTestJobScheduler>();
         _analyzerMock = new Mock<ILabTestResultAnalyzer>();
         _quotaServiceMock = new Mock<ILabTestQuotaService>();
+        _aiConfigServiceMock = new Mock<IAIConfigService>();
+        _aiChatProviderMock = new Mock<IAIChatProvider>();
 
         _unitOfWorkMock.Setup(u => u.LabTestSessions).Returns(_sessionsMock.Object);
         _unitOfWorkMock.Setup(u => u.LabTestSessionDetails).Returns(_sessionDetailsMock.Object);
@@ -50,7 +57,9 @@ public class LabTestServiceTests
             _unitOfWorkMock.Object,
             _schedulerMock.Object,
             _analyzerMock.Object,
-            _quotaServiceMock.Object);
+            _quotaServiceMock.Object,
+            _aiConfigServiceMock.Object,
+            _aiChatProviderMock.Object);
     }
 
     // â”€â”€ AnalyzeFromDocumentUrlAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -116,8 +125,7 @@ public class LabTestServiceTests
         {
             DocumentUrl = "http://example.com/test.png",
             PatientAgeAtTest = 25,
-            PatientGenderAtTest = Gender.Male,
-            TestDate = DateOnly.FromDateTime(DateTime.UtcNow)
+            PatientGenderAtTest = Gender.Male
         };
 
         LabTestSession? savedSession = null;
@@ -252,7 +260,6 @@ public class LabTestServiceTests
             DocumentUrl = "http://example.com/test.png",
             PatientGenderAtTest = Gender.Female,
             PatientAgeAtTest = 30,
-            TestDate = new DateOnly(2026, 8, 1),
             LabTestResultDetails = new List<LabTestResultDetail>
             {
                 new()
@@ -323,7 +330,6 @@ public class LabTestServiceTests
                     UserId = _userId,
                     DocumentUrl = "http://example.com/test.png",
                     Status = LabTestSessionStatus.Completed,
-                    TestDate = new DateOnly(2026, 8, 1),
                     PatientGenderAtTest = Gender.Male,
                     PatientAgeAtTest = 45,
                     CreatedAt = DateTime.UtcNow

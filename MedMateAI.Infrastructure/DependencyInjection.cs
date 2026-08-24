@@ -91,6 +91,7 @@ public static class DependencyInjection
         services.AddScoped<IAIConfigService, AIConfigService>();
         services.AddScoped<IWebChatbotService, WebChatbotService>();
         services.AddScoped<ISymptomAnalysisService, SymptomAnalysisService>();
+        services.AddScoped<ISymptomAnalysisQuotaService, SymptomAnalysisQuotaService>();
         services.AddScoped<IConsultationSessionService, ConsultationSessionService>();
         services.AddScoped<IConsultationSessionQuotaService, ConsultationSessionQuotaService>();
         services.AddScoped<IPayOSService, PayOSService>();

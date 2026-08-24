@@ -3,6 +3,7 @@ using System;
 using MedMateAI.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MedMateAI.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260824171450_addquotaforsymptomanalysis va them ai summery cho labtest session")]
+    partial class addquotaforsymptomanalysisvathemaisummerycholabtestsession
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2168,241 +2171,6 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.ToTable("RecoveryPlanRequestEvent", (string)null);
                 });
 
-            modelBuilder.Entity("MedMateAI.Domain.Entities.RecoveryPlanTemplate", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("RecoveryPlanTemplateId");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DiseaseGroup")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<Guid>("DoctorId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("DurationDays")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("PlanName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("RecheckInstruction")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<string>("Summary")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<string>("TemplateName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DoctorId");
-
-                    b.HasIndex("DoctorId", "DiseaseGroup");
-
-                    b.ToTable("RecoveryPlanTemplate", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_RecoveryPlanTemplate_DurationDays", "\"DurationDays\" >= 1 AND \"DurationDays\" <= 365");
-                        });
-                });
-
-            modelBuilder.Entity("MedMateAI.Domain.Entities.RecoveryPlanTemplateFoodSource", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("RecoveryPlanTemplateFoodSourceId");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("FoodName")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<Guid>("RecoveryPlanTemplateNutrientTargetId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("SuggestedServing")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RecoveryPlanTemplateNutrientTargetId");
-
-                    b.HasIndex("RecoveryPlanTemplateNutrientTargetId", "SortOrder")
-                        .IsUnique()
-                        .HasDatabaseName("IX_RecoveryPlanTemplateFoodSource_RecoveryPlanTemplateNutrien~1")
-                        .HasFilter("\"IsDeleted\" = false");
-
-                    b.ToTable("RecoveryPlanTemplateFoodSource", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_RecoveryPlanTemplateFoodSource_SortOrder", "\"SortOrder\" >= 0");
-                        });
-                });
-
-            modelBuilder.Entity("MedMateAI.Domain.Entities.RecoveryPlanTemplateNutrientTarget", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("RecoveryPlanTemplateNutrientTargetId");
-
-                    b.Property<decimal>("AmountPerDay")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("numeric(10,2)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Instruction")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("NutrientName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<Guid>("RecoveryPlanTemplatePhaseId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Unit")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RecoveryPlanTemplatePhaseId");
-
-                    b.HasIndex("RecoveryPlanTemplatePhaseId", "SortOrder")
-                        .IsUnique()
-                        .HasDatabaseName("IX_RecoveryPlanTemplateNutrientTarget_RecoveryPlanTemplatePha~1")
-                        .HasFilter("\"IsDeleted\" = false");
-
-                    b.ToTable("RecoveryPlanTemplateNutrientTarget", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_RecoveryPlanTemplateNutrientTarget_Amount", "\"AmountPerDay\" > 0");
-
-                            t.HasCheckConstraint("CK_RecoveryPlanTemplateNutrientTarget_SortOrder", "\"SortOrder\" >= 0");
-                        });
-                });
-
-            modelBuilder.Entity("MedMateAI.Domain.Entities.RecoveryPlanTemplatePhase", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("RecoveryPlanTemplatePhaseId");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("EndDay")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Instruction")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("PhaseName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<Guid>("RecoveryPlanTemplateId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal?>("SleepAndRestHoursPerDay")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("numeric(4,2)");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("StartDay")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RecoveryPlanTemplateId");
-
-                    b.HasIndex("RecoveryPlanTemplateId", "SortOrder")
-                        .IsUnique()
-                        .HasFilter("\"IsDeleted\" = false");
-
-                    b.ToTable("RecoveryPlanTemplatePhase", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_RecoveryPlanTemplatePhase_Days", "\"StartDay\" >= 1 AND \"EndDay\" >= \"StartDay\"");
-
-                            t.HasCheckConstraint("CK_RecoveryPlanTemplatePhase_SleepAndRest", "\"SleepAndRestHoursPerDay\" IS NULL OR (\"SleepAndRestHoursPerDay\" >= 0 AND \"SleepAndRestHoursPerDay\" <= 24)");
-
-                            t.HasCheckConstraint("CK_RecoveryPlanTemplatePhase_SortOrder", "\"SortOrder\" >= 0");
-                        });
-                });
-
             modelBuilder.Entity("MedMateAI.Domain.Entities.SessionClinicalQuestionAnswer", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3934,50 +3702,6 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.Navigation("RecoveryPlanRequest");
                 });
 
-            modelBuilder.Entity("MedMateAI.Domain.Entities.RecoveryPlanTemplate", b =>
-                {
-                    b.HasOne("MedMateAI.Domain.Entities.Doctor", "Doctor")
-                        .WithMany("RecoveryPlanTemplates")
-                        .HasForeignKey("DoctorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Doctor");
-                });
-
-            modelBuilder.Entity("MedMateAI.Domain.Entities.RecoveryPlanTemplateFoodSource", b =>
-                {
-                    b.HasOne("MedMateAI.Domain.Entities.RecoveryPlanTemplateNutrientTarget", "RecoveryPlanTemplateNutrientTarget")
-                        .WithMany("FoodSources")
-                        .HasForeignKey("RecoveryPlanTemplateNutrientTargetId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("RecoveryPlanTemplateNutrientTarget");
-                });
-
-            modelBuilder.Entity("MedMateAI.Domain.Entities.RecoveryPlanTemplateNutrientTarget", b =>
-                {
-                    b.HasOne("MedMateAI.Domain.Entities.RecoveryPlanTemplatePhase", "RecoveryPlanTemplatePhase")
-                        .WithMany("NutrientTargets")
-                        .HasForeignKey("RecoveryPlanTemplatePhaseId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("RecoveryPlanTemplatePhase");
-                });
-
-            modelBuilder.Entity("MedMateAI.Domain.Entities.RecoveryPlanTemplatePhase", b =>
-                {
-                    b.HasOne("MedMateAI.Domain.Entities.RecoveryPlanTemplate", "RecoveryPlanTemplate")
-                        .WithMany("Phases")
-                        .HasForeignKey("RecoveryPlanTemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("RecoveryPlanTemplate");
-                });
-
             modelBuilder.Entity("MedMateAI.Domain.Entities.SessionClinicalQuestionAnswer", b =>
                 {
                     b.HasOne("MedMateAI.Domain.Entities.ClinicalQuestion", "ClinicalQuestion")
@@ -4265,8 +3989,6 @@ namespace MedMateAI.Infrastructure.Migrations
                 {
                     b.Navigation("AssignedRecoveryPlanRequests");
 
-                    b.Navigation("RecoveryPlanTemplates");
-
                     b.Navigation("RecoveryPlans");
 
                     b.Navigation("TreatmentJourneys");
@@ -4391,21 +4113,6 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.Navigation("Events");
 
                     b.Navigation("RecoveryPlan");
-                });
-
-            modelBuilder.Entity("MedMateAI.Domain.Entities.RecoveryPlanTemplate", b =>
-                {
-                    b.Navigation("Phases");
-                });
-
-            modelBuilder.Entity("MedMateAI.Domain.Entities.RecoveryPlanTemplateNutrientTarget", b =>
-                {
-                    b.Navigation("FoodSources");
-                });
-
-            modelBuilder.Entity("MedMateAI.Domain.Entities.RecoveryPlanTemplatePhase", b =>
-                {
-                    b.Navigation("NutrientTargets");
                 });
 
             modelBuilder.Entity("MedMateAI.Domain.Entities.SubscriptionPlan", b =>

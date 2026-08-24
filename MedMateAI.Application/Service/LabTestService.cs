@@ -1,7 +1,10 @@
+using System.Globalization;
+using System.Text;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.LabIndicators.Responses;
 using MedMateAI.Application.DTOs.LabTests.Requests;
 using MedMateAI.Application.DTOs.LabTests.Responses;
+using MedMateAI.Application.DTOs.WebChatbot.Requests;
 using MedMateAI.Application.Helpers;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models.ServiceCredits;
@@ -14,6 +17,8 @@ namespace MedMateAI.Application.Service;
 
 public sealed class LabTestService : ILabTestService
 {
+    private const string LabTestSummaryTaskType = "LabTestSummary";
+
     private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".jpg",
@@ -29,17 +34,23 @@ public sealed class LabTestService : ILabTestService
     private readonly ILabTestJobScheduler _jobScheduler;
     private readonly ILabTestResultAnalyzer _resultAnalyzer;
     private readonly ILabTestQuotaService _quotaService;
+    private readonly IAIConfigService _aiConfigService;
+    private readonly IAIChatProvider _aiChatProvider;
 
     public LabTestService(
         IUnitOfWork unitOfWork,
         ILabTestJobScheduler jobScheduler,
         ILabTestResultAnalyzer resultAnalyzer,
-        ILabTestQuotaService quotaService)
+        ILabTestQuotaService quotaService,
+        IAIConfigService aiConfigService,
+        IAIChatProvider aiChatProvider)
     {
         _unitOfWork = unitOfWork;
         _jobScheduler = jobScheduler;
         _resultAnalyzer = resultAnalyzer;
         _quotaService = quotaService;
+        _aiConfigService = aiConfigService;
+        _aiChatProvider = aiChatProvider;
     }
 
     public async Task<(bool Succeeded, IEnumerable<string> Errors, LabTestUploadResponse? Data)> AnalyzeFromDocumentUrlAsync(
@@ -78,7 +89,6 @@ public sealed class LabTestService : ILabTestService
             Status = LabTestSessionStatus.Processing,
             PatientGenderAtTest = request.PatientGenderAtTest,
             PatientAgeAtTest = request.PatientAgeAtTest,
-            TestDate = request.TestDate,
             CreatedAt = DateTime.UtcNow,
         };
 
@@ -224,6 +234,146 @@ public sealed class LabTestService : ILabTestService
             .ToList();
     }
 
+    public async Task<(bool Succeeded, IEnumerable<string> Errors, string? Data)> SummarizeSessionAsync(
+        Guid userId,
+        Guid sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return (false, new[] { "Id người dùng là bắt buộc" }, null);
+        }
+
+        if (sessionId == Guid.Empty)
+        {
+            return (false, new[] { "Id phiên xét nghiệm không hợp lệ" }, null);
+        }
+
+        var session = await _unitOfWork.LabTestSessionDetails.GetByIdWithResultsAsync(sessionId, cancellationToken);
+        if (session is null || session.UserId != userId)
+        {
+            return (false, new[] { "Không tìm thấy phiên xét nghiệm" }, null);
+        }
+
+        if (session.Status != LabTestSessionStatus.Completed || session.LabTestResultDetails.Count == 0)
+        {
+            return (false, new[] { "Phiên xét nghiệm chưa hoàn tất hoặc không có kết quả để tóm tắt" }, null);
+        }
+
+        if (!string.IsNullOrWhiteSpace(session.AiSummary))
+        {
+            return (true, Array.Empty<string>(), session.AiSummary);
+        }
+
+        var aiConfig = await _aiConfigService.GetActiveAIConfigByTaskTypeAsync(
+            LabTestSummaryTaskType,
+            cancellationToken);
+
+        if (aiConfig is null || string.IsNullOrWhiteSpace(aiConfig.SystemPrompt))
+        {
+            return (false, new[] { $"Chưa cấu hình AI System Prompt cho tác vụ '{LabTestSummaryTaskType}'" }, null);
+        }
+
+        var userMessage = BuildSummaryUserMessage(session);
+        var aiResult = await _aiChatProvider.GenerateAsync(
+            new AIProviderChatRequest
+            {
+                SystemPrompt = aiConfig.SystemPrompt,
+                UserMessage = userMessage,
+                Model = aiConfig.Model ?? string.Empty,
+                Temperature = aiConfig.Temperature,
+                MaxTokens = aiConfig.MaxTokens,
+            },
+            cancellationToken);
+
+        var summary = aiResult.Content?.Trim();
+        if (string.IsNullOrWhiteSpace(summary))
+        {
+            return (false, new[] { "Không thể tạo tóm tắt bằng AI vào lúc này" }, null);
+        }
+
+        var trackedSession = await _unitOfWork.LabTestSessions.GetByIdAsync(sessionId, cancellationToken);
+        if (trackedSession is null || trackedSession.IsDeleted || trackedSession.UserId != userId)
+        {
+            return (false, new[] { "Không tìm thấy phiên xét nghiệm" }, null);
+        }
+
+        trackedSession.AiSummary = summary;
+        trackedSession.UpdatedAt = DateTime.UtcNow;
+        _unitOfWork.LabTestSessions.Update(trackedSession);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return (true, Array.Empty<string>(), summary);
+    }
+
+    private static string BuildSummaryUserMessage(LabTestSession session)
+    {
+        var genderText = session.PatientGenderAtTest switch
+        {
+            Gender.Male => "Nam",
+            Gender.Female => "Nữ",
+            _ => "Chưa xác định",
+        };
+
+        var ageText = session.PatientAgeAtTest?.ToString(CultureInfo.InvariantCulture) ?? "Chưa cập nhật";
+        var builder = new StringBuilder();
+        builder.AppendLine($"Thông tin bệnh nhân: Giới tính: {genderText}, Tuổi: {ageText}");
+        builder.AppendLine("Danh sách các chỉ số xét nghiệm đo được:");
+
+        foreach (var detail in session.LabTestResultDetails.OrderBy(x => x.CreatedAt))
+        {
+            AppendResultDetailLine(builder, detail);
+            AppendAdviceLines(builder, detail.AdviceCache);
+        }
+
+        return builder.ToString();
+    }
+
+    private static void AppendResultDetailLine(StringBuilder builder, LabTestResultDetail detail)
+    {
+        var name = detail.Indicator?.FullName ?? detail.RawExtractedName ?? "Chưa xác định";
+        var value = detail.UserValue?.ToString(CultureInfo.InvariantCulture)
+            ?? detail.RawExtractedValue
+            ?? "N/A";
+        var unit = detail.ReferenceUnitUsed ?? detail.Indicator?.Unit ?? string.Empty;
+        var statusText = detail.Status switch
+        {
+            LabResultStatus.Normal => "Bình thường",
+            LabResultStatus.High => "Cao (Vượt ngưỡng)",
+            LabResultStatus.Low => "Thấp (Dưới ngưỡng)",
+            _ => "Chưa xác định",
+        };
+
+        var range = detail.ReferenceMinUsed.HasValue || detail.ReferenceMaxUsed.HasValue
+            ? $"Khoảng tham chiếu: {detail.ReferenceMinUsed} - {detail.ReferenceMaxUsed} {unit}".Trim()
+            : "Không có khoảng tham chiếu tiêu chuẩn";
+
+        builder.AppendLine($"- {name}: {value} {unit} | Trạng thái: {statusText} | {range}".Trim());
+    }
+
+    private static void AppendAdviceLines(StringBuilder builder, LabIndicatorAdviceCache? advice)
+    {
+        if (advice is null)
+        {
+            return;
+        }
+
+        AppendAdviceLine(builder, "Nhận định y khoa", advice.Summary);
+        AppendAdviceLine(builder, "Nguyên nhân có thể", advice.PossibleCauses);
+        AppendAdviceLine(builder, "Lời khuyên lối sống", advice.LifestyleAdvice);
+        AppendAdviceLine(builder, "Lời khuyên dinh dưỡng", advice.NutritionalAdvice);
+    }
+
+    private static void AppendAdviceLine(StringBuilder builder, string label, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        builder.AppendLine($"  * {label}: {value}");
+    }
+
     private static LabTestUploadResponse MapToResponse(LabTestSession session)
     {
         return new LabTestUploadResponse
@@ -234,8 +384,8 @@ public sealed class LabTestService : ILabTestService
             RawOcrText = session.RawOcrText ?? string.Empty,
             PatientGenderAtTest = session.PatientGenderAtTest,
             PatientAgeAtTest = session.PatientAgeAtTest,
-            TestDate = session.TestDate,
             ProcessedAt = session.ProcessedAt,
+            AiSummary = session.AiSummary,
             Results = session.LabTestResultDetails
                 .OrderBy(x => x.CreatedAt)
                 .Select(MapResultItem)
@@ -251,7 +401,6 @@ public sealed class LabTestService : ILabTestService
             SessionId = session.Id,
             DocumentUrl = session.DocumentUrl,
             Status = session.Status,
-            TestDate = session.TestDate,
             PatientGenderAtTest = session.PatientGenderAtTest,
             PatientAgeAtTest = session.PatientAgeAtTest,
             FacilityName = session.FacilityName,

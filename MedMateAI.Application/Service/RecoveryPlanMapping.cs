@@ -156,7 +156,6 @@ internal static class RecoveryPlanMapping
         return new RecoveryPlanSnapshotPrimaryLabTestResponse
         {
             TestSessionId = primaryLabTest.TestSessionId,
-            TestDate = primaryLabTest.TestDate,
             FacilityName = primaryLabTest.FacilityName,
             CreatedAtUtc = primaryLabTest.CreatedAtUtc,
             UpdatedAtUtc = primaryLabTest.UpdatedAtUtc,

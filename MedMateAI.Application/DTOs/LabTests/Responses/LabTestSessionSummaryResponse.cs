@@ -12,8 +12,6 @@ public sealed class LabTestSessionSummaryResponse
 
     public LabTestSessionStatus Status { get; set; }
 
-    public DateOnly? TestDate { get; set; }
-
     public Gender? PatientGenderAtTest { get; set; }
 
     public int? PatientAgeAtTest { get; set; }

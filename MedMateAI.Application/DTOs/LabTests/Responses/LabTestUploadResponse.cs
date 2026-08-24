@@ -16,9 +16,9 @@ public sealed class LabTestUploadResponse
 
     public int? PatientAgeAtTest { get; set; }
 
-    public DateOnly? TestDate { get; set; }
-
     public DateTime? ProcessedAt { get; set; }
+
+    public string? AiSummary { get; set; }
 
     public IList<LabTestResultItemResponse> Results { get; set; } = new List<LabTestResultItemResponse>();
 }

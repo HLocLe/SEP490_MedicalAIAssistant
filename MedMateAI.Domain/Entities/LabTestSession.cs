@@ -16,13 +16,13 @@ public sealed class LabTestSession : BaseEntity
 
     public LabTestSessionStatus Status { get; set; } = LabTestSessionStatus.Processing;
 
-    public DateOnly? TestDate { get; set; }
-
     public Gender? PatientGenderAtTest { get; set; }
 
     public int? PatientAgeAtTest { get; set; }
 
     public string? FacilityName { get; set; }
+
+    public string? AiSummary { get; set; }
 
     public DateTime? ProcessedAt { get; set; }
 

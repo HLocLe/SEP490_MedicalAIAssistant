@@ -179,4 +179,45 @@ public sealed class LabTestsController : ControllerBase
 
         return Ok(ApiResponseFactory.Success(data, message));
     }
+
+    [HttpPost("{sessionId:guid}/summary")]
+    [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> SummarizeSession(Guid sessionId, CancellationToken cancellationToken = default)
+    {
+        var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return Unauthorized(ApiResponseFactory.FailFromErrors<string>(
+                new[] { UnauthenticatedError },
+                "Chưa đăng nhập"));
+        }
+
+        if (sessionId == Guid.Empty)
+        {
+            return BadRequest(ApiResponseFactory.Fail<string>(InvalidSessionIdMessage));
+        }
+
+        var (ok, errors, data) = await _labTestService.SummarizeSessionAsync(
+            currentUser.Id,
+            sessionId,
+            cancellationToken);
+
+        if (!ok || data is null)
+        {
+            var errorList = errors?.ToList() ?? new List<string>();
+            if (errorList.Contains(NotFoundMessage))
+            {
+                return NotFound(ApiResponseFactory.FailFromErrors<string>(errorList, NotFoundMessage));
+            }
+
+            return BadRequest(ApiResponseFactory.FailFromErrors<string>(
+                errorList,
+                "Tóm tắt kết quả xét nghiệm thất bại"));
+        }
+
+        return Ok(ApiResponseFactory.Success(data, "Tóm tắt kết quả xét nghiệm thành công"));
+    }
 }

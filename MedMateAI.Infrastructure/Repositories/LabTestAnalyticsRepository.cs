@@ -31,7 +31,7 @@ public sealed class LabTestAnalyticsRepository : ILabTestAnalyticsRepository
                 Symbol = detail.Indicator!.Symbol,
                 Name = detail.Indicator.FullName,
                 Unit = detail.Indicator.Unit,
-                TestDate = detail.TestSession.TestDate!.Value
+                SessionCreatedAt = detail.TestSession.CreatedAt
             })
             .ToListAsync(cancellationToken);
 
@@ -49,8 +49,8 @@ public sealed class LabTestAnalyticsRepository : ILabTestAnalyticsRepository
                 group.Key.Name,
                 group.Key.Unit,
                 group.Count(),
-                group.Min(row => row.TestDate),
-                group.Max(row => row.TestDate)))
+                group.Min(row => DateOnly.FromDateTime(row.SessionCreatedAt)),
+                group.Max(row => DateOnly.FromDateTime(row.SessionCreatedAt))))
             .OrderBy(indicator => indicator.Symbol)
             .ThenBy(indicator => indicator.IndicatorId)
             .ToList();
@@ -67,26 +67,46 @@ public sealed class LabTestAnalyticsRepository : ILabTestAnalyticsRepository
         var query = ApplyDateRange(BuildChartableMeasurements(userId), from, to)
             .Where(detail => detail.IndicatorId == indicatorId);
 
-        return await query
-            .OrderBy(detail => detail.TestSession.TestDate)
+        var rows = await query
+            .OrderBy(detail => detail.TestSession.CreatedAt)
             .ThenBy(detail => detail.TestSessionId)
             .ThenBy(detail => detail.Id)
-            .Select(detail => new LabTestTrendMeasurementData(
+            .Select(detail => new
+            {
                 detail.Id,
                 detail.TestSessionId,
-                detail.IndicatorId!.Value,
-                detail.Indicator!.Symbol,
-                detail.Indicator.FullName,
-                detail.Indicator.Unit,
-                detail.TestSession.TestDate!.Value,
-                detail.UserValue!.Value,
+                IndicatorId = detail.IndicatorId!.Value,
+                Symbol = detail.Indicator!.Symbol,
+                Name = detail.Indicator.FullName,
+                IndicatorUnit = detail.Indicator.Unit,
+                SessionCreatedAt = detail.TestSession.CreatedAt,
+                Value = detail.UserValue!.Value,
                 detail.Status,
                 detail.ReferenceMinUsed,
                 detail.ReferenceMaxUsed,
                 detail.ReferenceUnitUsed,
                 detail.DeviationPercent,
-                detail.TestSession.FacilityName))
+                detail.TestSession.FacilityName
+            })
             .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(row => new LabTestTrendMeasurementData(
+                row.Id,
+                row.TestSessionId,
+                row.IndicatorId,
+                row.Symbol,
+                row.Name,
+                row.IndicatorUnit,
+                DateOnly.FromDateTime(row.SessionCreatedAt),
+                row.Value,
+                row.Status,
+                row.ReferenceMinUsed,
+                row.ReferenceMaxUsed,
+                row.ReferenceUnitUsed,
+                row.DeviationPercent,
+                row.FacilityName))
+            .ToList();
     }
 
     private IQueryable<LabTestResultDetail> BuildChartableMeasurements(Guid userId)
@@ -102,8 +122,7 @@ public sealed class LabTestAnalyticsRepository : ILabTestAnalyticsRepository
                 && !detail.Indicator.IsDeleted
                 && !detail.TestSession.IsDeleted
                 && detail.TestSession.UserId == userId
-                && detail.TestSession.Status == LabTestSessionStatus.Completed
-                && detail.TestSession.TestDate.HasValue);
+                && detail.TestSession.Status == LabTestSessionStatus.Completed);
     }
 
     private static IQueryable<LabTestResultDetail> ApplyDateRange(
@@ -113,12 +132,14 @@ public sealed class LabTestAnalyticsRepository : ILabTestAnalyticsRepository
     {
         if (from.HasValue)
         {
-            query = query.Where(detail => detail.TestSession.TestDate >= from.Value);
+            var fromUtc = from.Value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            query = query.Where(detail => detail.TestSession.CreatedAt >= fromUtc);
         }
 
         if (to.HasValue)
         {
-            query = query.Where(detail => detail.TestSession.TestDate <= to.Value);
+            var toExclusiveUtc = to.Value.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            query = query.Where(detail => detail.TestSession.CreatedAt < toExclusiveUtc);
         }
 
         return query;

@@ -8,7 +8,9 @@ using MedMateAI.Application.DTOs.SymptomAnalysis.Requests;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.MedGemma;
+using MedMateAI.Application.Common.Time;
 using MedMateAI.Application.IService;
+using MedMateAI.Application.Models.ServiceCredits;
 using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
@@ -20,9 +22,13 @@ namespace MedMateAI.Application.Service;
 public sealed class SymptomAnalysisService : ISymptomAnalysisService
 {
     private const int MaxMessageLength = 2000;
+    private const int MaxFreeSubmissionsPerDay = 5;
 
     private const string UnsupportedSymptomMessage =
         "Không xác định được triệu chứng trong các khoa đang hỗ trợ (hô hấp, cơ xương khớp, truyền nhiễm siêu vi). Vui lòng mô tả rõ hơn.";
+
+    private static readonly string FreeDailyQuotaExceededMessage =
+        $"Bạn đã dùng hết lượt trong gói cước và đạt giới hạn tối đa {MaxFreeSubmissionsPerDay} lượt phân tích miễn phí trong ngày hôm nay. Vui lòng quay lại vào ngày mai hoặc mua thêm gói cước.";
 
     private static readonly JsonSerializerOptions DiagnosisJsonOptions = new()
     {
@@ -34,6 +40,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
     private readonly ITranslationService _translationService;
     private readonly IMedGemmaChatService _medGemmaChatService;
     private readonly IIcdLookupService _icdLookupService;
+    private readonly ISymptomAnalysisQuotaService _quotaService;
     private readonly IMapper _mapper;
     private readonly ILogger<SymptomAnalysisService> _logger;
 
@@ -43,6 +50,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         ITranslationService translationService,
         IMedGemmaChatService medGemmaChatService,
         IIcdLookupService icdLookupService,
+        ISymptomAnalysisQuotaService quotaService,
         IMapper mapper,
         ILogger<SymptomAnalysisService> logger)
     {
@@ -51,6 +59,7 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         _translationService = translationService;
         _medGemmaChatService = medGemmaChatService;
         _icdLookupService = icdLookupService;
+        _quotaService = quotaService;
         _mapper = mapper;
         _logger = logger;
     }
@@ -145,9 +154,32 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             throw new ArgumentException($"Nội dung triệu chứng không được vượt quá {MaxMessageLength} ký tự");
         }
 
+        var normalizedInput = NormalizeMatchingText(trimmedInput);
+        if (string.IsNullOrEmpty(normalizedInput))
+        {
+            throw new ArgumentException(UnsupportedSymptomMessage);
+        }
+
+        var inputWords = normalizedInput
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .ToList();
+
+        var activeChapters = await _unitOfWork.IcdChapters.GetActiveChaptersAsync(cancellationToken);
+        var chapterMatches = MatchChaptersByKeywords(activeChapters, inputWords);
+        if (chapterMatches.Count == 0)
+        {
+            throw new ArgumentException(UnsupportedSymptomMessage);
+        }
+
+        var topChapter = chapterMatches
+            .OrderByDescending(x => x.Value.TotalScore)
+            .ThenBy(x => x.Value.ChapterCode)
+            .First();
+
+        var matchedQuestions = await _unitOfWork.ClinicalQuestions
+            .GetQuestionsByChapterIdsAsync(new List<Guid> { topChapter.Key }, cancellationToken);
+
         var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
-
-
         var session = new SymptomAnalysisSession
         {
             Id = Guid.NewGuid(),
@@ -158,153 +190,70 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             CreatedAt = DateTime.UtcNow,
         };
 
-        _unitOfWork.SymptomAnalysisSessions.Add(session);
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        var normalizedInput = NormalizeMatchingText(trimmedInput);
-
-        if (string.IsNullOrEmpty(normalizedInput))
+        try
         {
-            throw new ArgumentException(UnsupportedSymptomMessage);
-        }
-
-        var inputWords = normalizedInput
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .ToList();
-
-
-        var activeChapters = await _unitOfWork.IcdChapters.GetActiveChaptersAsync(cancellationToken);
-
-        var chapterMatches = new Dictionary<Guid, (int TotalScore, List<string> MatchedKeywords, string ChapterCode)>();
-
-        foreach (var chapter in activeChapters)
-        {
-            if (chapter.KeywordWeights is null || chapter.KeywordWeights.Count == 0) continue;
-
-            var totalScore = 0;
-
-            var matchedKeywords = new List<string>();
-
-            foreach (var (keyword, weight) in chapter.KeywordWeights)
+            if (currentUser is not null)
             {
-                if (string.IsNullOrWhiteSpace(keyword)) continue;
+                await ApplyQuotaForNewSessionAsync(session, currentUser.Id, cancellationToken);
+            }
 
-                var normalizedKeyword = NormalizeMatchingText(keyword);
+            _unitOfWork.SymptomAnalysisSessions.Add(session);
 
-                if (normalizedKeyword is null) continue;
-
-                var keywordTokens = normalizedKeyword.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-                if (keywordTokens.Length == 0) continue;
-
-                bool isMatch;
-
-                if (keywordTokens.Length == 1)
-                {
-                    isMatch = inputWords.Contains(keywordTokens[0]);
-                }
-
-                else if (keywordTokens.Length == 2)
-                {
-                    isMatch = Check2WordDistanceByArray(
-                        inputWords,
-                        keywordTokens[0],
-                        keywordTokens[1],
-                        maxDistance: 2);
-                }
-                else if (keywordTokens.Length == 3)
-                {
-                    isMatch = Check3WordDistanceByArray(
-                        inputWords,
-                        keywordTokens[0],
-                        keywordTokens[1],
-                        keywordTokens[2],
-                        maxDistance: 2);
-
-                }
-                else
+            var results = new List<SuggestedClinicalQuestionResponse>(matchedQuestions.Count);
+            foreach (var question in matchedQuestions)
+            {
+                if (question.ChapterId is null
+                    || !chapterMatches.TryGetValue(question.ChapterId.Value, out var chapterMatch))
                 {
                     continue;
                 }
 
-                if (isMatch)
+                var questionAnswers = ResolveQuestionAnswers(question);
+                var defaultAnswerValues = CreateDefaultAnswerValues(questionAnswers);
+
+                results.Add(new SuggestedClinicalQuestionResponse
                 {
-                    matchedKeywords.Add(keyword);
-                    totalScore += weight;
-                }
+                    QuestionId = question.Id,
+                    QuestionVi = question.QuestionVi,
+                    ChapterId = question.ChapterId,
+                    ChapterCode = question.ChapterCode ?? chapterMatch.ChapterCode,
+                    TotalScore = chapterMatch.TotalScore,
+                    MatchedKeywords = chapterMatch.MatchedKeywords,
+                    Answers = questionAnswers,
+                });
+
+                _unitOfWork.SessionClinicalQuestionAnswers.Add(new SessionClinicalQuestionAnswer
+                {
+                    Id = Guid.NewGuid(),
+                    SymptomAnalysisSessionId = session.Id,
+                    ClinicalQuestionId = question.Id,
+                    AnswerValues = defaultAnswerValues,
+                    CreatedAt = DateTime.UtcNow,
+                });
             }
 
-            if (totalScore > 0)
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            var orderedResults = results
+                .OrderByDescending(result => result.TotalScore)
+                .ThenBy(result => result.ChapterCode)
+                .ThenBy(result => result.QuestionVi)
+                .ToList();
+
+            return new SuggestClinicalQuestionsResponse
             {
-                chapterMatches[chapter.Id] = (totalScore, matchedKeywords, chapter.ChapterCode);
-            }
+                SessionId = session.Id,
+                Questions = orderedResults,
+            };
         }
-
-        if (chapterMatches.Count == 0)
+        catch
         {
-            throw new ArgumentException(UnsupportedSymptomMessage);
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
         }
-
-        var topChapter = chapterMatches
-        .OrderByDescending(x => x.Value.TotalScore)
-        .ThenBy(x => x.Value.ChapterCode)
-        .First();
-
-        var targetChapterIds = new List<Guid> { topChapter.Key };
-
-
-        var matchedQuestions = await _unitOfWork.ClinicalQuestions
-            .GetQuestionsByChapterIdsAsync(targetChapterIds, cancellationToken);
-
-
-        var results = new List<SuggestedClinicalQuestionResponse>(matchedQuestions.Count);
-
-        foreach (var question in matchedQuestions)
-        {
-            if (question.ChapterId is null || !chapterMatches.TryGetValue(question.ChapterId.Value, out var chapterMatch))
-            {
-                continue;
-            }
-
-            var questionAnswers = ResolveQuestionAnswers(question);
-
-            var defaultAnswerValues = CreateDefaultAnswerValues(questionAnswers);
-
-            results.Add(new SuggestedClinicalQuestionResponse
-            {
-                QuestionId = question.Id,
-                QuestionVi = question.QuestionVi,
-                ChapterId = question.ChapterId,
-                ChapterCode = question.ChapterCode ?? chapterMatch.ChapterCode,
-                TotalScore = chapterMatch.TotalScore,
-                MatchedKeywords = chapterMatch.MatchedKeywords,
-                Answers = questionAnswers,
-            });
-
-            _unitOfWork.SessionClinicalQuestionAnswers.Add(new SessionClinicalQuestionAnswer
-            {
-                Id = Guid.NewGuid(),
-                SymptomAnalysisSessionId = session.Id,
-                ClinicalQuestionId = question.Id,
-                AnswerValues = defaultAnswerValues,
-                CreatedAt = DateTime.UtcNow,
-            });
-        }
-
-        var orderedResults = results
-            .OrderByDescending(result => result.TotalScore)
-            .ThenBy(result => result.ChapterCode)
-            .ThenBy(result => result.QuestionVi)
-            .ToList();
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        return new SuggestClinicalQuestionsResponse
-        {
-            SessionId = session.Id,
-            Questions = orderedResults,
-        };
     }
 
     // 
@@ -312,19 +261,31 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         SubmitClinicalQuestionAnswersRequest request,
         CancellationToken cancellationToken = default)
     {
-        var prepared  = await PrepareClinicalQuestionSubmissionAsync(request, cancellationToken);
+        var prepared = await PrepareClinicalQuestionSubmissionAsync(request, cancellationToken);
 
-        var analysis = await ExecuteMedGemmaAnalysisAsync(prepared.Session, prepared.BayesianPrompt, cancellationToken);
-
-
-        return new ClinicalQuestionAnswersResponse
+        try
         {
-            SessionId = prepared.Session.Id,
-            UserInput = prepared.Session.InputText,
-            Answers =  _mapper.Map<List<ClinicalQuestionAnswerResult>>(prepared.Answers),
-            MedGemmaPrompt = prepared.BayesianPrompt,
-            Analysis = analysis,
-        };
+            var analysis = await ExecuteMedGemmaAnalysisAsync(
+                prepared.Session,
+                prepared.BayesianPrompt,
+                cancellationToken);
+
+            return new ClinicalQuestionAnswersResponse
+            {
+                SessionId = prepared.Session.Id,
+                UserInput = prepared.Session.InputText,
+                Answers = _mapper.Map<List<ClinicalQuestionAnswerResult>>(prepared.Answers),
+                MedGemmaPrompt = prepared.BayesianPrompt,
+                Analysis = analysis,
+            };
+        }
+        finally
+        {
+            if (prepared.Session.UserSubscriptionId.HasValue)
+            {
+                await _quotaService.FinalizeAsync(prepared.Session.Id, cancellationToken);
+            }
+        }
     }
 
     // private method cho SubmitClinicalQuestionAnswersAsync.
@@ -334,54 +295,193 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
     string BayesianPrompt);
 
     private async Task<PreparedClinicalSubmission> PrepareClinicalQuestionSubmissionAsync(
-    SubmitClinicalQuestionAnswersRequest request,
-    CancellationToken cancellationToken)
-
+        SubmitClinicalQuestionAnswersRequest request,
+        CancellationToken cancellationToken)
     {
-    if (request is null)
-        throw new ArgumentException("Request body là bắt buộc");
+        if (request is null)
+            throw new ArgumentException("Request body là bắt buộc");
 
-    if (request.SessionId == Guid.Empty)
-        throw new ArgumentException("Id phiên phân tích triệu chứng là bắt buộc");
+        if (request.SessionId == Guid.Empty)
+            throw new ArgumentException("Id phiên phân tích triệu chứng là bắt buộc");
 
-    var session = await _unitOfWork.SymptomAnalysisSessions.GetByIdAsync(request.SessionId, cancellationToken);
-    if (session is null || session.IsDeleted)
-        throw new ArgumentException("Không tìm thấy phiên phân tích triệu chứng");
+        var session = await _unitOfWork.SymptomAnalysisSessions.GetByIdAsync(request.SessionId, cancellationToken);
+        if (session is null || session.IsDeleted)
+            throw new ArgumentException("Không tìm thấy phiên phân tích triệu chứng");
 
-    if (string.IsNullOrWhiteSpace(session.InputText))
-        throw new ArgumentException("Nội dung triệu chứng của phiên không tồn tại");
+        if (session.UserId.HasValue && !session.UserSubscriptionId.HasValue)
+        {
+            await EnsureFreeDailyQuotaAvailableAsync(session.UserId.Value, cancellationToken);
+        }
 
-    var existingAnswers = await _unitOfWork.SessionClinicalQuestionAnswers
-        .GetTrackedBySessionIdAsync(session.Id, cancellationToken);
+        if (string.IsNullOrWhiteSpace(session.InputText))
+            throw new ArgumentException("Nội dung triệu chứng của phiên không tồn tại");
 
-    if (existingAnswers.Count == 0)
-        throw new ArgumentException("Không tìm thấy câu hỏi lâm sàng cho phiên này");
+        var existingAnswers = await _unitOfWork.SessionClinicalQuestionAnswers
+            .GetTrackedBySessionIdAsync(session.Id, cancellationToken);
 
-    var submittedByQuestionId = (request.Answers ?? [])
-        .Where(a => a.QuestionId != Guid.Empty)
-        .GroupBy(a => a.QuestionId)
-        .ToDictionary(g => g.Key, g => g.Last().Answers);
+        if (existingAnswers.Count == 0)
+            throw new ArgumentException("Không tìm thấy câu hỏi lâm sàng cho phiên này");
 
-    foreach (var existingAnswer in existingAnswers)
-    {
-        var question = existingAnswer.ClinicalQuestion
-            ?? throw new InvalidOperationException("ClinicalQuestion is required.");
+        var submittedByQuestionId = (request.Answers ?? [])
+            .Where(a => a.QuestionId != Guid.Empty)
+            .GroupBy(a => a.QuestionId)
+            .ToDictionary(g => g.Key, g => g.Last().Answers);
 
-        var validOptions = ResolveQuestionAnswers(question);
-        submittedByQuestionId.TryGetValue(existingAnswer.ClinicalQuestionId, out var submitted);
+        foreach (var existingAnswer in existingAnswers)
+        {
+            var question = existingAnswer.ClinicalQuestion
+                ?? throw new InvalidOperationException("ClinicalQuestion is required.");
 
-        existingAnswer.AnswerValues = MergeSubmittedAnswerValues(validOptions, submitted);
-        existingAnswer.UpdatedAt = DateTime.UtcNow;
+            var validOptions = ResolveQuestionAnswers(question);
+            submittedByQuestionId.TryGetValue(existingAnswer.ClinicalQuestionId, out var submitted);
+
+            existingAnswer.AnswerValues = MergeSubmittedAnswerValues(validOptions, submitted);
+            existingAnswer.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var bayesianPrompt = await BuildMedGemmaBayesianPromptAsync(
+            session.InputText,
+            existingAnswers,
+            cancellationToken);
+
+        return new PreparedClinicalSubmission(session, existingAnswers, bayesianPrompt);
     }
 
-    await _unitOfWork.SaveChangesAsync(cancellationToken);
+    private async Task ApplyQuotaForNewSessionAsync(
+        SymptomAnalysisSession session,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var quotaUtcNow = DateTime.UtcNow;
+        var reserveResult = await _quotaService.ReserveAsync(
+            userId,
+            session.Id,
+            userId,
+            quotaUtcNow,
+            cancellationToken);
 
-    var bayesianPrompt = await BuildMedGemmaBayesianPromptAsync(
-        session.InputText,
-        existingAnswers,
-        cancellationToken);
+        if (reserveResult.Success && reserveResult.Data is not null)
+        {
+            session.UserSubscriptionId = reserveResult.Data.UserSubscriptionId;
+            session.UserSubscriptionUsageId = reserveResult.Data.Id;
+            return;
+        }
 
-    return new PreparedClinicalSubmission(session, existingAnswers, bayesianPrompt);
+        if (reserveResult.Error is ServiceCreditErrorCode.NoCreditPackage
+            or ServiceCreditErrorCode.ServiceCreditExhausted)
+        {
+            await EnsureFreeDailyQuotaAvailableAsync(userId, cancellationToken);
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Không thể kiểm tra giới hạn lượt dùng: {reserveResult.Error}");
+    }
+
+    private async Task EnsureFreeDailyQuotaAvailableAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var today = VietnamBusinessDate.GetToday(DateTimeOffset.UtcNow);
+        var completedFreeSessions = await _unitOfWork.SymptomAnalysisSessions.GetAllAsync(
+            s => s.UserId == userId
+                 && s.Status == SymptomAnalysisSessionStatus.Completed
+                 && s.CompletedAt.HasValue
+                 && s.UserSubscriptionId == null
+                 && !s.IsDeleted,
+            cancellationToken: cancellationToken);
+
+        var todayFreeCount = completedFreeSessions.Count(s =>
+            VietnamBusinessDate.GetToday(new DateTimeOffset(DateTime.SpecifyKind(s.CompletedAt!.Value, DateTimeKind.Utc)))
+            == today);
+
+        if (todayFreeCount >= MaxFreeSubmissionsPerDay)
+        {
+            throw new InvalidOperationException(FreeDailyQuotaExceededMessage);
+        }
+    }
+
+    private static Dictionary<Guid, (int TotalScore, List<string> MatchedKeywords, string ChapterCode)> MatchChaptersByKeywords(
+        IReadOnlyList<IcdChapter> activeChapters,
+        IReadOnlyList<string> inputWords)
+    {
+        var chapterMatches = new Dictionary<Guid, (int TotalScore, List<string> MatchedKeywords, string ChapterCode)>();
+
+        foreach (var chapter in activeChapters)
+        {
+            if (chapter.KeywordWeights is null || chapter.KeywordWeights.Count == 0)
+            {
+                continue;
+            }
+
+            var (totalScore, matchedKeywords) = ScoreChapterKeywords(chapter.KeywordWeights, inputWords);
+            if (totalScore > 0)
+            {
+                chapterMatches[chapter.Id] = (totalScore, matchedKeywords, chapter.ChapterCode);
+            }
+        }
+
+        return chapterMatches;
+    }
+
+    private static (int TotalScore, List<string> MatchedKeywords) ScoreChapterKeywords(
+        IReadOnlyDictionary<string, int> keywordWeights,
+        IReadOnlyList<string> inputWords)
+    {
+        var totalScore = 0;
+        var matchedKeywords = new List<string>();
+
+        foreach (var (keyword, weight) in keywordWeights)
+        {
+            if (!IsKeywordMatched(keyword, inputWords))
+            {
+                continue;
+            }
+
+            matchedKeywords.Add(keyword);
+            totalScore += weight;
+        }
+
+        return (totalScore, matchedKeywords);
+    }
+
+    private static bool IsKeywordMatched(string keyword, IReadOnlyList<string> inputWords)
+    {
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            return false;
+        }
+
+        var normalizedKeyword = NormalizeMatchingText(keyword);
+        if (normalizedKeyword is null)
+        {
+            return false;
+        }
+
+        var keywordTokens = normalizedKeyword.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return MatchesKeywordTokens(inputWords, keywordTokens);
+    }
+
+    private static bool MatchesKeywordTokens(IReadOnlyList<string> inputWords, string[] keywordTokens)
+    {
+        return keywordTokens.Length switch
+        {
+            1 => inputWords.Contains(keywordTokens[0]),
+            2 => Check2WordDistanceByArray(
+                inputWords,
+                keywordTokens[0],
+                keywordTokens[1],
+                maxDistance: 2),
+            3 => Check3WordDistanceByArray(
+                inputWords,
+                keywordTokens[0],
+                keywordTokens[1],
+                keywordTokens[2],
+                maxDistance: 2),
+            _ => false,
+        };
     }
 
     //

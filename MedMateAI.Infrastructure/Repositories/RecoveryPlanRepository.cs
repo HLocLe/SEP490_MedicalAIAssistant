@@ -351,7 +351,6 @@ public sealed class RecoveryPlanRepository : IRecoveryPlanRepository
             .Select(currentSession => new
             {
                 currentSession.Id,
-                currentSession.TestDate,
                 currentSession.FacilityName,
                 currentSession.CreatedAt,
                 currentSession.UpdatedAt
@@ -385,7 +384,6 @@ public sealed class RecoveryPlanRepository : IRecoveryPlanRepository
 
         return new RecoveryPlanLabTestData(
             session.Id,
-            session.TestDate,
             session.FacilityName,
             session.CreatedAt,
             session.UpdatedAt,

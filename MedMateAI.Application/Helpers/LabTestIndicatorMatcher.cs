@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using MedMateAI.Domain.Entities;
 
 namespace MedMateAI.Application.Helpers;
@@ -9,6 +12,11 @@ public sealed record IndicatorMatchResult(
 
 public static class LabTestIndicatorMatcher
 {
+    private static readonly Regex MultiWhitespaceRegex = new(
+        @"\s+",
+        RegexOptions.Compiled,
+        TimeSpan.FromSeconds(1));
+
     public static IndicatorMatchResult? Match(
         string testName,
         IReadOnlyList<LabIndicatorMaster> indicators)
@@ -19,6 +27,11 @@ public static class LabTestIndicatorMatcher
         }
 
         var normalizedInput = Normalize(testName);
+        if (string.IsNullOrEmpty(normalizedInput))
+        {
+            return null;
+        }
+
         IndicatorMatchResult? bestMatch = null;
 
         foreach (var indicator in indicators)
@@ -32,12 +45,12 @@ public static class LabTestIndicatorMatcher
                 }
 
                 double confidence;
-                if (string.Equals(normalizedInput, normalizedCandidate, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(normalizedInput, normalizedCandidate, StringComparison.Ordinal))
                 {
                     confidence = candidate.IsPrimary ? 1.0 : 0.95;
                 }
-                else if (normalizedInput.Contains(normalizedCandidate, StringComparison.OrdinalIgnoreCase)
-                         || normalizedCandidate.Contains(normalizedInput, StringComparison.OrdinalIgnoreCase))
+                else if (normalizedInput.Contains(normalizedCandidate, StringComparison.Ordinal)
+                         || normalizedCandidate.Contains(normalizedInput, StringComparison.Ordinal))
                 {
                     confidence = 0.85;
                 }
@@ -76,6 +89,31 @@ public static class LabTestIndicatorMatcher
 
     private static string Normalize(string value)
     {
-        return value.Trim().TrimEnd('.', ':');
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var collapsed = MultiWhitespaceRegex.Replace(value.Trim(), " ");
+        collapsed = collapsed.TrimEnd('.', ':').Trim();
+
+        var withoutDiacritics = RemoveDiacritics(collapsed);
+        return withoutDiacritics.ToLowerInvariant();
+    }
+
+    private static string RemoveDiacritics(string value)
+    {
+        var normalized = value.Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(normalized.Length);
+
+        foreach (var character in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark)
+            {
+                builder.Append(character);
+            }
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormC);
     }
 }
