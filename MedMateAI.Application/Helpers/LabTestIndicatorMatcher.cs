@@ -12,7 +12,10 @@ public sealed record IndicatorMatchResult(
 
 public static class LabTestIndicatorMatcher
 {
-    private static readonly Regex MultiWhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex MultiWhitespaceRegex = new(
+        @"\s+",
+        RegexOptions.Compiled,
+        TimeSpan.FromSeconds(1));
 
     public static IndicatorMatchResult? Match(
         string testName,
