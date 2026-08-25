@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Users.Requests;
 using MedMateAI.Application.DTOs.Users.Responses;
@@ -38,6 +39,68 @@ public sealed class UsersController : ControllerBase
         {
             Success = true,
             Message = "OK",
+            Data = data,
+        });
+    }
+
+    [HttpPut("me")]
+    [Authorize(Roles = "User")]
+    [ProducesResponseType(
+        typeof(ApiResponse<ApplicationUserResponse>),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(
+        typeof(ApiResponse<ApplicationUserResponse>),
+        StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(
+        typeof(ApiResponse<ApplicationUserResponse>),
+        StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(
+        typeof(ApiResponse<ApplicationUserResponse>),
+        StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateCurrent(
+        [FromBody] UpdateMyProfileRequest request,
+        CancellationToken cancellationToken)
+    {
+        var value = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(value, out var userId) || userId == Guid.Empty)
+        {
+            return Unauthorized(new ApiResponse<ApplicationUserResponse>
+            {
+                Success = false,
+                Message = "Unauthorized",
+            });
+        }
+
+        var (succeeded, notFound, errors, data) =
+            await _userService.UpdateMyProfileAsync(
+                userId,
+                request,
+                cancellationToken);
+
+        if (notFound)
+        {
+            return NotFound(new ApiResponse<ApplicationUserResponse>
+            {
+                Success = false,
+                Message = "User not found.",
+                Errors = errors.ToList(),
+            });
+        }
+
+        if (!succeeded || data is null)
+        {
+            return BadRequest(new ApiResponse<ApplicationUserResponse>
+            {
+                Success = false,
+                Message = "Update profile failed.",
+                Errors = errors.ToList(),
+            });
+        }
+
+        return Ok(new ApiResponse<ApplicationUserResponse>
+        {
+            Success = true,
+            Message = "Profile updated.",
             Data = data,
         });
     }

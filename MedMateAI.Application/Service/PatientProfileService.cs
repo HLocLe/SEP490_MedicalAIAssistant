@@ -1,4 +1,6 @@
 using AutoMapper;
+using MedMateAI.Application.Common.Time;
+using MedMateAI.Application.Common.Validation;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.PatientProfiles.Requests;
 using MedMateAI.Application.DTOs.PatientProfiles.Responses;
@@ -211,6 +213,14 @@ public sealed class PatientProfileService : IPatientProfileService
             }, null);
         }
 
+        var dateOfBirthValidation = DateOfBirthValidationPolicy.ValidateRequired(
+            caller.Current.DateOfBirth,
+            VietnamBusinessDate.GetToday(DateTimeOffset.UtcNow));
+        if (!dateOfBirthValidation.IsValid)
+        {
+            return (false, new[] { dateOfBirthValidation.ErrorMessage! }, null);
+        }
+
         var entity = new PatientProfile
         {
             Id = Guid.NewGuid(),
@@ -221,25 +231,41 @@ public sealed class PatientProfileService : IPatientProfileService
             Weight = request.Weight,
             AllergyNote = string.IsNullOrWhiteSpace(request.AllergyNote) ? null : request.AllergyNote.Trim(),
         };
-        _patientProfiles.Add(entity);
 
-        AddChronicDiseases(entity.Id, request.ChronicDiseases);
-        
-        await _uow.SaveChangesAsync(cancellationToken);
+        await _uow.BeginTransactionAsync(cancellationToken);
 
-        var mark = await _userService.MarkPatientProfileCompletedAsync(entity.UserId, cancellationToken);
+        try
+        {
+            _patientProfiles.Add(entity);
+            AddChronicDiseases(entity.Id, request.ChronicDiseases);
+
+            await _uow.SaveChangesAsync(cancellationToken);
+
+            var mark = await _userService.MarkPatientProfileCompletedAsync(
+                entity.UserId,
+                cancellationToken);
+            if (!mark.Succeeded)
+            {
+                await _uow.RollbackTransactionAsync(CancellationToken.None);
+                _uow.ClearTrackedChanges();
+                return (false, mark.Errors, null);
+            }
+
+            await _uow.CommitTransactionAsync(cancellationToken);
+        }
+        catch
+        {
+            await _uow.RollbackTransactionAsync(CancellationToken.None);
+            _uow.ClearTrackedChanges();
+            throw;
+        }
+
         var chronicDiseasesByProfileId = await LoadChronicDiseasesByProfileIdsAsync(
             new[] { entity.Id },
             cancellationToken);
         var dto = MapProfileResponse(entity, chronicDiseasesByProfileId);
         var user = await _userService.GetUserByIdAsync(entity.UserId, cancellationToken);
-        dto.IsProfileCompleted = user?.IsProfileCompleted ?? true;
-       
-        if (!mark.Succeeded)
-        {
-            return (false, mark.Errors, dto);
-        }
-
+        dto.IsProfileCompleted = user?.IsProfileCompleted ?? false;
 
         return (true, Array.Empty<string>(), dto);
     }

@@ -38,7 +38,11 @@ public class PatientProfileServiceTests
         _uowMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
         _userServiceMock.Setup(service => service.GetCurrentUserAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ApplicationUserResponse { Id = _userId });
+            .ReturnsAsync(new ApplicationUserResponse
+            {
+                Id = _userId,
+                DateOfBirth = new DateOnly(2000, 1, 1),
+            });
         _userServiceMock.Setup(service => service.IsInRoleAsync(
                 It.IsAny<Guid>(),
                 It.IsAny<string>(),
@@ -420,6 +424,9 @@ public class PatientProfileServiceTests
         _patientProfilesMock.Verify(r => r.Add(It.IsAny<PatientProfile>()), Times.Once);
         _chronicDiseasesMock.Verify(r => r.Add(It.IsAny<PatientChronicDisease>()), Times.Once);
         _uowMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _uowMock.Verify(u => u.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _uowMock.Verify(u => u.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _uowMock.Verify(u => u.RollbackTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // â”€â”€ UpdatePatientProfileAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

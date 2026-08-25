@@ -28,6 +28,15 @@ public interface IUserService
         UpdateUserRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<(
+        bool Succeeded,
+        bool NotFound,
+        IEnumerable<string> Errors,
+        ApplicationUserResponse? Data)> UpdateMyProfileAsync(
+            Guid userId,
+            UpdateMyProfileRequest request,
+            CancellationToken cancellationToken = default);
+
     Task<(bool Succeeded, IEnumerable<string> Errors)> UpdateCurrentUserPhoneAsync(
         Guid userId,
         string phoneNumber,
