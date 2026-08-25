@@ -213,6 +213,87 @@ public sealed class UserService : IUserService
             : (false, updateResult.Errors.Select(e => e.Description));
     }
 
+    public async Task<(
+        bool Succeeded,
+        bool NotFound,
+        IEnumerable<string> Errors,
+        ApplicationUserResponse? Data)> UpdateMyProfileAsync(
+            Guid userId,
+            UpdateMyProfileRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            return (false, false, new[] { "Invalid user id." }, null);
+        }
+
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user is null || user.IsDeleted)
+        {
+            return (false, true, new[] { "User not found." }, null);
+        }
+
+        var dateOfBirthValidation = DateOfBirthValidationPolicy.ValidateRequired(
+            request.DateOfBirth,
+            VietnamBusinessDate.GetToday(DateTimeOffset.UtcNow));
+        if (!dateOfBirthValidation.IsValid || !request.DateOfBirth.HasValue)
+        {
+            return (
+                false,
+                false,
+                new[] { dateOfBirthValidation.ErrorMessage! },
+                null);
+        }
+
+        var displayName = request.DisplayName?.Trim() ?? string.Empty;
+        if (displayName.Length > 256)
+        {
+            return (
+                false,
+                false,
+                new[] { "Display name must not exceed 256 characters." },
+                null);
+        }
+
+        var address = string.IsNullOrWhiteSpace(request.Address)
+            ? null
+            : request.Address.Trim();
+        if (address?.Length > 512)
+        {
+            return (
+                false,
+                false,
+                new[] { "Address must not exceed 512 characters." },
+                null);
+        }
+
+        if (request.Gender.HasValue && !Enum.IsDefined(request.Gender.Value))
+        {
+            return (false, false, new[] { "Gender is invalid." }, null);
+        }
+
+        user.DisplayName = displayName;
+        user.Address = address;
+        user.Gender = request.Gender;
+        user.DateOfBirth = request.DateOfBirth.Value;
+
+        var updateResult = await _userManager.UpdateAsync(user);
+        if (!updateResult.Succeeded)
+        {
+            return (
+                false,
+                false,
+                updateResult.Errors.Select(error => error.Description),
+                null);
+        }
+
+        var response = _mapper.Map<ApplicationUserResponse>(user);
+        var roles = await _userManager.GetRolesAsync(user);
+        response.Roles = roles.ToArray();
+
+        return (true, false, Array.Empty<string>(), response);
+    }
+
     public async Task<(bool Succeeded, IEnumerable<string> Errors)> UpdateCurrentUserPhoneAsync(
         Guid userId,
         string phoneNumber,
@@ -332,6 +413,14 @@ public sealed class UserService : IUserService
         if (user is null || user.IsDeleted)
         {
             return (false, new[] { "User not found." });
+        }
+
+        var dateOfBirthValidation = DateOfBirthValidationPolicy.ValidateRequired(
+            user.DateOfBirth,
+            VietnamBusinessDate.GetToday(DateTimeOffset.UtcNow));
+        if (!dateOfBirthValidation.IsValid)
+        {
+            return (false, new[] { dateOfBirthValidation.ErrorMessage! });
         }
 
         if (user.IsProfileCompleted)

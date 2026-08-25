@@ -14,6 +14,13 @@ public static class DateOfBirthValidationPolicy
         DateOnly? dateOfBirth,
         DateOnly today)
     {
+        return ValidateRequired(dateOfBirth, today);
+    }
+
+    public static DateOfBirthValidationResult ValidateRequired(
+        DateOnly? dateOfBirth,
+        DateOnly today)
+    {
         if (!dateOfBirth.HasValue)
         {
             return new DateOfBirthValidationResult(false, RequiredDateError);

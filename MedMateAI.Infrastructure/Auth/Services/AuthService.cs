@@ -309,7 +309,9 @@ public sealed class AuthService : IAuthService
                 EmailConfirmed = true,
                 DisplayName = payload.Name,
                 Status = UserStatus.Confirmed,
+                DateOfBirth = null,
                 IsFirstLogin = true,
+                IsProfileCompleted = false,
                 CreatedAt = DateTime.UtcNow,
             };
 
