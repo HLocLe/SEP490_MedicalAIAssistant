@@ -2,6 +2,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Requests;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
+using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Quota;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Enums;
 using MedMateAI.Helpers;
@@ -76,6 +77,23 @@ public sealed class SymptomAnalysisController : ControllerBase
                     new[] { ex.Message },
                     "Phân tích MedGemma thất bại"));
         }
+    }
+
+    [HttpGet("quota")]
+    [Authorize]
+    [ProducesResponseType(typeof(ApiResponse<SymptomAnalysisQuotaResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<SymptomAnalysisQuotaResponse>), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetQuota(CancellationToken cancellationToken = default)
+    {
+        var data = await _symptomAnalysisService.GetQuotaAsync(cancellationToken);
+        if (data is null)
+        {
+            return Unauthorized(ApiResponseFactory.FailFromErrors<SymptomAnalysisQuotaResponse>(
+                new[] { UnauthenticatedError },
+                "Chưa đăng nhập"));
+        }
+
+        return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
     [HttpGet("my-sessions")]
