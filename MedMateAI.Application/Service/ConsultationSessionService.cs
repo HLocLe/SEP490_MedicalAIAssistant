@@ -1,5 +1,7 @@
 using System.Text.Json;
 
+using MedMateAI.Application.Common.Time;
+
 using MedMateAI.Application.DTOs.Common;
 
 using MedMateAI.Application.DTOs.ConsultationSessions.Requests;
@@ -150,6 +152,18 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
         {
 
             return (false, new[] { inputError }, null);
+
+        }
+
+
+
+        var appointmentError = ValidateAppointmentTime(appointmentTime);
+
+        if (appointmentError is not null)
+
+        {
+
+            return (false, new[] { appointmentError }, null);
 
         }
 
@@ -421,9 +435,91 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
 
             DateTimeKind.Local => value.ToUniversalTime(),
 
-            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+            _ => VietnamBusinessDate.ConvertVietnamLocalToUtc(value),
 
         };
+
+    }
+
+
+
+    private static string? ValidateAppointmentTime(DateTime? appointmentTime)
+
+    {
+
+        if (!appointmentTime.HasValue)
+
+        {
+
+            return null;
+
+        }
+
+
+
+        var utc = NormalizeAppointmentTimeUtc(appointmentTime)!.Value;
+
+        if (utc.Kind != DateTimeKind.Utc)
+
+        {
+
+            utc = DateTime.SpecifyKind(utc, DateTimeKind.Utc);
+
+        }
+
+
+
+        var vnNow = VietnamBusinessDate.ConvertUtcToVietnamLocal(DateTime.UtcNow);
+
+        var vnAppointment = VietnamBusinessDate.ConvertUtcToVietnamLocal(utc);
+
+
+
+        var today = DateOnly.FromDateTime(vnNow);
+
+        var appointmentDate = DateOnly.FromDateTime(vnAppointment);
+
+
+
+        if (appointmentDate.Year != today.Year)
+
+        {
+
+            return "Ngày hẹn khám phải nằm trong năm hiện tại.";
+
+        }
+
+
+
+        if (vnAppointment < vnNow)
+
+        {
+
+            return "Ngày hẹn khám phải là thời điểm hiện tại hoặc trong tương lai.";
+
+        }
+
+
+
+        var maxByMonth = today.AddMonths(1);
+
+        var endOfYear = new DateOnly(today.Year, 12, 31);
+
+        var maxAllowed = maxByMonth < endOfYear ? maxByMonth : endOfYear;
+
+
+
+        if (appointmentDate > maxAllowed)
+
+        {
+
+            return "Ngày hẹn khám chỉ được chọn trước tối đa 1 tháng và trong năm hiện tại.";
+
+        }
+
+
+
+        return null;
 
     }
 
