@@ -1,6 +1,7 @@
 using AutoMapper;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Requests;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
+using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Quota;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
 using MedMateAI.Application.DTOs.Users.Responses;
 using MedMateAI.Application.IService;
@@ -36,6 +37,7 @@ public class SymptomAnalysisServiceTests
     private Mock<IMedGemmaChatService> _medGemmaMock = null!;
     private Mock<IIcdLookupService> _icdLookupMock = null!;
     private Mock<ISymptomAnalysisQuotaService> _quotaServiceMock = null!;
+    private Mock<IQuotaUsageRepository> _quotaUsagesMock = null!;
     private Mock<IMapper> _mapperMock = null!;
     private Mock<ILogger<SymptomAnalysisService>> _loggerMock = null!;
 
@@ -61,6 +63,7 @@ public class SymptomAnalysisServiceTests
         _medGemmaMock = new Mock<IMedGemmaChatService>();
         _icdLookupMock = new Mock<IIcdLookupService>();
         _quotaServiceMock = new Mock<ISymptomAnalysisQuotaService>();
+        _quotaUsagesMock = new Mock<IQuotaUsageRepository>();
         _mapperMock = new Mock<IMapper>();
         _loggerMock = new Mock<ILogger<SymptomAnalysisService>>();
 
@@ -72,6 +75,7 @@ public class SymptomAnalysisServiceTests
         _unitOfWorkMock.Setup(u => u.SessionSymptoms).Returns(_sessionSymptomsMock.Object);
         _unitOfWorkMock.Setup(u => u.MedicalDepartments).Returns(_medicalDeptsMock.Object);
         _unitOfWorkMock.Setup(u => u.MedicalFacilities).Returns(_facilitiesMock.Object);
+        _unitOfWorkMock.Setup(u => u.QuotaUsages).Returns(_quotaUsagesMock.Object);
 
         _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
@@ -238,5 +242,102 @@ public class SymptomAnalysisServiceTests
         _sessionAnswersMock.Verify(r => r.Add(It.IsAny<SessionClinicalQuestionAnswer>()), Times.Once);
         _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
         _unitOfWorkMock.Verify(u => u.CommitTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task GetQuotaAsync_Unauthenticated_ReturnsNull()
+    {
+        _userServiceMock.Setup(s => s.GetCurrentUserAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ApplicationUserResponse?)null);
+
+        Assert.That(await _service.GetQuotaAsync(), Is.Null);
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task GetQuotaAsync_WithServiceCredit_IsFreeTierFalse()
+    {
+        _userServiceMock.Setup(s => s.GetCurrentUserAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId });
+
+        _sessionsMock.Setup(r => r.GetAllAsync(
+                It.IsAny<System.Linq.Expressions.Expression<Func<SymptomAnalysisSession, bool>>>(),
+                It.IsAny<Func<IQueryable<SymptomAnalysisSession>, IOrderedQueryable<SymptomAnalysisSession>>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<SymptomAnalysisSession>());
+
+        _quotaUsagesMock.Setup(r => r.GetEligibleByUserAsync(
+                _userId,
+                IServiceCreditService.QuotaCode,
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<UserSubscriptionUsage>
+            {
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    LimitValue = 10,
+                    UsedCount = 1,
+                    ReservedCount = 0,
+                },
+            });
+
+        var result = await _service.GetQuotaAsync();
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.HasServiceCredit, Is.True);
+        Assert.That(result.IsFreeTier, Is.False);
+        Assert.That(result.LimitPerDay, Is.EqualTo(5));
+        Assert.That(result.UsedToday, Is.EqualTo(0));
+        Assert.That(result.RemainingToday, Is.EqualTo(5));
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task GetQuotaAsync_NoServiceCredit_CountsFreeCompletedToday()
+    {
+        _userServiceMock.Setup(s => s.GetCurrentUserAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId });
+
+        var todayUtc = DateTime.UtcNow;
+        _sessionsMock.Setup(r => r.GetAllAsync(
+                It.IsAny<System.Linq.Expressions.Expression<Func<SymptomAnalysisSession, bool>>>(),
+                It.IsAny<Func<IQueryable<SymptomAnalysisSession>, IOrderedQueryable<SymptomAnalysisSession>>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SymptomAnalysisSession>
+            {
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = _userId,
+                    Status = SymptomAnalysisSessionStatus.Completed,
+                    CompletedAt = todayUtc,
+                    UserSubscriptionId = null,
+                },
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = _userId,
+                    Status = SymptomAnalysisSessionStatus.Completed,
+                    CompletedAt = todayUtc,
+                    UserSubscriptionId = null,
+                },
+            });
+
+        _quotaUsagesMock.Setup(r => r.GetEligibleByUserAsync(
+                _userId,
+                IServiceCreditService.QuotaCode,
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<UserSubscriptionUsage>());
+
+        var result = await _service.GetQuotaAsync();
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.HasServiceCredit, Is.False);
+        Assert.That(result.IsFreeTier, Is.True);
+        Assert.That(result.UsedToday, Is.EqualTo(2));
+        Assert.That(result.RemainingToday, Is.EqualTo(3));
     }
 }

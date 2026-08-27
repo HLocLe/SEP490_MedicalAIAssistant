@@ -8,6 +8,7 @@ using MedMateAI.Application.DTOs.SymptomAnalysis.Requests;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.MedGemma;
+using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Quota;
 using MedMateAI.Application.Common.Time;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models.ServiceCredits;
@@ -135,6 +136,40 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
             cancellationToken);
 
         return PagedResponse<SymptomAnalysisSessionSummaryResponse>.From(paged, MapToSessionSummary);
+    }
+
+    public async Task<SymptomAnalysisQuotaResponse?> GetQuotaAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var currentUser = await _userService.GetCurrentUserAsync(cancellationToken);
+        if (currentUser is null)
+        {
+            return null;
+        }
+
+        var utcNow = DateTime.UtcNow;
+        var businessDate = VietnamBusinessDate.GetToday(utcNow);
+        var usedToday = await CountFreeCompletedTodayAsync(currentUser.Id, businessDate, cancellationToken);
+        var remainingToday = Math.Max(0, MaxFreeSubmissionsPerDay - usedToday);
+
+        var usages = await _unitOfWork.QuotaUsages.GetEligibleByUserAsync(
+            currentUser.Id,
+            IServiceCreditService.QuotaCode,
+            utcNow,
+            cancellationToken);
+
+        var hasServiceCredit = usages.Any(usage =>
+            usage.UsedCount + usage.ReservedCount < usage.LimitValue);
+
+        return new SymptomAnalysisQuotaResponse
+        {
+            BusinessDate = businessDate,
+            LimitPerDay = MaxFreeSubmissionsPerDay,
+            UsedToday = usedToday,
+            RemainingToday = remainingToday,
+            HasServiceCredit = hasServiceCredit,
+            IsFreeTier = !hasServiceCredit,
+        };
     }
 
     // 
@@ -385,6 +420,19 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
         CancellationToken cancellationToken)
     {
         var today = VietnamBusinessDate.GetToday(DateTimeOffset.UtcNow);
+        var todayFreeCount = await CountFreeCompletedTodayAsync(userId, today, cancellationToken);
+
+        if (todayFreeCount >= MaxFreeSubmissionsPerDay)
+        {
+            throw new InvalidOperationException(FreeDailyQuotaExceededMessage);
+        }
+    }
+
+    private async Task<int> CountFreeCompletedTodayAsync(
+        Guid userId,
+        DateOnly today,
+        CancellationToken cancellationToken)
+    {
         var completedFreeSessions = await _unitOfWork.SymptomAnalysisSessions.GetAllAsync(
             s => s.UserId == userId
                  && s.Status == SymptomAnalysisSessionStatus.Completed
@@ -393,14 +441,9 @@ public sealed class SymptomAnalysisService : ISymptomAnalysisService
                  && !s.IsDeleted,
             cancellationToken: cancellationToken);
 
-        var todayFreeCount = completedFreeSessions.Count(s =>
+        return completedFreeSessions.Count(s =>
             VietnamBusinessDate.GetToday(new DateTimeOffset(DateTime.SpecifyKind(s.CompletedAt!.Value, DateTimeKind.Utc)))
             == today);
-
-        if (todayFreeCount >= MaxFreeSubmissionsPerDay)
-        {
-            throw new InvalidOperationException(FreeDailyQuotaExceededMessage);
-        }
     }
 
     private static Dictionary<Guid, (int TotalScore, List<string> MatchedKeywords, string ChapterCode)> MatchChaptersByKeywords(

@@ -2,6 +2,7 @@ using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Requests;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Session;
 using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.ClinicalQuestions;
+using MedMateAI.Application.DTOs.SymptomAnalysis.Responses.Quota;
 using MedMateAI.Domain.Enums;
 
 namespace MedMateAI.Application.IService;
@@ -33,5 +34,8 @@ public interface ISymptomAnalysisService
 
     Task<ClinicalQuestionAnswersResponse> SubmitClinicalQuestionAnswersAsync(
         SubmitClinicalQuestionAnswersRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<SymptomAnalysisQuotaResponse?> GetQuotaAsync(
         CancellationToken cancellationToken = default);
 }
