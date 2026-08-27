@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using MedMateAI.Application.Common;
+using MedMateAI.Application.Common.Time;
 using MedMateAI.Application.DTOs.ChecklistItems.Responses;
 using MedMateAI.Application.DTOs.ConsultationSessions.Requests;
 using MedMateAI.Application.DTOs.MedicalDepartments.Responses;
@@ -199,6 +200,79 @@ public class ConsultationSessionServiceTests
         Assert.That(data.DepartmentName, Is.EqualTo("Cardiology"));
         Assert.That(data.Questions, Has.Count.EqualTo(1));
         Assert.That(data.Questions[0].QuestionText, Is.EqualTo("Any chest pain?"));
+    }
+
+    // ── GenerateDoctorQuestionsAsync appointment validation ───────────────────
+
+    [Test]
+    [Category("B")]
+    public async Task GenerateDoctorQuestionsAsync_AppointmentInPast_ReturnsValidationError()
+    {
+        var pastVn = DateTime.SpecifyKind(
+            VietnamBusinessDate.ConvertUtcToVietnamLocal(DateTime.UtcNow).AddDays(-1),
+            DateTimeKind.Unspecified);
+
+        var (succeeded, errors, data) = await _service.GenerateDoctorQuestionsAsync(
+            _userId, _departmentId, "fever", appointmentTime: pastVn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.False);
+            Assert.That(data, Is.Null);
+            Assert.That(errors.Single(), Does.Contain("tương lai"));
+        });
+        _medicalDepartmentServiceMock.Verify(
+            s => s.GetMedicalDepartmentByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
+    [Category("B")]
+    public async Task GenerateDoctorQuestionsAsync_AppointmentMoreThanOneMonthAhead_ReturnsValidationError()
+    {
+        var farVn = DateTime.SpecifyKind(
+            VietnamBusinessDate.ConvertUtcToVietnamLocal(DateTime.UtcNow).AddMonths(1).AddDays(2),
+            DateTimeKind.Unspecified);
+
+        // Keep within current year when possible; otherwise year rule may fire first.
+        if (farVn.Year != VietnamBusinessDate.GetToday(DateTimeOffset.UtcNow).Year)
+        {
+            Assert.Ignore("Cannot assert +1 month rule near year boundary.");
+        }
+
+        var (succeeded, errors, data) = await _service.GenerateDoctorQuestionsAsync(
+            _userId, _departmentId, "fever", appointmentTime: farVn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.False);
+            Assert.That(data, Is.Null);
+            Assert.That(errors.Single(), Does.Contain("1 tháng"));
+        });
+    }
+
+    [Test]
+    [Category("B")]
+    public async Task GenerateDoctorQuestionsAsync_AppointmentNextYear_ReturnsValidationError()
+    {
+        var nextYearVn = new DateTime(
+            VietnamBusinessDate.GetToday(DateTimeOffset.UtcNow).Year + 1,
+            1,
+            15,
+            9,
+            0,
+            0,
+            DateTimeKind.Unspecified);
+
+        var (succeeded, errors, data) = await _service.GenerateDoctorQuestionsAsync(
+            _userId, _departmentId, "fever", appointmentTime: nextYearVn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.False);
+            Assert.That(data, Is.Null);
+            Assert.That(errors.Single(), Does.Contain("năm hiện tại"));
+        });
     }
 
     // ── RegisterReminderAsync ─────────────────────────────────────────────────
