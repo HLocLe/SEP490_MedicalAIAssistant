@@ -28,4 +28,8 @@ public interface IFeedbackReviewRepository : IGenericRepository<FeedbackReview>
         Guid userId,
         Guid facilityId,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyDictionary<Guid, FacilityRatingSummary>> GetApprovedRatingSummariesByFacilityIdsAsync(
+        IReadOnlyCollection<Guid> facilityIds,
+        CancellationToken cancellationToken = default);
 }

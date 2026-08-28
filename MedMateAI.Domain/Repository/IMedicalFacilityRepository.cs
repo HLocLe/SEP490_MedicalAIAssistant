@@ -18,6 +18,14 @@ public interface IMedicalFacilityRepository
         string? search = null,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<MedicalFacility>> GetActiveWithCoordinatesInBoundsAsync(
+        double minLatitude,
+        double maxLatitude,
+        double minLongitude,
+        double maxLongitude,
+        Guid? departmentId = null,
+        CancellationToken cancellationToken = default);
+
     Task<MedicalFacility?> GetByIdWithDepartmentsAsync(
         Guid id,
         CancellationToken cancellationToken = default);

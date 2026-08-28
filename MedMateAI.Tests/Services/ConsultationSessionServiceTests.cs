@@ -7,6 +7,7 @@ using MedMateAI.Application.DTOs.MedicalDepartments.Responses;
 using MedMateAI.Application.DTOs.MedicalFacilities.Responses;
 using MedMateAI.Application.DTOs.Users.Responses;
 using MedMateAI.Application.IService;
+using MedMateAI.Application.Models.Notifications;
 using MedMateAI.Application.Service;
 using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
@@ -33,6 +34,8 @@ public class ConsultationSessionServiceTests
     private Mock<IEmailSender> _emailSenderMock = null!;
     private Mock<IConsultationSessionJobScheduler> _jobSchedulerMock = null!;
     private Mock<IConsultationSessionQuotaService> _quotaServiceMock = null!;
+    private Mock<IPushNotificationGateway> _pushGatewayMock = null!;
+    private Mock<IUserPushDeviceRepository> _pushDeviceRepositoryMock = null!;
     private ConsultationSessionService _service = null!;
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _departmentId = Guid.NewGuid();
@@ -53,6 +56,12 @@ public class ConsultationSessionServiceTests
         _emailSenderMock = new Mock<IEmailSender>();
         _jobSchedulerMock = new Mock<IConsultationSessionJobScheduler>();
         _quotaServiceMock = new Mock<IConsultationSessionQuotaService>();
+        _pushGatewayMock = new Mock<IPushNotificationGateway>();
+        _pushDeviceRepositoryMock = new Mock<IUserPushDeviceRepository>();
+
+        _pushDeviceRepositoryMock
+            .Setup(r => r.GetActiveByUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<UserPushDeviceData>());
 
         _service = new ConsultationSessionService(
             _medicalDepartmentServiceMock.Object,
@@ -66,7 +75,9 @@ public class ConsultationSessionServiceTests
             _checklistItemServiceMock.Object,
             _emailSenderMock.Object,
             _jobSchedulerMock.Object,
-            _quotaServiceMock.Object);
+            _quotaServiceMock.Object,
+            _pushGatewayMock.Object,
+            _pushDeviceRepositoryMock.Object);
     }
 
     private ConsultationSession MakeSession(
@@ -385,6 +396,36 @@ public class ConsultationSessionServiceTests
 
     [Test]
     [Category("N")]
+    public async Task RegisterReminderAsync_EnableReminderWithPushDeviceOnly_EnablesReminderAndSaves()
+    {
+        var session = MakeSession();
+        SetupSessionLookup(session);
+        _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, Email = null });
+        SetupPushDevices(new UserPushDeviceData(
+            Guid.NewGuid(),
+            _userId,
+            "ExponentPushToken[test]",
+            1,
+            "android",
+            true));
+
+        var (succeeded, notFound, errors) = await _service.RegisterReminderAsync(
+            _userId, _sessionId,
+            new RegisterConsultationReminderRequest { EnableReminder = true },
+            CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(succeeded, Is.True);
+            Assert.That(notFound, Is.False);
+            Assert.That(errors, Is.Empty);
+            Assert.That(session.IsReminderEnabled, Is.True);
+        });
+    }
+
+    [Test]
+    [Category("N")]
     public async Task RegisterReminderAsync_EnableReminderWithEmail_EnablesReminderAndSaves()
     {
         var session = MakeSession();
@@ -655,7 +696,7 @@ public class ConsultationSessionServiceTests
 
     [Test]
     [Category("A")]
-    public async Task ProcessSendReminderSmsAsync_UserEmailMissing_DoesNothing()
+    public async Task ProcessSendReminderSmsAsync_UserEmailMissing_DoesNothingWhenNoPushDevices()
     {
         var session = MakeSession();
         session.IsReminderEnabled = true;
@@ -667,6 +708,66 @@ public class ConsultationSessionServiceTests
         await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
 
         _emailSenderMock.Verify(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _pushGatewayMock.Verify(g => g.SendAsync(It.IsAny<PushNotificationMessage>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task ProcessSendReminderSmsAsync_PushOnlySucceeds_MarksSentAndSaves()
+    {
+        var session = MakeSession();
+        session.IsReminderEnabled = true;
+        session.AppointmentTime = DateTime.UtcNow.AddHours(1);
+        SetupSessionLookup(session);
+        _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, Email = null });
+        _medicalDepartmentServiceMock.Setup(m => m.GetMedicalDepartmentByIdAsync(_departmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MedicalDepartmentResponse { Id = _departmentId, DepartmentName = "Cardiology" });
+        SetupPushDevices(new UserPushDeviceData(
+            Guid.NewGuid(),
+            _userId,
+            "ExponentPushToken[test]",
+            1,
+            "android",
+            true));
+        _pushGatewayMock.Setup(g => g.SendAsync(It.IsAny<PushNotificationMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PushSendResult(PushSendOutcome.Accepted, "ticket-1"));
+
+        await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
+
+        Assert.That(session.ReminderSmsSentAt, Is.Not.Null);
+        _pushGatewayMock.Verify(g => g.SendAsync(It.IsAny<PushNotificationMessage>(), It.IsAny<CancellationToken>()), Times.Once);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task ProcessSendReminderSmsAsync_EmailFailsPushSucceeds_MarksSentAndSaves()
+    {
+        var session = MakeSession();
+        session.IsReminderEnabled = true;
+        session.AppointmentTime = DateTime.UtcNow.AddHours(1);
+        SetupSessionLookup(session);
+        _userServiceMock.Setup(u => u.GetUserByIdAsync(_userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApplicationUserResponse { Id = _userId, Email = "user@gmail.com" });
+        _medicalDepartmentServiceMock.Setup(m => m.GetMedicalDepartmentByIdAsync(_departmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MedicalDepartmentResponse { Id = _departmentId, DepartmentName = "Cardiology" });
+        _emailSenderMock.Setup(s => s.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Brevo failed"));
+        SetupPushDevices(new UserPushDeviceData(
+            Guid.NewGuid(),
+            _userId,
+            "ExponentPushToken[test]",
+            1,
+            "android",
+            true));
+        _pushGatewayMock.Setup(g => g.SendAsync(It.IsAny<PushNotificationMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PushSendResult(PushSendOutcome.Accepted, "ticket-1"));
+
+        await _service.ProcessSendReminderSmsAsync(_sessionId, CancellationToken.None);
+
+        Assert.That(session.ReminderSmsSentAt, Is.Not.Null);
+        _unitOfWorkMock.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
@@ -750,5 +851,12 @@ public class ConsultationSessionServiceTests
                 PageSize = 100,
                 Items = Array.Empty<ConsultationQuestion>(),
             });
+    }
+
+    private void SetupPushDevices(params UserPushDeviceData[] devices)
+    {
+        _pushDeviceRepositoryMock
+            .Setup(r => r.GetActiveByUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(devices);
     }
 }

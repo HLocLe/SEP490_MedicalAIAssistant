@@ -21,6 +21,7 @@ public class MedicalFacilityServiceTests
     private Mock<IMedicalFacilityRepository> _facilityRepoMock = null!;
     private Mock<IMedicalDepartmentRepository> _departmentRepoMock = null!;
     private Mock<IFacilityDepartmentRepository> _facilityDepartmentRepoMock = null!;
+    private Mock<IFeedbackReviewRepository> _feedbackReviewRepoMock = null!;
     private Mock<IDistributedCache> _cacheMock = null!;
     private Mock<IMapper> _mapperMock = null!;
     private MedicalFacilityService _service = null!;
@@ -32,16 +33,41 @@ public class MedicalFacilityServiceTests
         _facilityRepoMock = new Mock<IMedicalFacilityRepository>();
         _departmentRepoMock = new Mock<IMedicalDepartmentRepository>();
         _facilityDepartmentRepoMock = new Mock<IFacilityDepartmentRepository>();
+        _feedbackReviewRepoMock = new Mock<IFeedbackReviewRepository>();
         _cacheMock = new Mock<IDistributedCache>();
         _mapperMock = new Mock<IMapper>();
 
         _unitOfWorkMock.Setup(u => u.MedicalFacilities).Returns(_facilityRepoMock.Object);
         _unitOfWorkMock.Setup(u => u.MedicalDepartments).Returns(_departmentRepoMock.Object);
         _unitOfWorkMock.Setup(u => u.FacilityDepartments).Returns(_facilityDepartmentRepoMock.Object);
+        _unitOfWorkMock.Setup(u => u.FeedbackReviews).Returns(_feedbackReviewRepoMock.Object);
         _unitOfWorkMock.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        _feedbackReviewRepoMock.Setup(r => r.GetApprovedRatingSummariesByFacilityIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, FacilityRatingSummary>());
 
         _mapperMock.Setup(m => m.Map<MedicalFacilityResponse>(It.IsAny<MedicalFacility>()))
             .Returns((MedicalFacility src) => new MedicalFacilityResponse
+            {
+                Id = src.Id,
+                FacilityName = src.FacilityName,
+                Address = src.Address,
+                Latitude = src.Latitude,
+                Longitude = src.Longitude,
+                Phone = src.Phone,
+                Website = src.Website,
+                ImageUrl = src.ImageUrl,
+                OpeningHours = src.OpeningHours,
+                FacilityType = src.FacilityType,
+                IsActive = src.IsActive,
+                CreatedAt = src.CreatedAt,
+                UpdatedAt = src.UpdatedAt,
+            });
+
+        _mapperMock.Setup(m => m.Map<MedicalFacilityNearbyResponse>(It.IsAny<MedicalFacility>()))
+            .Returns((MedicalFacility src) => new MedicalFacilityNearbyResponse
             {
                 Id = src.Id,
                 FacilityName = src.FacilityName,
@@ -569,5 +595,96 @@ public class MedicalFacilityServiceTests
         _facilityRepoMock.Verify(r => r.Update(existing), Times.Once);
         _facilityDepartmentRepoMock.Verify(r => r.Update(fd), Times.Once);
         _cacheMock.Verify(c => c.RemoveAsync("medical-facilities:active", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── ListNearbyMedicalFacilitiesAsync ─────────────────────────────────────
+
+    [Test]
+    [Category("N")]
+    public async Task ListNearbyMedicalFacilitiesAsync_InvalidLatitude_ReturnsErrors()
+    {
+        var (errors, data) = await _service.ListNearbyMedicalFacilitiesAsync(91, 106.7009, 5);
+
+        Assert.That(errors, Is.Not.Empty);
+        Assert.That(data, Is.Empty);
+        _facilityRepoMock.Verify(r => r.GetActiveWithCoordinatesInBoundsAsync(
+            It.IsAny<double>(), It.IsAny<double>(), It.IsAny<double>(), It.IsAny<double>(),
+            It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task ListNearbyMedicalFacilitiesAsync_ValidQuery_ReturnsFacilitiesWithinRadiusSortedByDistance()
+    {
+        const double centerLat = 10.7769;
+        const double centerLon = 106.7009;
+        const double radiusKm = 5;
+
+        var near = MakeFacility();
+        near.FacilityName = "Near Hospital";
+        near.Latitude = 10.777m;
+        near.Longitude = 106.701m;
+
+        var far = MakeFacility();
+        far.FacilityName = "Far Hospital";
+        far.Latitude = 10.85m;
+        far.Longitude = 106.78m;
+
+        _facilityRepoMock.Setup(r => r.GetActiveWithCoordinatesInBoundsAsync(
+                It.IsAny<double>(), It.IsAny<double>(), It.IsAny<double>(), It.IsAny<double>(),
+                null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MedicalFacility> { near, far });
+
+        var (errors, data) = await _service.ListNearbyMedicalFacilitiesAsync(
+            centerLat, centerLon, radiusKm, limit: 20);
+
+        Assert.That(errors, Is.Empty);
+        Assert.That(data, Has.Count.EqualTo(1));
+        Assert.That(data[0].FacilityName, Is.EqualTo("Near Hospital"));
+        Assert.That(data[0].DistanceKm, Is.GreaterThan(0).And.LessThan(radiusKm));
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task ListNearbyMedicalFacilitiesAsync_DepartmentId_PassedToRepository()
+    {
+        var departmentId = Guid.NewGuid();
+        _facilityRepoMock.Setup(r => r.GetActiveWithCoordinatesInBoundsAsync(
+                It.IsAny<double>(), It.IsAny<double>(), It.IsAny<double>(), It.IsAny<double>(),
+                departmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MedicalFacility>());
+
+        await _service.ListNearbyMedicalFacilitiesAsync(10.7769, 106.7009, 5, departmentId);
+
+        _facilityRepoMock.Verify(r => r.GetActiveWithCoordinatesInBoundsAsync(
+            It.IsAny<double>(), It.IsAny<double>(), It.IsAny<double>(), It.IsAny<double>(),
+            departmentId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task GetMedicalFacilityByIdAsync_WithApprovedReviews_SetsAverageRatingAndReviewCount()
+    {
+        var facilityId = Guid.NewGuid();
+        var facility = MakeFacility(facilityId);
+        SetupCacheGetString($"medical-facilities:{facilityId}", null);
+        _facilityRepoMock.Setup(r => r.GetByIdWithDepartmentsAsync(facilityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(facility);
+        _feedbackReviewRepoMock.Setup(r => r.GetApprovedRatingSummariesByFacilityIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Single() == facilityId),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, FacilityRatingSummary>
+            {
+                [facilityId] = new FacilityRatingSummary(4.5, 2),
+            });
+
+        var result = await _service.GetMedicalFacilityByIdAsync(facilityId);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result!.AverageRating, Is.EqualTo(4.5));
+            Assert.That(result.ReviewCount, Is.EqualTo(2));
+        });
     }
 }

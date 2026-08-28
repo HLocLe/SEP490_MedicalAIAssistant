@@ -72,14 +72,7 @@ public sealed class MedicalFacilityRepository
             .AsNoTracking()
             .Where(x => !x.IsDeleted && x.IsActive);
 
-        if (departmentId.HasValue && departmentId.Value != Guid.Empty)
-        {
-            query = query.Where(x => x.FacilityDepartments.Any(fd =>
-                !fd.IsDeleted
-                && !fd.Department.IsDeleted
-                && fd.DepartmentId == departmentId.Value));
-        }
-
+        query = ApplyDepartmentFilter(query, departmentId);
         query = ApplySearch(query, search);
 
         return await query
@@ -87,6 +80,33 @@ public sealed class MedicalFacilityRepository
             .ThenInclude(x => x.Department)
             .OrderBy(x => (x.FacilityName ?? string.Empty).ToLower())
             .ThenBy(x => x.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<MedicalFacility>> GetActiveWithCoordinatesInBoundsAsync(
+        double minLatitude,
+        double maxLatitude,
+        double minLongitude,
+        double maxLongitude,
+        Guid? departmentId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _context.MedicalFacilities
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted
+                && x.IsActive
+                && x.Latitude.HasValue
+                && x.Longitude.HasValue
+                && x.Latitude >= (decimal)minLatitude
+                && x.Latitude <= (decimal)maxLatitude
+                && x.Longitude >= (decimal)minLongitude
+                && x.Longitude <= (decimal)maxLongitude);
+
+        query = ApplyDepartmentFilter(query, departmentId);
+
+        return await query
+            .Include(x => x.FacilityDepartments.Where(fd => !fd.IsDeleted))
+            .ThenInclude(x => x.Department)
             .ToListAsync(cancellationToken);
     }
 
@@ -134,6 +154,21 @@ public sealed class MedicalFacilityRepository
             .OrderBy(fd => fd.Department.DepartmentName)
             .ThenBy(fd => fd.Facility.FacilityName)
             .ToListAsync(cancellationToken);
+    }
+
+    private static IQueryable<MedicalFacility> ApplyDepartmentFilter(
+        IQueryable<MedicalFacility> query,
+        Guid? departmentId)
+    {
+        if (!departmentId.HasValue || departmentId.Value == Guid.Empty)
+        {
+            return query;
+        }
+
+        return query.Where(x => x.FacilityDepartments.Any(fd =>
+            !fd.IsDeleted
+            && !fd.Department.IsDeleted
+            && fd.DepartmentId == departmentId.Value));
     }
 
     private static IQueryable<MedicalFacility> ApplySearch(IQueryable<MedicalFacility> query, string? search)

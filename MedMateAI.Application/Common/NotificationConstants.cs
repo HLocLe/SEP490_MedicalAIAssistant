@@ -39,12 +39,14 @@ public static class NotificationTypes
     public const string RecoveryPlanCompleted = "RecoveryPlanCompleted";
     public const string RecoveryPlanCancelled = "RecoveryPlanCancelled";
     public const string MedicationReminder = "MedicationReminder";
+    public const string ConsultationReminder = "ConsultationReminder";
 }
 
 public static class NotificationReferenceTypes
 {
     public const string RecoveryPlan = "RecoveryPlan";
     public const string UserMedicationReminderTime = "UserMedicationReminderTime";
+    public const string ConsultationSession = "ConsultationSession";
 }
 
 public static class RecoveryPlanNotificationContent

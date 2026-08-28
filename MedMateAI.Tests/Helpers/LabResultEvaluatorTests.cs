@@ -1,4 +1,4 @@
-using MedMateAI.Application.Helpers;
+using MedMateAI.Application.Helpers.LabTest;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
 

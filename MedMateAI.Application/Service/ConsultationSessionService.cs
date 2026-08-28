@@ -14,6 +14,8 @@ using MedMateAI.Application.DTOs.WebChatbot.Responses;
 
 using MedMateAI.Application.IService;
 
+using MedMateAI.Application.Models.Notifications;
+
 using MedMateAI.Application.Models.ServiceCredits;
 
 using MedMateAI.Domain.Entities;
@@ -71,6 +73,10 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
 
     private readonly IConsultationSessionQuotaService _quotaService;
 
+    private readonly IPushNotificationGateway _pushGateway;
+
+    private readonly IUserPushDeviceRepository _pushDeviceRepository;
+
 
 
     public ConsultationSessionService(
@@ -97,7 +103,11 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
 
         IConsultationSessionJobScheduler jobScheduler,
 
-        IConsultationSessionQuotaService quotaService)
+        IConsultationSessionQuotaService quotaService,
+
+        IPushNotificationGateway pushGateway,
+
+        IUserPushDeviceRepository pushDeviceRepository)
 
     {
 
@@ -124,6 +134,10 @@ public sealed partial class ConsultationSessionService : IConsultationSessionSer
         _jobScheduler = jobScheduler;
 
         _quotaService = quotaService;
+
+        _pushGateway = pushGateway;
+
+        _pushDeviceRepository = pushDeviceRepository;
 
     }
 

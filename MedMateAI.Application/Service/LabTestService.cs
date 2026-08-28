@@ -5,7 +5,6 @@ using MedMateAI.Application.DTOs.LabIndicators.Responses;
 using MedMateAI.Application.DTOs.LabTests.Requests;
 using MedMateAI.Application.DTOs.LabTests.Responses;
 using MedMateAI.Application.DTOs.WebChatbot.Requests;
-using MedMateAI.Application.Helpers;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models.ServiceCredits;
 using MedMateAI.Domain.Common;
