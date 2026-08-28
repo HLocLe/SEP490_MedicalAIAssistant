@@ -18,17 +18,20 @@ public sealed class RecoveryPlanOutboxProcessor : IOutboxMessageProcessor
 
     private readonly IOutboxMessageRepository _outboxRepository;
     private readonly INotificationRepository _notificationRepository;
+    private readonly IUserPushDeviceRepository _pushDeviceRepository;
     private readonly RecoveryPlanJobOptions _options;
     private readonly ILogger<RecoveryPlanOutboxProcessor> _logger;
 
     public RecoveryPlanOutboxProcessor(
         IOutboxMessageRepository outboxRepository,
         INotificationRepository notificationRepository,
+        IUserPushDeviceRepository pushDeviceRepository,
         IOptions<RecoveryPlanJobOptions> options,
         ILogger<RecoveryPlanOutboxProcessor> logger)
     {
         _outboxRepository = outboxRepository;
         _notificationRepository = notificationRepository;
+        _pushDeviceRepository = pushDeviceRepository;
         _options = options.Value;
         _logger = logger;
     }
@@ -272,7 +275,52 @@ public sealed class RecoveryPlanOutboxProcessor : IOutboxMessageProcessor
                 message.AggregateId);
         }
 
+        var (pushTitle, pushBody) = GetPushContent(notificationType);
+        var devices = await _pushDeviceRepository.GetActiveByUserIdAsync(
+            plan.UserId,
+            cancellationToken);
+        foreach (var device in devices)
+        {
+            await _notificationRepository.TryInsertAsync(
+                new Notification
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = plan.UserId,
+                    PushDeviceId = device.Id,
+                    Title = pushTitle,
+                    Message = pushBody,
+                    Channel = NotificationChannels.Push,
+                    Status = NotificationStatuses.Pending,
+                    NotificationType = notificationType,
+                    ReferenceType = NotificationReferenceTypes.RecoveryPlan,
+                    ReferenceId = plan.PlanId,
+                    ScheduledAt = utcNow,
+                    DedupeKey = $"{dedupeKey}:push:{device.Id:N}",
+                    CreatedAt = utcNow
+                },
+                cancellationToken);
+        }
+
         return OutboxHandlerOutcome.Success;
+    }
+
+    private static (string Title, string Body) GetPushContent(
+        string notificationType)
+    {
+        return notificationType switch
+        {
+            NotificationTypes.RecoveryPlanReady => (
+                PushNotificationContent.RecoveryPlanReadyTitle,
+                PushNotificationContent.RecoveryPlanReadyMessage),
+            NotificationTypes.RecoveryPlanCompleted => (
+                PushNotificationContent.RecoveryPlanCompletedTitle,
+                PushNotificationContent.RecoveryPlanCompletedMessage),
+            NotificationTypes.RecoveryPlanCancelled => (
+                PushNotificationContent.RecoveryPlanCancelledTitle,
+                PushNotificationContent.RecoveryPlanCancelledMessage),
+            _ => throw new InvalidOperationException(
+                "Unsupported Recovery Plan push notification type.")
+        };
     }
 
     private OutboxHandlerOutcome HandleRecognizedNoOp(

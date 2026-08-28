@@ -24,11 +24,25 @@ public sealed class Notification : BaseEntity
 
     public DateTime? ScheduledAt { get; set; }
 
+    public DateTime? NextAttemptAt { get; set; }
+
     public int AttemptCount { get; set; }
+
+    public int ReceiptAttemptCount { get; set; }
+
+    public Guid? PushDeviceId { get; set; }
+
+    public string? ProviderMessageId { get; set; }
+
+    public DateTime? ProviderSubmittedAt { get; set; }
+
+    public int? ProviderPushTokenVersion { get; set; }
 
     public string? LastError { get; set; }
 
     public string? DedupeKey { get; set; }
 
     public FollowUpReminder? Reminder { get; set; }
+
+    public UserPushDevice? PushDevice { get; set; }
 }

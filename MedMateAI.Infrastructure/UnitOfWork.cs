@@ -30,6 +30,7 @@ public sealed class UnitOfWork : IUnitOfWork
     private IRecoveryPlanTemplateRepository? _recoveryPlanTemplates;
     private IQuotaUsageRepository? _quotaUsages;
     private IUserMedicationRepository? _userMedications;
+    private IUserPushDeviceRepository? _userPushDevices;
     private ILabIndicatorRepository? _labIndicators;
     private IGenericRepository<LabIndicatorAlias>? _labIndicatorAliases;
     private IGenericRepository<LabIndicatorReferenceRange>? _labIndicatorReferenceRanges;
@@ -109,6 +110,9 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public IUserMedicationRepository UserMedications =>
         _userMedications ??= new UserMedicationRepository(_context);
+
+    public IUserPushDeviceRepository UserPushDevices =>
+        _userPushDevices ??= new UserPushDeviceRepository(_context);
 
     public ILabIndicatorRepository LabIndicators =>
         _labIndicators ??= new LabIndicatorRepository(_context);

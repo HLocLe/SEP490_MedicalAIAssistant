@@ -32,6 +32,8 @@ public class ApplicationUser : IdentityUser<Guid>
 
     public ICollection<Notification> Notifications { get; set; } = new List<Notification>();
 
+    public ICollection<UserPushDevice> PushDevices { get; set; } = new List<UserPushDevice>();
+
     public ICollection<UserSubscription> UserSubscriptions { get; set; } = new List<UserSubscription>();
 
     public ICollection<PaymentTransaction> PaymentTransactions { get; set; } = new List<PaymentTransaction>();

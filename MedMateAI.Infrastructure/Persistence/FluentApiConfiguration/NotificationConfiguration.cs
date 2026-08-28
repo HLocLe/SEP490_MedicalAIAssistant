@@ -20,9 +20,14 @@ public sealed class NotificationConfiguration : IEntityTypeConfiguration<Notific
         builder.Property(x => x.Channel).HasMaxLength(32);
         builder.Property(x => x.Status).HasMaxLength(32);
         builder.Property(x => x.AttemptCount).HasDefaultValue(0);
+        builder.Property(x => x.ReceiptAttemptCount).HasDefaultValue(0);
+        builder.Property(x => x.ProviderMessageId).HasMaxLength(512);
+        builder.Property(x => x.ProviderPushTokenVersion);
         builder.Property(x => x.LastError).HasMaxLength(4000);
         builder.Property(x => x.DedupeKey).HasMaxLength(256);
         builder.HasIndex(x => new { x.Status, x.ScheduledAt });
+        builder.HasIndex(x => new { x.Channel, x.Status, x.NextAttemptAt });
+        builder.HasIndex(x => x.PushDeviceId);
         builder.HasIndex(x => new { x.ReferenceType, x.ReferenceId });
         builder.HasIndex(x => x.DedupeKey).IsUnique().HasFilter("\"DedupeKey\" IS NOT NULL");
 
@@ -31,5 +36,9 @@ public sealed class NotificationConfiguration : IEntityTypeConfiguration<Notific
             .HasForeignKey(x => x.UserId)
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Reminder).WithMany(x => x.Notifications).HasForeignKey(x => x.ReminderId).OnDelete(DeleteBehavior.SetNull);
+        builder.HasOne(x => x.PushDevice)
+            .WithMany(x => x.Notifications)
+            .HasForeignKey(x => x.PushDeviceId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

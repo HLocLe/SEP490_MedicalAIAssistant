@@ -26,6 +26,8 @@ using MedMateAI.Infrastructure.BackgroundJobs.RecoveryPlans;
 using MedMateAI.Infrastructure.ComputerVision;
 using MedMateAI.Infrastructure.ComputerVision.Options;
 using MedMateAI.Infrastructure.Payments.PayOS;
+using MedMateAI.Infrastructure.Push.Expo;
+using MedMateAI.Infrastructure.Push.Expo.Options;
 using MedMateAI.Infrastructure.Realtime.RecoveryPlans;
 using MedMateAI.Infrastructure.NationalInstitutesofHealth;
 using MedMateAI.Infrastructure.NationalInstitutesofHealth.Options;
@@ -37,6 +39,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
 namespace MedMateAI.Infrastructure;
@@ -113,9 +116,14 @@ public static class DependencyInjection
         services.AddScoped<IRecoveryPlanRealtimeAccessService, RecoveryPlanRealtimeAccessService>();
         services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<IUserPushDeviceRepository, UserPushDeviceRepository>();
         services.AddScoped<IUserMedicationRepository, UserMedicationRepository>();
         services.AddScoped<IOutboxMessageProcessor, RecoveryPlanOutboxProcessor>();
         services.AddScoped<INotificationEmailProcessor, NotificationEmailProcessor>();
+        services.AddScoped<INotificationPushProcessor, NotificationPushProcessor>();
+        services.AddScoped<
+            INotificationPushReceiptProcessor,
+            NotificationPushReceiptProcessor>();
         services.AddScoped<INotificationEmailRenderer, NotificationEmailRenderer>();
         services.AddScoped<
             IRecoveryPlanAssignmentTimeoutProcessor,
@@ -124,6 +132,7 @@ public static class DependencyInjection
             IRecoveryPlanCompletionProcessor,
             RecoveryPlanCompletionProcessor>();
         services.AddScoped<IMedicationReminderScheduler, MedicationReminderScheduler>();
+        services.AddScoped<IUserPushDeviceService, UserPushDeviceService>();
 
         //
         services.AddOptions<PayOSOptions>()
@@ -207,6 +216,29 @@ public static class DependencyInjection
                     options.MedicationSchedulerBatchSize is >= 1 and <= 1000,
                 "RecoveryPlanJobs MedicationSchedulerBatchSize must be between 1 and 1000.")
             .ValidateOnStart();
+
+        services.AddOptions<ExpoPushOptions>()
+            .Bind(configuration.GetSection(ExpoPushOptions.SectionName))
+            .Validate(
+                options => options.RequestTimeoutSeconds is >= 1 and <= 120,
+                "ExpoPush RequestTimeoutSeconds must be between 1 and 120.")
+            .Validate(
+                options => options.ReceiptDelayMinutes is >= 1 and <= 60,
+                "ExpoPush ReceiptDelayMinutes must be between 1 and 60.")
+            .Validate(
+                options => options.ReceiptRetryMinutes is >= 1 and <= 60,
+                "ExpoPush ReceiptRetryMinutes must be between 1 and 60.")
+            .Validate(
+                options => options.ReceiptMaxAttempts is >= 1 and <= 20,
+                "ExpoPush ReceiptMaxAttempts must be between 1 and 20.")
+            .Validate(
+                options => options.ReceiptBatchSize is >= 1 and <= 1000,
+                "ExpoPush ReceiptBatchSize must be between 1 and 1000.")
+            .Validate(
+                options => IsHttpsEndpoint(options.SendEndpoint)
+                           && IsHttpsEndpoint(options.ReceiptEndpoint),
+                "ExpoPush endpoints must be absolute HTTPS URLs.")
+            .ValidateOnStart();
       
         
         //
@@ -229,6 +261,16 @@ public static class DependencyInjection
         {
             client.Timeout = TimeSpan.FromSeconds(30);
         });
+
+        services.AddHttpClient<IPushNotificationGateway, ExpoPushGateway>(
+            (serviceProvider, client) =>
+            {
+                var options = serviceProvider
+                    .GetRequiredService<IOptions<ExpoPushOptions>>()
+                    .Value;
+                client.Timeout = TimeSpan.FromSeconds(
+                    options.RequestTimeoutSeconds);
+            });
 
         services.AddHttpClient<StringeeSmsSender>(client =>
         {
@@ -290,6 +332,8 @@ public static class DependencyInjection
         services.AddHostedService<IdentitySeedHostedService>();
         services.AddHostedService<OutboxBackgroundService>();
         services.AddHostedService<NotificationBackgroundService>();
+        services.AddHostedService<NotificationPushBackgroundService>();
+        services.AddHostedService<NotificationPushReceiptBackgroundService>();
         services.AddHostedService<RecoveryPlanLifecycleBackgroundService>();
         services.AddHostedService<MedicationReminderBackgroundService>();
         
@@ -349,5 +393,11 @@ public static class DependencyInjection
         services.AddHangfireBackgroundJobs(configuration);
 
         return services;
+    }
+
+    private static bool IsHttpsEndpoint(string? value)
+    {
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri)
+               && uri.Scheme == Uri.UriSchemeHttps;
     }
 }

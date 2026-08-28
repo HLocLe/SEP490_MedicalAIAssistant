@@ -77,6 +77,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<Notification> Notifications => Set<Notification>();
 
+    public DbSet<UserPushDevice> UserPushDevices => Set<UserPushDevice>();
+
     public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
 
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();

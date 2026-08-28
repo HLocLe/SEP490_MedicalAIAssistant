@@ -6,6 +6,8 @@ public sealed class RecoveryPlanJobOptions
 
     public bool OutboxProcessorEnabled { get; set; } = true;
     public bool NotificationEmailProcessorEnabled { get; set; } = true;
+    public bool NotificationPushProcessorEnabled { get; set; } = true;
+    public bool NotificationPushReceiptProcessorEnabled { get; set; } = true;
     public bool AssignmentTimeoutWorkerEnabled { get; set; } = true;
     public bool PlanCompletionWorkerEnabled { get; set; } = true;
     public bool MedicationReminderSchedulerEnabled { get; set; } = true;
