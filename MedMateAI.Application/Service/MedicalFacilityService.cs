@@ -3,6 +3,7 @@ using AutoMapper;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.MedicalFacilities.Requests;
 using MedMateAI.Application.DTOs.MedicalFacilities.Responses;
+using MedMateAI.Application.Helpers.GeoDistance;
 using MedMateAI.Application.IService;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
@@ -16,6 +17,10 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
     private const string ActiveFacilitiesCacheKey = "medical-facilities:active";
     private const string FacilityCacheKeyPrefix = "medical-facilities:";
     private const int ImageUrlMaxLength = 2048;
+    private const double MinNearbyRadiusKm = 0.1;
+    private const double MaxNearbyRadiusKm = 50;
+    private const int DefaultNearbyLimit = 20;
+    private const int MaxNearbyLimit = 100;
 
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
     private static readonly DistributedCacheEntryOptions CacheOptions = new()
@@ -51,13 +56,16 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             isActive,
             cancellationToken);
 
+        var items = paged.Items.Select(facility => _mapper.Map<MedicalFacilityResponse>(facility)).ToList();
+        await ApplyApprovedRatingsAsync(items, cancellationToken);
+
         return new PagedResponse<MedicalFacilityResponse>
         {
             PageNumber = paged.PageNumber,
             PageSize = paged.PageSize,
             TotalCount = paged.TotalCount,
             TotalPages = paged.TotalPages,
-            Items = paged.Items.Select(facility => _mapper.Map<MedicalFacilityResponse>(facility)).ToList(),
+            Items = items,
         };
     }
 
@@ -75,6 +83,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
                 var cachedResponse = JsonSerializer.Deserialize<List<MedicalFacilityResponse>>(cached);
                 if (cachedResponse is not null)
                 {
+                    await ApplyApprovedRatingsAsync(cachedResponse, cancellationToken);
                     return cachedResponse;
                 }
             }
@@ -86,6 +95,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             cancellationToken);
 
         var response = entities.Select(facility => _mapper.Map<MedicalFacilityResponse>(facility)).ToList();
+        await ApplyApprovedRatingsAsync(response, cancellationToken);
 
         if (shouldUseCache)
         {
@@ -97,6 +107,62 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         }
 
         return response;
+    }
+
+    public async Task<(IEnumerable<string> Errors, IReadOnlyList<MedicalFacilityNearbyResponse> Data)> ListNearbyMedicalFacilitiesAsync(
+        double latitude,
+        double longitude,
+        double radiusKm,
+        Guid? departmentId = null,
+        int limit = DefaultNearbyLimit,
+        CancellationToken cancellationToken = default)
+    {
+        var errors = ValidateNearbyQuery(latitude, longitude, radiusKm, departmentId, limit);
+        if (errors.Count > 0)
+        {
+            return (errors, Array.Empty<MedicalFacilityNearbyResponse>());
+        }
+
+        var (minLat, maxLat, minLon, maxLon) = GeoDistanceHelper.GetBoundingBox(
+            latitude,
+            longitude,
+            radiusKm);
+
+        var candidates = await _unitOfWork.MedicalFacilities.GetActiveWithCoordinatesInBoundsAsync(
+            minLat,
+            maxLat,
+            minLon,
+            maxLon,
+            departmentId,
+            cancellationToken);
+
+        var normalizedLimit = limit < 1 ? DefaultNearbyLimit : limit;
+        normalizedLimit = normalizedLimit > MaxNearbyLimit ? MaxNearbyLimit : normalizedLimit;
+
+        var nearby = candidates
+            .Select(facility =>
+            {
+                var facilityLat = (double)facility.Latitude!.Value;
+                var facilityLon = (double)facility.Longitude!.Value;
+                var distanceKm = GeoDistanceHelper.DistanceKm(
+                    latitude,
+                    longitude,
+                    facilityLat,
+                    facilityLon);
+                var mapped = _mapper.Map<MedicalFacilityNearbyResponse>(facility);
+                mapped.DistanceKm = Math.Round(distanceKm, 3, MidpointRounding.AwayFromZero);
+                return mapped;
+            })
+            .Where(facility => facility.DistanceKm <= radiusKm)
+            .OrderBy(facility => facility.DistanceKm)
+            .ThenBy(facility => (facility.FacilityName ?? string.Empty).ToLowerInvariant())
+            .ThenBy(facility => facility.Id)
+            .Take(normalizedLimit)
+            .ToList();
+
+        await ApplyApprovedRatingsAsync(nearby, cancellationToken);
+
+        return (Array.Empty<string>(), nearby);
     }
 
     public async Task<MedicalFacilityResponse?> GetMedicalFacilityByIdAsync(
@@ -115,6 +181,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
             var cachedResponse = JsonSerializer.Deserialize<MedicalFacilityResponse>(cached);
             if (cachedResponse is not null)
             {
+                await ApplyApprovedRatingsAsync(new List<MedicalFacilityResponse> { cachedResponse }, cancellationToken);
                 return cachedResponse;
             }
         }
@@ -126,6 +193,7 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         }
 
         var response = _mapper.Map<MedicalFacilityResponse>(entity);
+        await ApplyApprovedRatingsAsync(new List<MedicalFacilityResponse> { response }, cancellationToken);
         await _cache.SetStringAsync(
             cacheKey,
             JsonSerializer.Serialize(response),
@@ -198,7 +266,9 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         await InvalidateMedicalFacilityCachesAsync(entity.Id, cancellationToken);
 
         var created = await _unitOfWork.MedicalFacilities.GetByIdWithDepartmentsAsync(entity.Id, cancellationToken);
-        return (true, Array.Empty<string>(), _mapper.Map<MedicalFacilityResponse>(created ?? entity));
+        var createdResponse = _mapper.Map<MedicalFacilityResponse>(created ?? entity);
+        await ApplyApprovedRatingsAsync(new List<MedicalFacilityResponse> { createdResponse }, cancellationToken);
+        return (true, Array.Empty<string>(), createdResponse);
     }
 
     public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, MedicalFacilityResponse? Data)> UpdateMedicalFacilityAsync(
@@ -388,7 +458,9 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         await InvalidateMedicalFacilityCachesAsync(id, cancellationToken);
 
         var updated = await _unitOfWork.MedicalFacilities.GetByIdWithDepartmentsAsync(id, cancellationToken);
-        return (true, false, Array.Empty<string>(), _mapper.Map<MedicalFacilityResponse>(updated ?? entity));
+        var updatedResponse = _mapper.Map<MedicalFacilityResponse>(updated ?? entity);
+        await ApplyApprovedRatingsAsync(new List<MedicalFacilityResponse> { updatedResponse }, cancellationToken);
+        return (true, false, Array.Empty<string>(), updatedResponse);
     }
 
     public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors, MedicalFacilityResponse? Data)> UpdateMedicalFacilityStatusAsync(
@@ -420,7 +492,9 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         await InvalidateMedicalFacilityCachesAsync(id, cancellationToken);
 
         var updated = await _unitOfWork.MedicalFacilities.GetByIdWithDepartmentsAsync(id, cancellationToken);
-        return (true, false, Array.Empty<string>(), _mapper.Map<MedicalFacilityResponse>(updated ?? entity));
+        var statusResponse = _mapper.Map<MedicalFacilityResponse>(updated ?? entity);
+        await ApplyApprovedRatingsAsync(new List<MedicalFacilityResponse> { statusResponse }, cancellationToken);
+        return (true, false, Array.Empty<string>(), statusResponse);
     }
 
     public async Task<(bool Succeeded, bool NotFound, IEnumerable<string> Errors)> SoftDeleteMedicalFacilityAsync(
@@ -672,6 +746,73 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
     private static bool IsValidFacilityType(MedicalFacilityType facilityType)
     {
         return Enum.IsDefined(typeof(MedicalFacilityType), facilityType);
+    }
+
+    private static List<string> ValidateNearbyQuery(
+        double latitude,
+        double longitude,
+        double radiusKm,
+        Guid? departmentId,
+        int limit)
+    {
+        var errors = new List<string>();
+
+        if (!IsLatitudeValid((decimal)latitude))
+        {
+            errors.Add("Latitude phải từ -90 đến 90");
+        }
+
+        if (!IsLongitudeValid((decimal)longitude))
+        {
+            errors.Add("Longitude phải từ -180 đến 180");
+        }
+
+        if (radiusKm < MinNearbyRadiusKm || radiusKm > MaxNearbyRadiusKm)
+        {
+            errors.Add($"RadiusKm phải từ {MinNearbyRadiusKm} đến {MaxNearbyRadiusKm}");
+        }
+
+        if (departmentId.HasValue && departmentId.Value == Guid.Empty)
+        {
+            errors.Add("DepartmentId không hợp lệ");
+        }
+
+        if (limit < 1 || limit > MaxNearbyLimit)
+        {
+            errors.Add($"Limit phải từ 1 đến {MaxNearbyLimit}");
+        }
+
+        return errors;
+    }
+
+    private async Task ApplyApprovedRatingsAsync<T>(
+        IList<T> facilities,
+        CancellationToken cancellationToken)
+        where T : MedicalFacilityResponse
+    {
+        if (facilities.Count == 0)
+        {
+            return;
+        }
+
+        var facilityIds = facilities.Select(facility => facility.Id).Distinct().ToList();
+        var summaries = await _unitOfWork.FeedbackReviews.GetApprovedRatingSummariesByFacilityIdsAsync(
+            facilityIds,
+            cancellationToken);
+
+        foreach (var facility in facilities)
+        {
+            if (summaries.TryGetValue(facility.Id, out var summary))
+            {
+                facility.AverageRating = Math.Round(summary.AverageRating, 2, MidpointRounding.AwayFromZero);
+                facility.ReviewCount = summary.ReviewCount;
+            }
+            else
+            {
+                facility.AverageRating = null;
+                facility.ReviewCount = 0;
+            }
+        }
     }
 
     private static string? NormalizeText(string? value)

@@ -141,6 +141,36 @@ public sealed class FeedbackReviewRepository
             .FirstOrDefaultAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, FacilityRatingSummary>> GetApprovedRatingSummariesByFacilityIdsAsync(
+        IReadOnlyCollection<Guid> facilityIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (facilityIds.Count == 0)
+        {
+            return new Dictionary<Guid, FacilityRatingSummary>();
+        }
+
+        var summaries = await _context.FeedbackReviews
+            .AsNoTracking()
+            .Where(x =>
+                !x.IsDeleted
+                && x.Status != null
+                && x.Status.ToLower() == ApprovedStatus
+                && facilityIds.Contains(x.FacilityId))
+            .GroupBy(x => x.FacilityId)
+            .Select(group => new
+            {
+                FacilityId = group.Key,
+                AverageRating = group.Average(review => review.Rating),
+                ReviewCount = group.Count(),
+            })
+            .ToListAsync(cancellationToken);
+
+        return summaries.ToDictionary(
+            summary => summary.FacilityId,
+            summary => new FacilityRatingSummary(summary.AverageRating, summary.ReviewCount));
+    }
+
     private IQueryable<FeedbackReview> BuildDetailsQuery()
     {
         return _context.FeedbackReviews

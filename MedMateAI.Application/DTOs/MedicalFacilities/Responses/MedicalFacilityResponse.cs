@@ -2,7 +2,7 @@ using MedMateAI.Domain.Enums;
 
 namespace MedMateAI.Application.DTOs.MedicalFacilities.Responses;
 
-public sealed class MedicalFacilityResponse
+public class MedicalFacilityResponse
 {
     public Guid Id { get; set; }
 
@@ -27,6 +27,10 @@ public sealed class MedicalFacilityResponse
     public bool IsActive { get; set; }
 
     public IReadOnlyList<MedicalFacilityDepartmentResponse> Departments { get; set; } = Array.Empty<MedicalFacilityDepartmentResponse>();
+
+    public double? AverageRating { get; set; }
+
+    public int ReviewCount { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

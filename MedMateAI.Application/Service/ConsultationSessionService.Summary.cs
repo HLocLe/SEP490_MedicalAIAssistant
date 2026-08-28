@@ -2,9 +2,10 @@ using MedMateAI.Application.Common;
 using MedMateAI.Application.DTOs.ChecklistItems.Responses;
 using MedMateAI.Application.DTOs.ConsultationSessions.Requests;
 using MedMateAI.Application.DTOs.ConsultationSessions.Responses;
+using MedMateAI.Application.DTOs.Users.Responses;
+using MedMateAI.Application.Models.Notifications;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
-
 namespace MedMateAI.Application.Service;
 
 public sealed partial class ConsultationSessionService
@@ -46,9 +47,16 @@ public sealed partial class ConsultationSessionService
         }
 
         var user = await _userService.GetUserByIdAsync(userId, cancellationToken);
-        if (user is null || string.IsNullOrWhiteSpace(user.Email))
+        if (user is null)
         {
-            return (false, false, new[] { "Email là bắt buộc để đăng ký nhắc nhở." });
+            return (false, false, new[] { "Không tìm thấy người dùng." });
+        }
+
+        var hasEmail = !string.IsNullOrWhiteSpace(user.Email);
+        var hasPushDevices = await HasActivePushDevicesAsync(userId, cancellationToken);
+        if (!hasEmail && !hasPushDevices)
+        {
+            return (false, false, new[] { "Email hoặc thiết bị nhận push là bắt buộc để đăng ký nhắc nhở." });
         }
 
         session.IsReminderEnabled = true;
@@ -164,8 +172,8 @@ public sealed partial class ConsultationSessionService
         if (sendReminderSms
             && session.IsReminderEnabled
             && !session.ReminderSmsSentAt.HasValue
-            && !string.IsNullOrWhiteSpace(user.Email)
-            && session.AppointmentTime.HasValue)
+            && session.AppointmentTime.HasValue
+            && (HasDeliveryEmail(user) || await HasActivePushDevicesAsync(userId, cancellationToken)))
         {
            
             var remindAtUtc = session.AppointmentTime.Value.ToUniversalTime().AddHours(-1);
@@ -265,7 +273,14 @@ public sealed partial class ConsultationSessionService
         }
 
         var user = await _userService.GetUserByIdAsync(session.UserId, cancellationToken);
-        if (user is null || string.IsNullOrWhiteSpace(user.Email))
+        if (user is null)
+        {
+            return;
+        }
+
+        var hasEmail = HasDeliveryEmail(user);
+        var hasPushDevices = await HasActivePushDevicesAsync(session.UserId, cancellationToken);
+        if (!hasEmail && !hasPushDevices)
         {
             return;
         }
@@ -283,22 +298,40 @@ public sealed partial class ConsultationSessionService
             facilityName = facility?.FacilityName?.Trim();
         }
 
-        var htmlContent = ConsultationReminderEmailBuilder.BuildHtml(
-            user.DisplayName ?? user.UserName ?? "Bạn",
-            user.DateOfBirth,
-            department?.DepartmentName ?? string.Empty,
-            facilityName ?? "Chưa cập nhật",
-            session.AppointmentTime);
-
-        try
+        var departmentName = department?.DepartmentName?.Trim() ?? string.Empty;
+        var facilityDisplayName = facilityName ?? "Chưa cập nhật";
+        var emailSent = false;
+        if (hasEmail)
         {
-            await _emailSender.SendAsync(
-                user.Email,
-                ConsultationReminderEmailBuilder.Subject,
-                htmlContent,
-                cancellationToken);
+            var htmlContent = ConsultationReminderEmailBuilder.BuildHtml(
+                user.DisplayName ?? user.UserName ?? "Bạn",
+                user.DateOfBirth,
+                departmentName,
+                facilityDisplayName,
+                session.AppointmentTime);
+
+            try
+            {
+                await _emailSender.SendAsync(
+                    user.Email!,
+                    ConsultationReminderEmailBuilder.Subject,
+                    htmlContent,
+                    cancellationToken);
+                emailSent = true;
+            }
+            catch
+            {
+                emailSent = false;
+            }
         }
-        catch
+
+        var pushSent = await SendConsultationReminderPushAsync(
+            session,
+            departmentName,
+            facilityDisplayName,
+            cancellationToken);
+
+        if (!emailSent && !pushSent)
         {
             return;
         }
@@ -307,5 +340,76 @@ public sealed partial class ConsultationSessionService
         session.UpdatedAt = DateTime.UtcNow;
         _consultationSessions.Update(session);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    private static bool HasDeliveryEmail(ApplicationUserResponse user)
+    {
+        return !string.IsNullOrWhiteSpace(user.Email);
+    }
+
+    private async Task<bool> HasActivePushDevicesAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var devices = await _pushDeviceRepository.GetActiveByUserIdAsync(userId, cancellationToken);
+        return devices.Count > 0;
+    }
+
+    private async Task<bool> SendConsultationReminderPushAsync(
+        ConsultationSession session,
+        string departmentName,
+        string facilityName,
+        CancellationToken cancellationToken)
+    {
+        var devices = await _pushDeviceRepository.GetActiveByUserIdAsync(
+            session.UserId,
+            cancellationToken);
+        if (devices.Count == 0)
+        {
+            return false;
+        }
+
+        var body = ConsultationReminderPushBuilder.BuildBody(
+            departmentName,
+            facilityName,
+            session.AppointmentTime);
+        var data = ConsultationReminderPushBuilder.BuildData(session.Id);
+        var ttlSeconds = ConsultationReminderPushBuilder.BuildTimeToLiveSeconds(session.AppointmentTime);
+        var anyAccepted = false;
+        var utcNow = DateTime.UtcNow;
+
+        foreach (var device in devices)
+        {
+            if (string.IsNullOrWhiteSpace(device.ExpoPushToken))
+            {
+                continue;
+            }
+
+            var result = await _pushGateway.SendAsync(
+                new PushNotificationMessage(
+                    device.ExpoPushToken,
+                    ConsultationReminderPushBuilder.Title,
+                    body,
+                    data,
+                    ttlSeconds),
+                cancellationToken);
+
+            switch (result.Outcome)
+            {
+                case PushSendOutcome.Accepted:
+                    anyAccepted = true;
+                    break;
+                case PushSendOutcome.InvalidDevice:
+                    await _pushDeviceRepository.DeactivateIfTokenVersionMatchesAsync(
+                        device.Id,
+                        device.UserId,
+                        device.TokenVersion,
+                        utcNow,
+                        cancellationToken);
+                    break;
+            }
+        }
+
+        return anyAccepted;
     }
 }

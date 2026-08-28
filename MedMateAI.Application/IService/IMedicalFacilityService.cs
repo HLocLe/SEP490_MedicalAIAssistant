@@ -18,6 +18,14 @@ public interface IMedicalFacilityService
         string? search = null,
         CancellationToken cancellationToken = default);
 
+    Task<(IEnumerable<string> Errors, IReadOnlyList<MedicalFacilityNearbyResponse> Data)> ListNearbyMedicalFacilitiesAsync(
+        double latitude,
+        double longitude,
+        double radiusKm,
+        Guid? departmentId = null,
+        int limit = 20,
+        CancellationToken cancellationToken = default);
+
     Task<MedicalFacilityResponse?> GetMedicalFacilityByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default);

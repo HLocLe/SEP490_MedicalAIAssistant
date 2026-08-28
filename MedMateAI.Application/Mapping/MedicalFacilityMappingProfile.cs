@@ -9,6 +9,8 @@ public sealed class MedicalFacilityMappingProfile : Profile
     public MedicalFacilityMappingProfile()
     {
         CreateMap<MedicalFacility, MedicalFacilityResponse>()
+            .ForMember(dest => dest.AverageRating, opt => opt.Ignore())
+            .ForMember(dest => dest.ReviewCount, opt => opt.Ignore())
             .ForMember(
                 dest => dest.Departments,
                 opt => opt.MapFrom(src => src.FacilityDepartments
@@ -25,5 +27,9 @@ public sealed class MedicalFacilityMappingProfile : Profile
                         Description = facilityDepartment.Department.Description,
                     })
                     .ToList()));
+
+        CreateMap<MedicalFacility, MedicalFacilityNearbyResponse>()
+            .IncludeBase<MedicalFacility, MedicalFacilityResponse>()
+            .ForMember(dest => dest.DistanceKm, opt => opt.Ignore());
     }
 }

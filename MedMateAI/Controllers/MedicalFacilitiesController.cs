@@ -63,6 +63,36 @@ public sealed class MedicalFacilitiesController : ControllerBase
         return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
+    [HttpGet("nearby")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<MedicalFacilityNearbyResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<MedicalFacilityNearbyResponse>>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ListNearby(
+        [FromQuery] double latitude,
+        [FromQuery] double longitude,
+        [FromQuery] double radiusKm = 5,
+        [FromQuery] Guid? departmentId = null,
+        [FromQuery] int limit = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var (errors, data) = await _medicalFacilityService.ListNearbyMedicalFacilitiesAsync(
+            latitude,
+            longitude,
+            radiusKm,
+            departmentId,
+            limit,
+            cancellationToken);
+
+        if (errors.Any())
+        {
+            return BadRequest(ApiResponseFactory.FailFromErrors<IReadOnlyList<MedicalFacilityNearbyResponse>>(
+                errors,
+                "Tìm cơ sở y tế gần bạn thất bại"));
+        }
+
+        return Ok(ApiResponseFactory.Success(data, "OK"));
+    }
+
     [HttpGet("{id:guid}")]
     [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<MedicalFacilityResponse>), StatusCodes.Status200OK)]

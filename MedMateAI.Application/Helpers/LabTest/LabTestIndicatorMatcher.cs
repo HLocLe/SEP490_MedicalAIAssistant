@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using MedMateAI.Domain.Entities;
 
-namespace MedMateAI.Application.Helpers;
+namespace MedMateAI.Application.Helpers.LabTest;
 
 public sealed record IndicatorMatchResult(
     LabIndicatorMaster Indicator,

@@ -1,7 +1,7 @@
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
 
-namespace MedMateAI.Application.Helpers;
+namespace MedMateAI.Application.Helpers.LabTest;
 
 public static class LabResultEvaluator
 {
