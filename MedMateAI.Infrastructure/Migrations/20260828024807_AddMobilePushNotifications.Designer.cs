@@ -3,6 +3,7 @@ using System;
 using MedMateAI.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MedMateAI.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260828024807_AddMobilePushNotifications")]
+    partial class AddMobilePushNotifications
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1318,9 +1321,6 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.Property<string>("ProviderMessageId")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
-
-                    b.Property<int?>("ProviderPushTokenVersion")
-                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("ProviderSubmittedAt")
                         .HasColumnType("timestamp with time zone");
@@ -2931,11 +2931,6 @@ namespace MedMateAI.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
-
-                    b.Property<int>("TokenVersion")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1);
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");

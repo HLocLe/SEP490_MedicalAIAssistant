@@ -17,17 +17,20 @@ public sealed class MedicationReminderScheduler : IMedicationReminderScheduler
 
     private readonly IUserMedicationRepository _medicationRepository;
     private readonly INotificationRepository _notificationRepository;
+    private readonly IUserPushDeviceRepository _pushDeviceRepository;
     private readonly RecoveryPlanJobOptions _options;
     private readonly ILogger<MedicationReminderScheduler> _logger;
 
     public MedicationReminderScheduler(
         IUserMedicationRepository medicationRepository,
         INotificationRepository notificationRepository,
+        IUserPushDeviceRepository pushDeviceRepository,
         IOptions<RecoveryPlanJobOptions> options,
         ILogger<MedicationReminderScheduler> logger)
     {
         _medicationRepository = medicationRepository;
         _notificationRepository = notificationRepository;
+        _pushDeviceRepository = pushDeviceRepository;
         _options = options.Value;
         _logger = logger;
     }
@@ -46,6 +49,8 @@ public sealed class MedicationReminderScheduler : IMedicationReminderScheduler
         var latestLocalDate = DateOnly.FromDateTime(
             windowEndUtc.AddHours(MaximumTimeZoneOffsetHours));
         var pageNumber = 1;
+        var devicesByUser =
+            new Dictionary<Guid, IReadOnlyList<UserPushDeviceData>>();
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -60,8 +65,20 @@ public sealed class MedicationReminderScheduler : IMedicationReminderScheduler
             {
                 try
                 {
+                    if (!devicesByUser.TryGetValue(
+                            schedule.UserId,
+                            out var pushDevices))
+                    {
+                        pushDevices = await _pushDeviceRepository
+                            .GetActiveByUserIdAsync(
+                                schedule.UserId,
+                                cancellationToken);
+                        devicesByUser[schedule.UserId] = pushDevices;
+                    }
+
                     await ScheduleOccurrencesAsync(
                         schedule,
+                        pushDevices,
                         windowStartUtc,
                         windowEndUtc,
                         utcNow,
@@ -92,6 +109,7 @@ public sealed class MedicationReminderScheduler : IMedicationReminderScheduler
 
     private async Task ScheduleOccurrencesAsync(
         MedicationReminderScheduleData schedule,
+        IReadOnlyList<UserPushDeviceData> pushDevices,
         DateTime windowStartUtc,
         DateTime windowEndUtc,
         DateTime utcNow,
@@ -127,9 +145,30 @@ public sealed class MedicationReminderScheduler : IMedicationReminderScheduler
                 continue;
             }
 
+            var dedupeKey = BuildMedicationReminderDedupeKey(
+                schedule.ReminderTimeId,
+                localDate,
+                schedule.TimeOfDay,
+                dueUtc.Value);
             await _notificationRepository.TryInsertAsync(
-                CreateNotification(schedule, localDate, dueUtc.Value, utcNow),
+                CreateEmailNotification(
+                    schedule,
+                    dueUtc.Value,
+                    utcNow,
+                    dedupeKey),
                 cancellationToken);
+
+            foreach (var device in pushDevices)
+            {
+                await _notificationRepository.TryInsertAsync(
+                    CreatePushNotification(
+                        schedule,
+                        device.Id,
+                        dueUtc.Value,
+                        utcNow,
+                        $"{dedupeKey}:push:{device.Id:N}"),
+                    cancellationToken);
+            }
         }
     }
 
@@ -193,11 +232,11 @@ public sealed class MedicationReminderScheduler : IMedicationReminderScheduler
             reminderTimeId);
     }
 
-    private static Notification CreateNotification(
+    private static Notification CreateEmailNotification(
         MedicationReminderScheduleData schedule,
-        DateOnly localDate,
         DateTime dueUtc,
-        DateTime utcNow)
+        DateTime utcNow,
+        string dedupeKey)
     {
         return new Notification
         {
@@ -215,11 +254,32 @@ public sealed class MedicationReminderScheduler : IMedicationReminderScheduler
             ScheduledAt = dueUtc,
             AttemptCount = 0,
             LastError = null,
-            DedupeKey = BuildMedicationReminderDedupeKey(
-                schedule.ReminderTimeId,
-                localDate,
-                schedule.TimeOfDay,
-                dueUtc),
+            DedupeKey = dedupeKey,
+            CreatedAt = utcNow
+        };
+    }
+
+    private static Notification CreatePushNotification(
+        MedicationReminderScheduleData schedule,
+        Guid pushDeviceId,
+        DateTime dueUtc,
+        DateTime utcNow,
+        string dedupeKey)
+    {
+        return new Notification
+        {
+            Id = Guid.NewGuid(),
+            UserId = schedule.UserId,
+            PushDeviceId = pushDeviceId,
+            Title = PushNotificationContent.MedicationReminderTitle,
+            Message = PushNotificationContent.MedicationReminderMessage,
+            Channel = NotificationChannels.Push,
+            Status = NotificationStatuses.Pending,
+            NotificationType = NotificationTypes.MedicationReminder,
+            ReferenceType = NotificationReferenceTypes.UserMedicationReminderTime,
+            ReferenceId = schedule.ReminderTimeId,
+            ScheduledAt = dueUtc,
+            DedupeKey = dedupeKey,
             CreatedAt = utcNow
         };
     }

@@ -3,15 +3,34 @@ namespace MedMateAI.Application.Common;
 public static class NotificationChannels
 {
     public const string Email = "Email";
+    public const string Push = "Push";
 }
 
 public static class NotificationStatuses
 {
     public const string Pending = "Pending";
     public const string Processing = "Processing";
+    public const string Submitted = "Submitted";
+    public const string ReceiptProcessing = "ReceiptProcessing";
     public const string Sent = "Sent";
     public const string Failed = "Failed";
     public const string Cancelled = "Cancelled";
+}
+
+public static class PushNotificationContent
+{
+    public const string RecoveryPlanReadyTitle = "Kế hoạch hồi phục đã sẵn sàng";
+    public const string RecoveryPlanReadyMessage =
+        "Kế hoạch hồi phục của bạn đã sẵn sàng. Nhấn để xem chi tiết.";
+    public const string RecoveryPlanCompletedTitle = "Kế hoạch hồi phục đã kết thúc";
+    public const string RecoveryPlanCompletedMessage =
+        "Kế hoạch hồi phục của bạn đã kết thúc. Nhấn để xem thông tin.";
+    public const string RecoveryPlanCancelledTitle = "Kế hoạch hồi phục đã được hủy";
+    public const string RecoveryPlanCancelledMessage =
+        "Kế hoạch hồi phục của bạn đã được hủy. Nhấn để xem thông tin.";
+    public const string MedicationReminderTitle = "Nhắc lịch dùng thuốc";
+    public const string MedicationReminderMessage =
+        "Đã đến thời gian dùng thuốc theo lịch bạn đã lưu.";
 }
 
 public static class NotificationTypes
