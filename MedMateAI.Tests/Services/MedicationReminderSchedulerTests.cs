@@ -16,6 +16,7 @@ public class MedicationReminderSchedulerTests
 {
     private Mock<IUserMedicationRepository> _medicationRepositoryMock = null!;
     private Mock<INotificationRepository> _notificationRepositoryMock = null!;
+    private Mock<IUserPushDeviceRepository> _pushDeviceRepositoryMock = null!;
     private Mock<ILogger<MedicationReminderScheduler>> _loggerMock = null!;
     private MedicationReminderScheduler _scheduler = null!;
 
@@ -26,7 +27,14 @@ public class MedicationReminderSchedulerTests
     {
         _medicationRepositoryMock = new Mock<IUserMedicationRepository>();
         _notificationRepositoryMock = new Mock<INotificationRepository>();
+        _pushDeviceRepositoryMock = new Mock<IUserPushDeviceRepository>();
         _loggerMock = new Mock<ILogger<MedicationReminderScheduler>>();
+
+        _pushDeviceRepositoryMock
+            .Setup(repository => repository.GetActiveByUserIdAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<UserPushDeviceData>());
 
         _scheduler = BuildScheduler(new RecoveryPlanJobOptions());
     }
@@ -35,6 +43,7 @@ public class MedicationReminderSchedulerTests
         new(
             _medicationRepositoryMock.Object,
             _notificationRepositoryMock.Object,
+            _pushDeviceRepositoryMock.Object,
             Options.Create(options),
             _loggerMock.Object);
 
@@ -225,6 +234,139 @@ public class MedicationReminderSchedulerTests
             It.Is<It.IsAnyType>((state, type) => state.ToString()!.Contains("invalid local time")),
             null,
             It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ScheduleAsync_ActivePushDevice_CreatesEmailAndPushNotifications()
+    {
+        var schedule = CreateActiveSchedule();
+        var device = new UserPushDeviceData(
+            Guid.NewGuid(),
+            schedule.UserId,
+            "ExponentPushToken[test]",
+            1,
+            "android",
+            true);
+        SetupSchedulePage(1, 200, new[] { schedule });
+        SetupPushDevices(schedule.UserId, new[] { device });
+        var notifications = CaptureInsertedNotifications();
+
+        await _scheduler.ScheduleAsync(_utcNow, CancellationToken.None);
+
+        var email = notifications.Single(notification =>
+            notification.Channel == NotificationChannels.Email);
+        var push = notifications.Single(notification =>
+            notification.Channel == NotificationChannels.Push);
+        Assert.Multiple(() =>
+        {
+            Assert.That(notifications, Has.Count.EqualTo(2));
+            Assert.That(push.UserId, Is.EqualTo(schedule.UserId));
+            Assert.That(push.PushDeviceId, Is.EqualTo(device.Id));
+            Assert.That(push.NotificationType, Is.EqualTo(NotificationTypes.MedicationReminder));
+            Assert.That(push.ReferenceType, Is.EqualTo(NotificationReferenceTypes.UserMedicationReminderTime));
+            Assert.That(push.ReferenceId, Is.EqualTo(schedule.ReminderTimeId));
+            Assert.That(push.Status, Is.EqualTo(NotificationStatuses.Pending));
+            Assert.That(push.ScheduledAt, Is.EqualTo(new DateTime(2026, 8, 13, 1, 0, 0, DateTimeKind.Utc)));
+            Assert.That(push.DedupeKey, Is.Not.EqualTo(email.DedupeKey));
+            Assert.That(push.DedupeKey, Does.EndWith($":push:{device.Id:N}"));
+        });
+    }
+
+    [Test]
+    public async Task ScheduleAsync_MultipleActivePushDevices_CreatesOnePushPerDevice()
+    {
+        var schedule = CreateActiveSchedule();
+        var devices = new[]
+        {
+            new UserPushDeviceData(
+                Guid.NewGuid(),
+                schedule.UserId,
+                "ExponentPushToken[first]",
+                1,
+                "android",
+                true),
+            new UserPushDeviceData(
+                Guid.NewGuid(),
+                schedule.UserId,
+                "ExponentPushToken[second]",
+                1,
+                "ios",
+                true)
+        };
+        SetupSchedulePage(1, 200, new[] { schedule });
+        SetupPushDevices(schedule.UserId, devices);
+        var notifications = CaptureInsertedNotifications();
+
+        await _scheduler.ScheduleAsync(_utcNow, CancellationToken.None);
+
+        var pushNotifications = notifications
+            .Where(notification => notification.Channel == NotificationChannels.Push)
+            .ToList();
+        Assert.Multiple(() =>
+        {
+            Assert.That(notifications.Count(notification =>
+                notification.Channel == NotificationChannels.Email), Is.EqualTo(1));
+            Assert.That(pushNotifications, Has.Count.EqualTo(2));
+            Assert.That(
+                pushNotifications.Select(notification => notification.PushDeviceId),
+                Is.EquivalentTo(devices.Select(device => (Guid?)device.Id)));
+            Assert.That(
+                pushNotifications.Select(notification => notification.DedupeKey),
+                Is.Unique);
+        });
+    }
+
+    [Test]
+    public async Task ScheduleAsync_NoPushDevice_CreatesEmailOnly()
+    {
+        var schedule = CreateActiveSchedule();
+        SetupSchedulePage(1, 200, new[] { schedule });
+        var notifications = CaptureInsertedNotifications();
+
+        await _scheduler.ScheduleAsync(_utcNow, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(notifications, Has.Count.EqualTo(1));
+            Assert.That(notifications[0].Channel, Is.EqualTo(NotificationChannels.Email));
+            Assert.That(notifications.Count(notification =>
+                notification.Channel == NotificationChannels.Push), Is.Zero);
+        });
+    }
+
+    private static MedicationReminderScheduleData CreateActiveSchedule()
+    {
+        return new MedicationReminderScheduleData(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            new DateOnly(2026, 8, 1),
+            new DateOnly(2026, 8, 31),
+            new TimeOnly(8, 0),
+            "Asia/Ho_Chi_Minh");
+    }
+
+    private List<Notification> CaptureInsertedNotifications()
+    {
+        var notifications = new List<Notification>();
+        _notificationRepositoryMock
+            .Setup(repository => repository.TryInsertAsync(
+                It.IsAny<Notification>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<Notification, CancellationToken>((notification, _) =>
+                notifications.Add(notification))
+            .ReturnsAsync(true);
+        return notifications;
+    }
+
+    private void SetupPushDevices(
+        Guid userId,
+        IReadOnlyList<UserPushDeviceData> devices)
+    {
+        _pushDeviceRepositoryMock
+            .Setup(repository => repository.GetActiveByUserIdAsync(
+                userId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(devices);
     }
 
     private void SetupSchedulePage(
