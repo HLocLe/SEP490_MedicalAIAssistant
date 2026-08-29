@@ -1,3 +1,4 @@
+using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.UserMedications;
 using MedMateAI.Application.Models.UserMedications;
 
@@ -7,6 +8,11 @@ public interface IUserMedicationService
 {
     Task<UserMedicationOperationResult<IReadOnlyList<UserMedicationResponse>>> GetMineAsync(
         Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task<UserMedicationOperationResult<PagedResponse<UserMedicationResponse>>> GetMinePagedAsync(
+        Guid userId,
+        PaginationQuery query,
         CancellationToken cancellationToken = default);
 
     Task<UserMedicationOperationResult<UserMedicationResponse>> GetByIdAsync(

@@ -29,6 +29,35 @@ public sealed class UserMedicationRepository : IUserMedicationRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<PagedResult<UserMedication>> GetPagedByUserIdAsync(
+        Guid userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var query = ReadQuery()
+            .Where(medication => medication.UserId == userId);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var medications = await query
+            .OrderByDescending(medication => medication.CreatedAt)
+            .ThenBy(medication => medication.Id)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return new PagedResult<UserMedication>
+        {
+            PageNumber = pageNumber,
+            PageSize = pageSize,
+            TotalCount = totalCount,
+            TotalPages = totalCount == 0
+                ? 0
+                : (int)Math.Ceiling(totalCount / (double)pageSize),
+            Items = medications
+        };
+    }
+
     public Task<UserMedication?> GetByIdAsync(
         Guid userId,
         Guid medicationId,
