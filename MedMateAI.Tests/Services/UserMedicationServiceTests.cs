@@ -1,6 +1,8 @@
+using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.UserMedications;
 using MedMateAI.Application.Models.UserMedications;
 using MedMateAI.Application.Service;
+using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Persistence;
 using MedMateAI.Domain.Repository;
@@ -360,6 +362,144 @@ public class UserMedicationServiceTests
 
         Assert.That(result.Success, Is.True);
         Assert.That(result.Data, Is.Empty);
+    }
+
+    // ── GetMinePagedAsync ─────────────────────────────────────────────────────
+
+    [Test]
+    [Category("N")]
+    public async Task GetMinePagedAsync_FirstPage_ReturnsItemsAndMetadata()
+    {
+        var medications = Enumerable.Range(1, 5)
+            .Select(index => new UserMedication
+            {
+                Id = Guid.NewGuid(),
+                UserId = _userId,
+                MedicineName = $"Med{index}"
+            })
+            .ToList();
+        var query = new PaginationQuery { PageNumber = 1, PageSize = 5 };
+
+        _repoMock.Setup(r => r.GetPagedByUserIdAsync(
+                _userId,
+                1,
+                5,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PagedResult<UserMedication>
+            {
+                PageNumber = 1,
+                PageSize = 5,
+                TotalCount = 7,
+                TotalPages = 2,
+                Items = medications
+            });
+
+        var result = await _service.GetMinePagedAsync(_userId, query);
+
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.Data!.Items, Has.Count.EqualTo(5));
+        Assert.That(result.Data.PageNumber, Is.EqualTo(1));
+        Assert.That(result.Data.PageSize, Is.EqualTo(5));
+        Assert.That(result.Data.TotalCount, Is.EqualTo(7));
+        Assert.That(result.Data.TotalPages, Is.EqualTo(2));
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task GetMinePagedAsync_LastPage_ReturnsRemainingItemsAndMetadata()
+    {
+        var medications = new List<UserMedication>
+        {
+            new() { Id = Guid.NewGuid(), UserId = _userId, MedicineName = "Med6" },
+            new() { Id = Guid.NewGuid(), UserId = _userId, MedicineName = "Med7" }
+        };
+        var query = new PaginationQuery { PageNumber = 2, PageSize = 5 };
+
+        _repoMock.Setup(r => r.GetPagedByUserIdAsync(
+                _userId,
+                2,
+                5,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PagedResult<UserMedication>
+            {
+                PageNumber = 2,
+                PageSize = 5,
+                TotalCount = 7,
+                TotalPages = 2,
+                Items = medications
+            });
+
+        var result = await _service.GetMinePagedAsync(_userId, query);
+
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.Data!.Items, Has.Count.EqualTo(2));
+        Assert.That(result.Data.PageNumber, Is.EqualTo(2));
+        Assert.That(result.Data.PageSize, Is.EqualTo(5));
+        Assert.That(result.Data.TotalCount, Is.EqualTo(7));
+        Assert.That(result.Data.TotalPages, Is.EqualTo(2));
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task GetMinePagedAsync_PreservesRepositoryOrdering()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        var query = new PaginationQuery { PageNumber = 1, PageSize = 5 };
+
+        _repoMock.Setup(r => r.GetPagedByUserIdAsync(
+                _userId,
+                1,
+                5,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PagedResult<UserMedication>
+            {
+                PageNumber = 1,
+                PageSize = 5,
+                TotalCount = 2,
+                TotalPages = 1,
+                Items = new List<UserMedication>
+                {
+                    new() { Id = firstId, UserId = _userId, MedicineName = "Newest" },
+                    new() { Id = secondId, UserId = _userId, MedicineName = "Older" }
+                }
+            });
+
+        var result = await _service.GetMinePagedAsync(_userId, query);
+
+        Assert.That(
+            result.Data!.Items.Select(medication => medication.Id),
+            Is.EqualTo(new[] { firstId, secondId }));
+    }
+
+    [Test]
+    [Category("A")]
+    public async Task GetMinePagedAsync_UsesAuthenticatedUserIdForRepositoryQuery()
+    {
+        var query = new PaginationQuery { PageNumber = 1, PageSize = 5 };
+        _repoMock.Setup(r => r.GetPagedByUserIdAsync(
+                _userId,
+                1,
+                5,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PagedResult<UserMedication>
+            {
+                PageNumber = 1,
+                PageSize = 5,
+                TotalCount = 0,
+                TotalPages = 0,
+                Items = Array.Empty<UserMedication>()
+            });
+
+        var result = await _service.GetMinePagedAsync(_userId, query);
+
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.Data!.TotalCount, Is.Zero);
+        _repoMock.Verify(r => r.GetPagedByUserIdAsync(
+            _userId,
+            1,
+            5,
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ── UpdateAsync ────────────────────────────────────────────────────────────
