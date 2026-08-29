@@ -12,6 +12,7 @@ namespace MedMateAI.Controllers;
 public sealed class UserSubscriptionsController : ControllerBase
 {
     private const string UnauthenticatedError = "User is not authenticated.";
+    private const string SaleOfferUnavailableError = "SALE_OFFER_UNAVAILABLE";
 
     private readonly IUserSubscriptionService _userSubscriptionService;
 
@@ -66,6 +67,7 @@ public sealed class UserSubscriptionsController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<CheckoutSubscriptionResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<CheckoutSubscriptionResponse>), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<CheckoutSubscriptionResponse>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<CheckoutSubscriptionResponse>), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Checkout(
         [FromBody] CheckoutSubscriptionRequest request,
         CancellationToken cancellationToken = default)
@@ -91,6 +93,16 @@ public sealed class UserSubscriptionsController : ControllerBase
                 {
                     Success = false,
                     Message = "Unauthorized",
+                    Errors = errorList,
+                });
+            }
+
+            if (errorList.Contains(SaleOfferUnavailableError, StringComparer.Ordinal))
+            {
+                return Conflict(new ApiResponse<CheckoutSubscriptionResponse>
+                {
+                    Success = false,
+                    Message = "The displayed sale offer is no longer available.",
                     Errors = errorList,
                 });
             }

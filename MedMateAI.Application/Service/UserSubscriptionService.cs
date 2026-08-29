@@ -5,6 +5,7 @@ using MedMateAI.Application.DTOs.Payments.PayOS;
 using MedMateAI.Application.DTOs.UserSubscriptions.Requests;
 using MedMateAI.Application.DTOs.UserSubscriptions.Responses;
 using MedMateAI.Application.IService;
+using MedMateAI.Application.Models.Sales;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
 using MedMateAI.Domain.Persistence;
@@ -20,19 +21,22 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
     private readonly IPaymentService _paymentService;
     private readonly ISubscriptionPlanQuotaRepository _subscriptionPlanQuotaRepository;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ISaleRedemptionService? _saleRedemptionService;
 
     public UserSubscriptionService(
         IUnitOfWork unitOfWork,
         IPayOSService payOsService,
         IPaymentService paymentService,
         ISubscriptionPlanQuotaRepository subscriptionPlanQuotaRepository,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        ISaleRedemptionService? saleRedemptionService = null)
     {
         _unitOfWork = unitOfWork;
         _payOsService = payOsService;
         _paymentService = paymentService;
         _subscriptionPlanQuotaRepository = subscriptionPlanQuotaRepository;
         _httpContextAccessor = httpContextAccessor;
+        _saleRedemptionService = saleRedemptionService;
     }
 
     public async Task<(bool Succeeded, IEnumerable<string> Errors, CheckoutSubscriptionResponse? Data)> CheckoutAsync(
@@ -83,7 +87,6 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
         }
 
         var utcNow = DateTime.UtcNow;
-        var amount = decimal.ToInt32(plan.Price);
         var orderCode = await GenerateOrderCodeAsync(cancellationToken);
 
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -98,8 +101,13 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
                 return (false, new[] { "Subscription plan is not active." }, null);
             }
 
+            // The optional dependency preserves source compatibility for legacy unit
+            // construction. Runtime DI always supplies the sale service, so production
+            // checkout uses the locked row as the authoritative plan snapshot.
+            var checkoutPlan = _saleRedemptionService is null ? plan : lockedPlan;
+
             var planQuota = await _subscriptionPlanQuotaRepository.GetActivePlanQuotaByCodeAsync(
-                plan.Id,
+                checkoutPlan.Id,
                 IServiceCreditService.QuotaCode,
                 cancellationToken);
             if (planQuota is null || planQuota.LimitValue <= 0)
@@ -108,11 +116,60 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
                 return (false, new[] { "SERVICE_CREDIT_NOT_CONFIGURED" }, null);
             }
 
+            if (!TryConvertWholeVnd(checkoutPlan.Price, out _))
+            {
+                await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+                return (false, new[] { "Plan price must be a positive whole VND amount." }, null);
+            }
+
+            var subscriptionId = Guid.NewGuid();
+            var paymentId = Guid.NewGuid();
+            var transactionId = Guid.NewGuid();
+            SaleReservationResult saleReservation;
+            if (_saleRedemptionService is null)
+            {
+                saleReservation = request.ExpectedOfferId.HasValue
+                    ? SaleReservationResult.Unavailable()
+                    : SaleReservationResult.NoOffer();
+            }
+            else
+            {
+                saleReservation = await _saleRedemptionService.ReserveBestOfferAsync(
+                    lockedPlan,
+                    planQuota.LimitValue,
+                    userId.GetValueOrDefault(),
+                    subscriptionId,
+                    paymentId,
+                    request.ExpectedOfferId,
+                    request.ExpectedEffectivePrice,
+                    request.ExpectedGrantedCredit,
+                    utcNow,
+                    cancellationToken);
+            }
+
+            if (saleReservation.Outcome == SaleReservationOutcome.OfferUnavailable)
+            {
+                await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+                return (false, new[] { "SALE_OFFER_UNAVAILABLE" }, null);
+            }
+
+            var offer = saleReservation.Offer;
+            var originalPrice = checkoutPlan.Price;
+            var finalPrice = offer?.FinalPrice ?? originalPrice;
+            var baseCredit = planQuota.LimitValue;
+            var bonusCredit = offer?.BonusCredit ?? 0;
+            var grantedCredit = offer?.GrantedCredit ?? baseCredit;
+            if (!TryConvertWholeVnd(finalPrice, out var amount))
+            {
+                await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+                return (false, new[] { "Final price must be a positive whole VND amount." }, null);
+            }
+
             var subscription = new UserSubscription
             {
-                Id = Guid.NewGuid(),
+                Id = subscriptionId,
                 UserId = userId.GetValueOrDefault(),
-                PlanId = plan.Id,
+                PlanId = checkoutPlan.Id,
                 Status = SubscriptionStatus.Pending,
                 StartDate = null,
                 EndDate = null,
@@ -122,10 +179,10 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
 
             var payment = new Payment
             {
-                Id = Guid.NewGuid(),
+                Id = paymentId,
                 UserId = userId.GetValueOrDefault(),
                 UserSubscriptionId = subscription.Id,
-                Amount = plan.Price,
+                Amount = finalPrice,
                 Currency = "VND",
                 Status = PaymentStatus.Pending,
                 CreatedAt = utcNow,
@@ -133,15 +190,15 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
 
             var transaction = new PaymentTransaction
             {
-                Id = Guid.NewGuid(),
+                Id = transactionId,
                 PaymentId = payment.Id,
                 UserId = userId.GetValueOrDefault(),
                 UserSubscriptionId = subscription.Id,
-                Amount = plan.Price,
+                Amount = finalPrice,
                 PaymentProvider = "payOS",
                 Status = "Pending",
                 TransactionReference = orderCode.ToString(CultureInfo.InvariantCulture),
-                OrderInfo = $"MedMateAI {plan.PlanName ?? "Plan"}",
+                OrderInfo = $"MedMateAI {checkoutPlan.PlanName ?? "Plan"}",
                 CreatedAt = utcNow,
             };
 
@@ -156,7 +213,7 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
                 planQuota.QuotaId,
                 utcNow,
                 cycleEnd: null,
-                planQuota.LimitValue,
+                grantedCredit,
                 utcNow,
                 cancellationToken);
 
@@ -168,7 +225,7 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
                     {
                         OrderCode = orderCode,
                         Amount = amount,
-                        Description = $"Goi {plan.PlanName ?? "Plan"}",
+                        Description = $"Goi {checkoutPlan.PlanName ?? "Plan"}",
                         ReturnUrl = string.Empty,
                         CancelUrl = string.Empty,
                         PaymentId = payment.Id,
@@ -191,6 +248,14 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
 
                 subscription.Status = SubscriptionStatus.Cancelled;
                 subscription.UpdatedAt = failedAt;
+
+                if (_saleRedemptionService is not null)
+                {
+                    await _saleRedemptionService.ReleaseAsync(
+                        payment.Id,
+                        failedAt,
+                        cancellationToken);
+                }
 
                 _unitOfWork.Payments.Update(payment);
                 _unitOfWork.PaymentTransactions.Update(transaction);
@@ -218,6 +283,16 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
                 OrderCode = orderCode.ToString(CultureInfo.InvariantCulture),
                 PaymentUrl = paymentLinkResult.CheckoutUrl,
                 PaymentProvider = "payOS",
+                OriginalPrice = originalPrice,
+                FinalPrice = finalPrice,
+                DiscountAmount = originalPrice - finalPrice,
+                BaseCredit = baseCredit,
+                BonusCredit = bonusCredit,
+                GrantedCredit = grantedCredit,
+                AppliedSaleCampaignId = offer?.CampaignId,
+                AppliedSaleCampaignPlanId = offer?.OfferId,
+                SaleCampaignName = offer?.CampaignName,
+                SaleBadgeText = offer?.BadgeText,
             });
         }
         catch
@@ -395,6 +470,20 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
             CreatedAt = subscription.CreatedAt,
             UpdatedAt = subscription.UpdatedAt,
         };
+    }
+
+    private static bool TryConvertWholeVnd(decimal amount, out int value)
+    {
+        value = 0;
+        if (amount <= 0
+            || amount != decimal.Truncate(amount)
+            || amount > int.MaxValue)
+        {
+            return false;
+        }
+
+        value = decimal.ToInt32(amount);
+        return true;
     }
 
     private static bool TryParseStatus<TStatus>(string? value, out TStatus? status)

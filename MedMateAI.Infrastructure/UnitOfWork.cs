@@ -17,6 +17,8 @@ public sealed class UnitOfWork : IUnitOfWork
     private IUserSubscriptionRepository? _userSubscriptions;
     private IPaymentRepository? _payments;
     private IPaymentTransactionRepository? _paymentTransactions;
+    private ISaleCampaignRepository? _saleCampaigns;
+    private ISaleRedemptionRepository? _saleRedemptions;
     private ISymptomAnalysisSessionRepository? _symptomAnalysisSessions;
     private ISessionSymptomRepository? _sessionSymptoms;
     private IDepartmentRecommendationRepository? _departmentRecommendations;
@@ -71,6 +73,12 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public IPaymentTransactionRepository PaymentTransactions =>
         _paymentTransactions ??= new PaymentTransactionRepository(_context);
+
+    public ISaleCampaignRepository SaleCampaigns =>
+        _saleCampaigns ??= new SaleCampaignRepository(_context);
+
+    public ISaleRedemptionRepository SaleRedemptions =>
+        _saleRedemptions ??= new SaleRedemptionRepository(_context);
 
     public ISymptomAnalysisSessionRepository SymptomAnalysisSessions =>
         _symptomAnalysisSessions ??= new SymptomAnalysisSessionRepository(_context);

@@ -16,6 +16,22 @@ public sealed class PaymentResponse
 
     public decimal Amount { get; set; }
 
+    public decimal OriginalAmount { get; set; }
+
+    public decimal DiscountAmount { get; set; }
+
+    public Guid? SaleCampaignId { get; set; }
+
+    public string? SaleCampaignName { get; set; }
+
+    public string? SaleBadgeText { get; set; }
+
+    public int? BaseCredit { get; set; }
+
+    public int BonusCredit { get; set; }
+
+    public int? GrantedCredit { get; set; }
+
     public string? Currency { get; set; }
 
     public PaymentStatus Status { get; set; }

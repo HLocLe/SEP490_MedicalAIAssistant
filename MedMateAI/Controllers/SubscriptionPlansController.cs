@@ -1,7 +1,9 @@
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.SubscriptionPlans.Requests;
 using MedMateAI.Application.DTOs.SubscriptionPlans.Responses;
+using MedMateAI.Application.DTOs.Sales.Responses;
 using MedMateAI.Application.IService;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,10 +14,14 @@ namespace MedMateAI.Controllers;
 public sealed class SubscriptionPlansController : ControllerBase
 {
     private readonly ISubscriptionPlanService _subscriptionPlanService;
+    private readonly ISaleCampaignService _saleCampaignService;
 
-    public SubscriptionPlansController(ISubscriptionPlanService subscriptionPlanService)
+    public SubscriptionPlansController(
+        ISubscriptionPlanService subscriptionPlanService,
+        ISaleCampaignService saleCampaignService)
     {
         _subscriptionPlanService = subscriptionPlanService;
+        _saleCampaignService = saleCampaignService;
     }
 
     [HttpGet]
@@ -43,6 +49,34 @@ public sealed class SubscriptionPlansController : ControllerBase
             Success = true,
             Message = "OK",
             Data = data,
+        });
+    }
+
+    [HttpGet("offers")]
+    [AllowAnonymous]
+    [ProducesResponseType(
+        typeof(ApiResponse<IReadOnlyList<SubscriptionPlanOfferResponse>>),
+        StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListOffers(CancellationToken cancellationToken = default)
+    {
+        Guid? userId = null;
+        if (User?.Identity?.IsAuthenticated == true)
+        {
+            var rawUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("sub")
+                ?? User.FindFirstValue("userId");
+            if (Guid.TryParse(rawUserId, out var parsedUserId))
+            {
+                userId = parsedUserId;
+            }
+        }
+
+        var data = await _saleCampaignService.GetOffersAsync(userId, cancellationToken);
+        return Ok(new ApiResponse<IReadOnlyList<SubscriptionPlanOfferResponse>>
+        {
+            Success = true,
+            Message = "OK",
+            Data = data
         });
     }
 

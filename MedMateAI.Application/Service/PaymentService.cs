@@ -6,6 +6,7 @@ using MedMateAI.Application.DTOs.Payments.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models;
 using MedMateAI.Application.Models.Payments;
+using MedMateAI.Application.Models.Sales;
 using MedMateAI.Domain.Common;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
@@ -31,19 +32,22 @@ public sealed class PaymentService : IPaymentService
     private readonly IServiceCreditService _serviceCreditService;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<PaymentService> _logger;
+    private readonly ISaleRedemptionService? _saleRedemptionService;
 
     public PaymentService(
         IUnitOfWork unitOfWork,
         IPayOSService payOsService,
         IServiceCreditService serviceCreditService,
         IHttpContextAccessor httpContextAccessor,
-        ILogger<PaymentService> logger)
+        ILogger<PaymentService> logger,
+        ISaleRedemptionService? saleRedemptionService = null)
     {
         _unitOfWork = unitOfWork;
         _payOsService = payOsService;
         _serviceCreditService = serviceCreditService;
         _httpContextAccessor = httpContextAccessor;
         _logger = logger;
+        _saleRedemptionService = saleRedemptionService;
     }
 
     public async Task<PayOSReturnResponse> ProcessPayOSReturnAsync(
@@ -950,6 +954,18 @@ public sealed class PaymentService : IPaymentService
         switch (providerState.Status)
         {
             case PaidStatus:
+                if (_saleRedemptionService is not null)
+                {
+                    var completion = await _saleRedemptionService.CompleteAsync(
+                        transaction.Payment!.Id,
+                        utcNow,
+                        cancellationToken);
+                    if (completion == SaleRedemptionMutationStatus.Conflict)
+                    {
+                        return PaymentReconciliationErrorCode.Conflict;
+                    }
+                }
+
                 var grantStatus = await _serviceCreditService.GrantAsync(
                     transaction.UserSubscriptionId,
                     transaction.Payment!.Id,
@@ -964,10 +980,26 @@ public sealed class PaymentService : IPaymentService
                 ApplyPaidState(transaction, utcNow);
                 break;
             case CancelledStatus:
+                if (_saleRedemptionService is not null)
+                {
+                    await _saleRedemptionService.ReleaseAsync(
+                        transaction.Payment!.Id,
+                        utcNow,
+                        cancellationToken);
+                }
+
                 ApplyCancelledState(transaction, utcNow);
                 break;
             case ExpiredStatus:
             case FailedStatus:
+                if (_saleRedemptionService is not null)
+                {
+                    await _saleRedemptionService.ReleaseAsync(
+                        transaction.Payment!.Id,
+                        utcNow,
+                        cancellationToken);
+                }
+
                 ApplyFailedState(transaction, utcNow);
                 break;
             case PendingStatus:
@@ -1266,6 +1298,17 @@ public sealed class PaymentService : IPaymentService
         var latestTransaction = payment.Transactions
             .OrderByDescending(x => x.CreatedAt)
             .FirstOrDefault();
+        var sale = payment.SaleRedemption;
+        var serviceCreditUsage = payment.UserSubscription?.Usages
+            .FirstOrDefault(usage =>
+                !usage.IsDeleted
+                && string.Equals(
+                    usage.Quota?.Code,
+                    IServiceCreditService.QuotaCode,
+                    StringComparison.Ordinal));
+        var originalAmount = sale?.OriginalPrice ?? payment.Amount;
+        var baseCredit = sale?.BaseCredit ?? serviceCreditUsage?.LimitValue;
+        var grantedCredit = sale?.GrantedCredit ?? serviceCreditUsage?.LimitValue;
 
         return new PaymentResponse
         {
@@ -1273,6 +1316,14 @@ public sealed class PaymentService : IPaymentService
             UserId = payment.UserId,
             UserSubscriptionId = payment.UserSubscriptionId,
             Amount = payment.Amount,
+            OriginalAmount = originalAmount,
+            DiscountAmount = originalAmount - payment.Amount,
+            SaleCampaignId = sale?.SaleCampaignId,
+            SaleCampaignName = sale?.CampaignNameSnapshot,
+            SaleBadgeText = sale?.BadgeTextSnapshot,
+            BaseCredit = baseCredit,
+            BonusCredit = sale?.BonusCredit ?? 0,
+            GrantedCredit = grantedCredit,
             Currency = payment.Currency,
             Status = payment.Status,
             StatusName = payment.Status.ToString(),
