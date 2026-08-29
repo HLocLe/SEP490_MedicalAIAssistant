@@ -13,6 +13,8 @@ public interface IUnitOfWork : IAsyncDisposable
     IUserSubscriptionRepository UserSubscriptions { get; }
     IPaymentRepository Payments { get; }
     IPaymentTransactionRepository PaymentTransactions { get; }
+    ISaleCampaignRepository SaleCampaigns { get; }
+    ISaleRedemptionRepository SaleRedemptions { get; }
 
     ISymptomAnalysisSessionRepository SymptomAnalysisSessions { get; }
 

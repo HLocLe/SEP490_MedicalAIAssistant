@@ -19,4 +19,6 @@ public sealed class Payment : BaseEntity
     public UserSubscription UserSubscription { get; set; } = null!;
 
     public ICollection<PaymentTransaction> Transactions { get; set; } = new List<PaymentTransaction>();
+
+    public SaleRedemption? SaleRedemption { get; set; }
 }

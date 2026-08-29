@@ -69,10 +69,7 @@ public sealed class PaymentRepository
             return null;
         }
 
-        return await _context.Payments
-            .Include(x => x.UserSubscription)
-            .ThenInclude(x => x.Plan)
-            .Include(x => x.Transactions)
+        return await BuildDetailsQuery(asNoTracking: false)
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
 
@@ -92,13 +89,18 @@ public sealed class PaymentRepository
                 cancellationToken);
     }
 
-    private IQueryable<Payment> BuildDetailsQuery()
+    private IQueryable<Payment> BuildDetailsQuery(bool asNoTracking = true)
     {
-        return _context.Payments
-            .AsNoTracking()
+        var query = _context.Payments
             .Include(x => x.UserSubscription)
             .ThenInclude(x => x.Plan)
-            .Include(x => x.Transactions);
+            .Include(x => x.UserSubscription)
+            .ThenInclude(x => x.Usages)
+            .ThenInclude(x => x.Quota)
+            .Include(x => x.Transactions)
+            .Include(x => x.SaleRedemption)
+            .AsSplitQuery();
+        return asNoTracking ? query.AsNoTracking() : query;
     }
 
     private static async Task<PagedResult<Payment>> ToPagedResultAsync(

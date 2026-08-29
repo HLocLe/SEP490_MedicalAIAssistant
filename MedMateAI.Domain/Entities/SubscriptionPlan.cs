@@ -15,4 +15,6 @@ public sealed class SubscriptionPlan : BaseEntity
     public ICollection<UserSubscription> UserSubscriptions { get; set; } = new List<UserSubscription>();
 
     public ICollection<SubscriptionPlanQuota> SubscriptionPlanQuotas { get; set; } = new List<SubscriptionPlanQuota>();
+
+    public ICollection<SaleCampaignPlan> SaleCampaignPlans { get; set; } = new List<SaleCampaignPlan>();
 }

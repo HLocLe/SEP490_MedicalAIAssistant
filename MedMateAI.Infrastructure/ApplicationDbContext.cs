@@ -87,6 +87,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<Payment> Payments => Set<Payment>();
 
+    public DbSet<SaleCampaign> SaleCampaigns => Set<SaleCampaign>();
+
+    public DbSet<SaleCampaignPlan> SaleCampaignPlans => Set<SaleCampaignPlan>();
+
+    public DbSet<SaleRedemption> SaleRedemptions => Set<SaleRedemption>();
+
     public DbSet<Quota> Quotas => Set<Quota>();
     public DbSet<SubscriptionPlanQuota> SubscriptionPlanQuotas => Set<SubscriptionPlanQuota>();
     public DbSet<UserSubscriptionUsage> UserSubscriptionUsages => Set<UserSubscriptionUsage>();

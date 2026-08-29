@@ -91,6 +91,10 @@ public static class DependencyInjection
         services.AddScoped<ISubscriptionPlanQuotaService, SubscriptionPlanQuotaService>();
         services.AddScoped<ISubscriptionPlanCacheInvalidator, SubscriptionPlanCacheInvalidator>();
         services.AddScoped<ISubscriptionPlanService, SubscriptionPlanService>();
+        services.AddScoped<ISaleCampaignRepository, SaleCampaignRepository>();
+        services.AddScoped<ISaleRedemptionRepository, SaleRedemptionRepository>();
+        services.AddScoped<ISaleCampaignService, SaleCampaignService>();
+        services.AddScoped<ISaleRedemptionService, SaleRedemptionService>();
         services.AddScoped<IAIConfigService, AIConfigService>();
         services.AddScoped<IWebChatbotService, WebChatbotService>();
         services.AddScoped<ISymptomAnalysisService, SymptomAnalysisService>();
