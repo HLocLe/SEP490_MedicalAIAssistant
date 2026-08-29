@@ -31,6 +31,7 @@ public interface IUnitOfWork : IAsyncDisposable
     ISessionClinicalQuestionAnswerRepository SessionClinicalQuestionAnswers { get; }
 
     IIcdChapterRepository IcdChapters { get; }
+    IDiseasePriorProbabilityRepository DiseasePriorProbabilities { get; }
     IRecoveryPlanRequestRepository RecoveryPlanRequests { get; }
     IRecoveryPlanRepository RecoveryPlans { get; }
     IRecoveryPlanTemplateRepository RecoveryPlanTemplates { get; }

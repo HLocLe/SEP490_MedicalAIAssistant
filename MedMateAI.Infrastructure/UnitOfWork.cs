@@ -27,6 +27,7 @@ public sealed class UnitOfWork : IUnitOfWork
     private IClinicalQuestionRepository? _clinicalQuestions;
     private ISessionClinicalQuestionAnswerRepository? _sessionClinicalQuestionAnswers;
     private IIcdChapterRepository? _icdChapters;
+    private IDiseasePriorProbabilityRepository? _diseasePriorProbabilities;
     private IRecoveryPlanRequestRepository? _recoveryPlanRequests;
     private IRecoveryPlanRepository? _recoveryPlans;
     private IRecoveryPlanTemplateRepository? _recoveryPlanTemplates;
@@ -103,6 +104,9 @@ public sealed class UnitOfWork : IUnitOfWork
 
     public IIcdChapterRepository IcdChapters =>
         _icdChapters ??= new IcdChapterRepository(_context);
+
+    public IDiseasePriorProbabilityRepository DiseasePriorProbabilities =>
+        _diseasePriorProbabilities ??= new DiseasePriorProbabilityRepository(_context);
 
     public IRecoveryPlanRequestRepository RecoveryPlanRequests =>
         _recoveryPlanRequests ??= new RecoveryPlanRequestRepository(_context);
