@@ -3,6 +3,7 @@ using System;
 using MedMateAI.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MedMateAI.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260829041142_add master data cho P(Â)")]
+    partial class addmasterdatachoPÂ
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2473,251 +2476,6 @@ namespace MedMateAI.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("MedMateAI.Domain.Entities.SaleCampaign", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("SaleCampaignId");
-
-                    b.Property<string>("BadgeText")
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("EligibilityType")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasDefaultValue("All");
-
-                    b.Property<DateTime>("EndAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<int?>("MaxRedemptions")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("MaxRedemptionsPerUser")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)");
-
-                    b.Property<int>("Priority")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("StartAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IsActive", "StartAt", "EndAt", "Priority");
-
-                    b.ToTable("SaleCampaign", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_SaleCampaign_Limits", "\"MaxRedemptions\" IS NULL OR \"MaxRedemptionsPerUser\" IS NULL OR \"MaxRedemptionsPerUser\" <= \"MaxRedemptions\"");
-
-                            t.HasCheckConstraint("CK_SaleCampaign_MaxRedemptions", "\"MaxRedemptions\" IS NULL OR \"MaxRedemptions\" >= 1");
-
-                            t.HasCheckConstraint("CK_SaleCampaign_MaxRedemptionsPerUser", "\"MaxRedemptionsPerUser\" IS NULL OR \"MaxRedemptionsPerUser\" >= 1");
-
-                            t.HasCheckConstraint("CK_SaleCampaign_Priority", "\"Priority\" >= 0 AND \"Priority\" <= 1000");
-
-                            t.HasCheckConstraint("CK_SaleCampaign_Window", "\"EndAt\" > \"StartAt\"");
-                        });
-                });
-
-            modelBuilder.Entity("MedMateAI.Domain.Entities.SaleCampaignPlan", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("SaleCampaignPlanId");
-
-                    b.Property<int>("BonusCredit")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<Guid>("PlanId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("SaleCampaignId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal?>("SalePrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PlanId", "IsActive");
-
-                    b.HasIndex("SaleCampaignId", "PlanId")
-                        .IsUnique()
-                        .HasFilter("\"IsDeleted\" = false");
-
-                    b.ToTable("SaleCampaignPlan", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_SaleCampaignPlan_Benefit", "\"SalePrice\" IS NOT NULL OR \"BonusCredit\" > 0");
-
-                            t.HasCheckConstraint("CK_SaleCampaignPlan_BonusCredit", "\"BonusCredit\" >= 0");
-
-                            t.HasCheckConstraint("CK_SaleCampaignPlan_SalePrice", "\"SalePrice\" IS NULL OR \"SalePrice\" > 0");
-                        });
-                });
-
-            modelBuilder.Entity("MedMateAI.Domain.Entities.SaleRedemption", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("SaleRedemptionId");
-
-                    b.Property<string>("BadgeTextSnapshot")
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
-
-                    b.Property<int>("BaseCredit")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("BonusCredit")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("CampaignNameSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("EligibilityTypeSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<decimal>("FinalPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<int>("GrantedCredit")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<decimal>("OriginalPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<Guid>("PaymentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("PlanId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("ReleasedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("ReservedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("SaleCampaignId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("SaleCampaignPlanId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasDefaultValue("Reserved");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("UserSubscriptionId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PaymentId")
-                        .IsUnique()
-                        .HasFilter("\"IsDeleted\" = false");
-
-                    b.HasIndex("PlanId");
-
-                    b.HasIndex("SaleCampaignPlanId");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("UserSubscriptionId")
-                        .IsUnique()
-                        .HasFilter("\"IsDeleted\" = false");
-
-                    b.HasIndex("SaleCampaignId", "Status");
-
-                    b.HasIndex("UserId", "EligibilityTypeSnapshot")
-                        .IsUnique()
-                        .HasDatabaseName("UX_SaleRedemption_FirstPurchase_User")
-                        .HasFilter("\"IsDeleted\" = false AND \"EligibilityTypeSnapshot\" = 'FirstPurchase' AND \"Status\" IN ('Reserved', 'Completed')");
-
-                    b.HasIndex("SaleCampaignId", "UserId", "Status");
-
-                    b.ToTable("SaleRedemption", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_SaleRedemption_Credits", "\"BaseCredit\" > 0 AND \"BonusCredit\" >= 0 AND \"GrantedCredit\" = \"BaseCredit\" + \"BonusCredit\"");
-
-                            t.HasCheckConstraint("CK_SaleRedemption_Prices", "\"OriginalPrice\" > 0 AND \"FinalPrice\" > 0 AND \"FinalPrice\" <= \"OriginalPrice\"");
-                        });
-                });
-
             modelBuilder.Entity("MedMateAI.Domain.Entities.SessionClinicalQuestionAnswer", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4369,74 +4127,6 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.Navigation("RecoveryPlanTemplate");
                 });
 
-            modelBuilder.Entity("MedMateAI.Domain.Entities.SaleCampaignPlan", b =>
-                {
-                    b.HasOne("MedMateAI.Domain.Entities.SubscriptionPlan", "Plan")
-                        .WithMany("SaleCampaignPlans")
-                        .HasForeignKey("PlanId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedMateAI.Domain.Entities.SaleCampaign", "SaleCampaign")
-                        .WithMany("CampaignPlans")
-                        .HasForeignKey("SaleCampaignId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Plan");
-
-                    b.Navigation("SaleCampaign");
-                });
-
-            modelBuilder.Entity("MedMateAI.Domain.Entities.SaleRedemption", b =>
-                {
-                    b.HasOne("MedMateAI.Domain.Entities.Payment", "Payment")
-                        .WithOne("SaleRedemption")
-                        .HasForeignKey("MedMateAI.Domain.Entities.SaleRedemption", "PaymentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedMateAI.Domain.Entities.SubscriptionPlan", "Plan")
-                        .WithMany()
-                        .HasForeignKey("PlanId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedMateAI.Domain.Entities.SaleCampaign", "SaleCampaign")
-                        .WithMany("Redemptions")
-                        .HasForeignKey("SaleCampaignId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedMateAI.Domain.Entities.SaleCampaignPlan", "SaleCampaignPlan")
-                        .WithMany("Redemptions")
-                        .HasForeignKey("SaleCampaignPlanId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedMateAI.Infrastructure.Identity.ApplicationUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("MedMateAI.Domain.Entities.UserSubscription", "UserSubscription")
-                        .WithOne()
-                        .HasForeignKey("MedMateAI.Domain.Entities.SaleRedemption", "UserSubscriptionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Payment");
-
-                    b.Navigation("Plan");
-
-                    b.Navigation("SaleCampaign");
-
-                    b.Navigation("SaleCampaignPlan");
-
-                    b.Navigation("UserSubscription");
-                });
-
             modelBuilder.Entity("MedMateAI.Domain.Entities.SessionClinicalQuestionAnswer", b =>
                 {
                     b.HasOne("MedMateAI.Domain.Entities.ClinicalQuestion", "ClinicalQuestion")
@@ -4821,8 +4511,6 @@ namespace MedMateAI.Infrastructure.Migrations
 
             modelBuilder.Entity("MedMateAI.Domain.Entities.Payment", b =>
                 {
-                    b.Navigation("SaleRedemption");
-
                     b.Navigation("Transactions");
                 });
 
@@ -4878,22 +4566,8 @@ namespace MedMateAI.Infrastructure.Migrations
                     b.Navigation("NutrientTargets");
                 });
 
-            modelBuilder.Entity("MedMateAI.Domain.Entities.SaleCampaign", b =>
-                {
-                    b.Navigation("CampaignPlans");
-
-                    b.Navigation("Redemptions");
-                });
-
-            modelBuilder.Entity("MedMateAI.Domain.Entities.SaleCampaignPlan", b =>
-                {
-                    b.Navigation("Redemptions");
-                });
-
             modelBuilder.Entity("MedMateAI.Domain.Entities.SubscriptionPlan", b =>
                 {
-                    b.Navigation("SaleCampaignPlans");
-
                     b.Navigation("SubscriptionPlanQuotas");
 
                     b.Navigation("UserSubscriptions");

@@ -57,6 +57,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<IcdChapter> IcdChapters => Set<IcdChapter>();
 
+    public DbSet<DiseasePriorProbability> DiseasePriorProbabilities => Set<DiseasePriorProbability>();
+
     public DbSet<ClinicalQuestion> ClinicalQuestions => Set<ClinicalQuestion>();
 
     public DbSet<SessionClinicalQuestionAnswer> SessionClinicalQuestionAnswers => Set<SessionClinicalQuestionAnswer>();
