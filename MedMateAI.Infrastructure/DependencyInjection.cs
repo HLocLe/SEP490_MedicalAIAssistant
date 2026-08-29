@@ -157,6 +157,8 @@ public static class DependencyInjection
                 options => options.PendingReconciliationBatchSize is >= 1 and <= 500,
                 "PayOS PendingReconciliationBatchSize must be between 1 and 500.")
             .ValidateOnStart();
+        services.Configure<MobilePaymentOptions>(
+            configuration.GetSection(MobilePaymentOptions.SectionName));
        
         //
         services.Configure<AzureTranslatorOptions>(configuration.GetSection(AzureTranslatorOptions.SectionName));

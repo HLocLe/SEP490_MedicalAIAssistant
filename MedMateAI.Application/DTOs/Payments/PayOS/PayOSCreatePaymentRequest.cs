@@ -12,6 +12,8 @@ public sealed class PayOSCreatePaymentRequest
 
     public string CancelUrl { get; set; } = string.Empty;
 
+    public bool UseMobileCallbacks { get; set; }
+
     public Guid PaymentId { get; set; }
 
     public Guid SubscriptionId { get; set; }

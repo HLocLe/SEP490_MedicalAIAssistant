@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MedMateAI.Application.DTOs.Payments.PayOS;
 using MedMateAI.Application.IService;
+using MedMateAI.Application.Options;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -20,14 +21,17 @@ public sealed class PayOSService : IPayOSService
     };
 
     private readonly PayOSOptions _options;
+    private readonly MobilePaymentOptions _mobilePaymentOptions;
     private readonly PayOSClient _payOsClient;
     private readonly ILogger<PayOSService> _logger;
 
     public PayOSService(
         IOptions<PayOSOptions> options,
+        IOptions<MobilePaymentOptions> mobilePaymentOptions,
         ILogger<PayOSService> logger)
     {
         _options = options.Value;
+        _mobilePaymentOptions = mobilePaymentOptions.Value;
         _logger = logger;
         ValidateOptions(_options);
         _payOsClient = new PayOSClient(_options.ClientId, _options.ApiKey, _options.ChecksumKey);
@@ -58,13 +62,28 @@ public sealed class PayOSService : IPayOSService
             throw new ArgumentException("Description is required.");
         }
 
+        var returnUrl = request.UseMobileCallbacks
+            ? GetRequiredMobileCallbackUrl(
+                _mobilePaymentOptions.ReturnUrl,
+                nameof(MobilePaymentOptions.ReturnUrl))
+            : string.IsNullOrWhiteSpace(request.ReturnUrl)
+                ? _options.ReturnUrl
+                : request.ReturnUrl;
+        var cancelUrl = request.UseMobileCallbacks
+            ? GetRequiredMobileCallbackUrl(
+                _mobilePaymentOptions.CancelUrl,
+                nameof(MobilePaymentOptions.CancelUrl))
+            : string.IsNullOrWhiteSpace(request.CancelUrl)
+                ? _options.CancelUrl
+                : request.CancelUrl;
+
         var paymentRequest = new CreatePaymentLinkRequest
         {
             OrderCode = request.OrderCode,
             Amount = request.Amount,
             Description = description,
-            ReturnUrl = string.IsNullOrWhiteSpace(request.ReturnUrl) ? _options.ReturnUrl : request.ReturnUrl,
-            CancelUrl = string.IsNullOrWhiteSpace(request.CancelUrl) ? _options.CancelUrl : request.CancelUrl,
+            ReturnUrl = returnUrl,
+            CancelUrl = cancelUrl,
             ExpiredAt = DateTimeOffset.UtcNow
                 .AddMinutes(_options.PaymentLinkExpirationMinutes)
                 .ToUnixTimeSeconds(),
@@ -405,6 +424,28 @@ public sealed class PayOSService : IPayOSService
         {
             throw new InvalidOperationException("PayOS:CancelUrl is required.");
         }
+    }
+
+    private static string GetRequiredMobileCallbackUrl(
+        string? value,
+        string optionName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new InvalidOperationException(
+                $"MobilePayment:{optionName} is required for mobile checkout.");
+        }
+
+        var normalized = value.Trim();
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp
+                && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException(
+                $"MobilePayment:{optionName} must be an absolute HTTP or HTTPS URL for mobile checkout.");
+        }
+
+        return normalized;
     }
 
     private static string NormalizeDescription(string? description)
