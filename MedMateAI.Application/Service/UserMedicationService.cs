@@ -1,4 +1,3 @@
-using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.UserMedications;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models.UserMedications;
@@ -35,22 +34,6 @@ public sealed class UserMedicationService : IUserMedicationService
 
         return UserMedicationOperationResult<IReadOnlyList<UserMedicationResponse>>
             .Ok(responses);
-    }
-
-    public async Task<UserMedicationOperationResult<PagedResponse<UserMedicationResponse>>>
-        GetMinePagedAsync(
-            Guid userId,
-            PaginationQuery page,
-            CancellationToken cancellationToken = default)
-    {
-        var medications = await _unitOfWork.UserMedications.GetByUserIdPagedAsync(
-            userId,
-            page.PageNumber,
-            page.PageSize,
-            cancellationToken);
-
-        return UserMedicationOperationResult<PagedResponse<UserMedicationResponse>>
-            .Ok(PagedResponse<UserMedicationResponse>.From(medications, Map));
     }
 
     public async Task<UserMedicationOperationResult<UserMedicationResponse>> GetByIdAsync(

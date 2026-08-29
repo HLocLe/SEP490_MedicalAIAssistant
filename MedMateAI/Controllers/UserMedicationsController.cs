@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.UserMedications;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models.UserMedications;
@@ -20,25 +19,10 @@ public sealed class UserMedicationsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetMine(
-        [FromQuery(Name = "PageNumber")] int? pageNumber,
-        [FromQuery(Name = "PageSize")] int? pageSize,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> GetMine(CancellationToken cancellationToken)
     {
-        if (!pageNumber.HasValue && !pageSize.HasValue)
-        {
-            return await WithUser(userId =>
-                _service.GetMineAsync(userId, cancellationToken));
-        }
-
-        var page = new PaginationQuery
-        {
-            PageNumber = pageNumber ?? 1,
-            PageSize = pageSize ?? 10
-        };
-
         return await WithUser(userId =>
-            _service.GetMinePagedAsync(userId, page, cancellationToken));
+            _service.GetMineAsync(userId, cancellationToken));
     }
 
     [HttpGet("{medicationId:guid}")]
