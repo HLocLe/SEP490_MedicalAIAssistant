@@ -9,6 +9,12 @@ public interface IUserMedicationRepository
         Guid userId,
         CancellationToken cancellationToken = default);
 
+    Task<PagedResult<UserMedication>> GetByUserIdPagedAsync(
+        Guid userId,
+        int pageNumber,
+        int pageSize,
+        CancellationToken cancellationToken = default);
+
     Task<UserMedication?> GetByIdAsync(
         Guid userId,
         Guid medicationId,
