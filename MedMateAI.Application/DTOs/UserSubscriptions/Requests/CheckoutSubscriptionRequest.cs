@@ -6,6 +6,8 @@ public sealed class CheckoutSubscriptionRequest
 
     public bool AutoRenew { get; set; }
 
+    public CheckoutClientType ClientType { get; set; } = CheckoutClientType.Web;
+
     public Guid? ExpectedOfferId { get; set; }
 
     public decimal? ExpectedEffectivePrice { get; set; }

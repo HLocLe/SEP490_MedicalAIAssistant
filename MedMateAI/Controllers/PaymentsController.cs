@@ -1,9 +1,13 @@
+using System.Globalization;
 using System.Text;
 using MedMateAI.Application.DTOs.Common;
 using MedMateAI.Application.DTOs.Payments.Responses;
 using MedMateAI.Application.IService;
+using MedMateAI.Application.Options;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Options;
 
 namespace MedMateAI.Controllers;
 
@@ -11,11 +15,18 @@ namespace MedMateAI.Controllers;
 [Route("api/payments")]
 public sealed class PaymentsController : ControllerBase
 {
-    private readonly IPaymentService _paymentService;
+    private const string MobileDeepLinkScheme = "sep490mbmedicalaiassistant";
+    private const string MobileDeepLinkHost = "payment-result";
 
-    public PaymentsController(IPaymentService paymentService)
+    private readonly IPaymentService _paymentService;
+    private readonly MobilePaymentOptions _mobilePaymentOptions;
+
+    public PaymentsController(
+        IPaymentService paymentService,
+        IOptions<MobilePaymentOptions> mobilePaymentOptions)
     {
         _paymentService = paymentService;
+        _mobilePaymentOptions = mobilePaymentOptions.Value;
     }
 
     // Legacy/backend testing only. Production payOS ReturnUrl should point to the FE route.
@@ -50,6 +61,26 @@ public sealed class PaymentsController : ControllerBase
             Message = data.Message,
             Data = data,
         });
+    }
+
+    [AllowAnonymous]
+    [HttpGet("mobile-return")]
+    [ProducesResponseType(StatusCodes.Status302Found)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status500InternalServerError)]
+    public IActionResult MobileReturn([FromQuery] string? orderCode)
+    {
+        return CreateMobileRedirect("return", orderCode);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("mobile-cancel")]
+    [ProducesResponseType(StatusCodes.Status302Found)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status500InternalServerError)]
+    public IActionResult MobileCancel([FromQuery] string? orderCode)
+    {
+        return CreateMobileRedirect("cancel", orderCode);
     }
 
     [AllowAnonymous]
@@ -291,6 +322,65 @@ public sealed class PaymentsController : ControllerBase
             Message = "OK",
             Data = data,
         });
+    }
+
+    private IActionResult CreateMobileRedirect(string result, string? orderCode)
+    {
+        if (!long.TryParse(
+                orderCode,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var parsedOrderCode)
+            || parsedOrderCode <= 0)
+        {
+            return BadRequest(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Invalid orderCode.",
+            });
+        }
+
+        if (!IsValidMobileDeepLink(_mobilePaymentOptions.DeepLinkUrl))
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Mobile payment redirect is not configured.",
+                });
+        }
+
+        var redirectUrl = QueryHelpers.AddQueryString(
+            _mobilePaymentOptions.DeepLinkUrl.Trim(),
+            new Dictionary<string, string?>
+            {
+                ["result"] = result,
+                ["orderCode"] = parsedOrderCode.ToString(CultureInfo.InvariantCulture),
+            });
+        return Redirect(redirectUrl);
+    }
+
+    private static bool IsValidMobileDeepLink(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || !Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return string.Equals(
+                uri.Scheme,
+                MobileDeepLinkScheme,
+                StringComparison.OrdinalIgnoreCase)
+            && string.Equals(
+                uri.Host,
+                MobileDeepLinkHost,
+                StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrEmpty(uri.UserInfo)
+            && string.IsNullOrEmpty(uri.Query)
+            && string.IsNullOrEmpty(uri.Fragment)
+            && (string.IsNullOrEmpty(uri.AbsolutePath) || uri.AbsolutePath == "/");
     }
 
     private async Task<string> ReadRawBodyAsync(CancellationToken cancellationToken)

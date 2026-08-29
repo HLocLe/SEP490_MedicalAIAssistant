@@ -55,6 +55,11 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
             errors.Add("PlanId is required.");
         }
 
+        if (!Enum.IsDefined(request.ClientType))
+        {
+            errors.Add("ClientType is invalid.");
+        }
+
         var userId = GetCurrentUserId();
         if (!userId.HasValue)
         {
@@ -228,6 +233,7 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
                         Description = $"Goi {checkoutPlan.PlanName ?? "Plan"}",
                         ReturnUrl = string.Empty,
                         CancelUrl = string.Empty,
+                        UseMobileCallbacks = request.ClientType == CheckoutClientType.Mobile,
                         PaymentId = payment.Id,
                         SubscriptionId = subscription.Id,
                         UserId = userId.GetValueOrDefault(),
@@ -263,7 +269,12 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-                return (false, new[] { "Create payOS payment link failed." }, null);
+                var checkoutError = request.ClientType == CheckoutClientType.Mobile
+                    && ex is InvalidOperationException
+                    && ex.Message.StartsWith("MobilePayment:", StringComparison.Ordinal)
+                        ? ex.Message
+                        : "Create payOS payment link failed.";
+                return (false, new[] { checkoutError }, null);
             }
 
             transaction.ProviderTransactionId = paymentLinkResult.PaymentLinkId;

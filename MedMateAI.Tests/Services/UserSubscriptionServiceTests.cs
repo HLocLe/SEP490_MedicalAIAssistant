@@ -231,6 +231,78 @@ public class UserSubscriptionServiceTests
     }
 
     [Test]
+    public async Task CheckoutAsync_ClientTypeOmitted_UsesWebCallbacks()
+    {
+        var payOsRequest = await CheckoutAndCapturePayOsRequestAsync(
+            new CheckoutSubscriptionRequest());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(payOsRequest.UseMobileCallbacks, Is.False);
+            Assert.That(payOsRequest.ReturnUrl, Is.Empty);
+            Assert.That(payOsRequest.CancelUrl, Is.Empty);
+        });
+    }
+
+    [Test]
+    public async Task CheckoutAsync_ExplicitWebClient_UsesWebCallbacks()
+    {
+        var payOsRequest = await CheckoutAndCapturePayOsRequestAsync(
+            new CheckoutSubscriptionRequest
+            {
+                ClientType = CheckoutClientType.Web
+            });
+
+        Assert.That(payOsRequest.UseMobileCallbacks, Is.False);
+    }
+
+    [Test]
+    public async Task CheckoutAsync_MobileClient_UsesMobileCallbacks()
+    {
+        var payOsRequest = await CheckoutAndCapturePayOsRequestAsync(
+            new CheckoutSubscriptionRequest
+            {
+                ClientType = CheckoutClientType.Mobile
+            });
+
+        Assert.That(payOsRequest.UseMobileCallbacks, Is.True);
+    }
+
+    [Test]
+    public async Task CheckoutAsync_InvalidClientType_ReturnsErrorBeforeTransaction()
+    {
+        var result = await _service.CheckoutAsync(new CheckoutSubscriptionRequest
+        {
+            PlanId = Guid.NewGuid(),
+            ClientType = (CheckoutClientType)999
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Errors, Contains.Item("ClientType is invalid."));
+        });
+        _subscriptionsMock.Verify(
+            repository => repository.Add(It.IsAny<UserSubscription>()),
+            Times.Never);
+        _paymentsMock.Verify(
+            repository => repository.Add(It.IsAny<Payment>()),
+            Times.Never);
+        _transactionsMock.Verify(
+            repository => repository.Add(It.IsAny<PaymentTransaction>()),
+            Times.Never);
+        _payOsMock.Verify(
+            service => service.CreatePaymentLinkAsync(
+                It.IsAny<PayOSCreatePaymentRequest>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+        _unitOfWorkMock.Verify(
+            unitOfWork => unitOfWork.BeginTransactionAsync(
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
     [Category("A")]
     public async Task CheckoutAsync_ExistingActivePackage_AllowsStackedPackageCheckout()
     {
@@ -681,5 +753,37 @@ public class UserSubscriptionServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(plan);
         return plan;
+    }
+
+    private async Task<PayOSCreatePaymentRequest> CheckoutAndCapturePayOsRequestAsync(
+        CheckoutSubscriptionRequest request)
+    {
+        var plan = SetupActivePaidPlan();
+        request.PlanId = plan.Id;
+        PayOSCreatePaymentRequest? capturedRequest = null;
+        _transactionsMock.Setup(repository => repository.GetByTransactionReferenceAsync(
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PaymentTransaction?)null);
+        _payOsMock.Setup(service => service.CreatePaymentLinkAsync(
+                It.IsAny<PayOSCreatePaymentRequest>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<PayOSCreatePaymentRequest, CancellationToken>(
+                (payOsRequest, _) => capturedRequest = payOsRequest)
+            .ReturnsAsync(new PayOSCreatePaymentResult
+            {
+                PaymentLinkId = "client-type-link",
+                Status = "PENDING",
+                CheckoutUrl = "https://pay.test/client-type"
+            });
+
+        var result = await _service.CheckoutAsync(request);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(capturedRequest, Is.Not.Null);
+        });
+        return capturedRequest!;
     }
 }
