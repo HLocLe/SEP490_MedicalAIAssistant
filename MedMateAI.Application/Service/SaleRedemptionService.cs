@@ -27,12 +27,17 @@ public sealed class SaleRedemptionService : ISaleRedemptionService
         DateTime utcNow,
         CancellationToken cancellationToken = default)
     {
+        var hasExpectedPricingSnapshot =
+            expectedOfferId.HasValue
+            || expectedEffectivePrice.HasValue
+            || expectedGrantedCredit.HasValue;
+
         if (!lockedPlan.IsActive
             || lockedPlan.IsDeleted
             || baseCredit <= 0
             || !TryConvertWholeVnd(lockedPlan.Price, out _))
         {
-            return expectedOfferId.HasValue
+            return hasExpectedPricingSnapshot
                 ? SaleReservationResult.Unavailable()
                 : SaleReservationResult.NoOffer();
         }
@@ -134,14 +139,30 @@ public sealed class SaleRedemptionService : ISaleRedemptionService
             break;
         }
 
-        if (expectedOfferId.HasValue
-            && (!expectedEffectivePrice.HasValue
-                || !expectedGrantedCredit.HasValue
-                || selected?.OfferId != expectedOfferId.Value
-                || selected.FinalPrice != expectedEffectivePrice.Value
-                || selected.GrantedCredit != expectedGrantedCredit.Value))
+        if (hasExpectedPricingSnapshot)
         {
-            return SaleReservationResult.Unavailable();
+            if (!expectedEffectivePrice.HasValue
+                || !expectedGrantedCredit.HasValue)
+            {
+                return SaleReservationResult.Unavailable();
+            }
+
+            if (expectedOfferId.HasValue)
+            {
+                if (selected is null
+                    || selected.OfferId != expectedOfferId.Value
+                    || selected.FinalPrice != expectedEffectivePrice.Value
+                    || selected.GrantedCredit != expectedGrantedCredit.Value)
+                {
+                    return SaleReservationResult.Unavailable();
+                }
+            }
+            else if (selected is not null
+                     || lockedPlan.Price != expectedEffectivePrice.Value
+                     || baseCredit != expectedGrantedCredit.Value)
+            {
+                return SaleReservationResult.Unavailable();
+            }
         }
 
         if (selected is null)

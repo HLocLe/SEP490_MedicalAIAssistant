@@ -6,6 +6,7 @@ using MedMateAI.Application.DTOs.UserSubscriptions.Requests;
 using MedMateAI.Application.DTOs.UserSubscriptions.Responses;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models.Payments;
+using MedMateAI.Application.Models.Sales;
 using MedMateAI.Application.Service;
 using MedMateAI.Domain.Entities;
 using MedMateAI.Domain.Enums;
@@ -300,6 +301,84 @@ public class UserSubscriptionServiceTests
             unitOfWork => unitOfWork.BeginTransactionAsync(
                 It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Test]
+    public async Task CheckoutAsync_StrictSnapshotUnavailable_DoesNotCreateCheckoutGraph()
+    {
+        var plan = SetupActivePaidPlan();
+        var lockedPlan = new SubscriptionPlan
+        {
+            Id = plan.Id,
+            PlanName = plan.PlanName,
+            Price = plan.Price,
+            IsActive = true,
+            IsDeleted = false
+        };
+        _subscriptionPlanQuotaRepositoryMock.Setup(repository => repository.GetPlanForUpdateAsync(
+                plan.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(lockedPlan);
+        var saleRedemptionServiceMock = new Mock<ISaleRedemptionService>();
+        saleRedemptionServiceMock.Setup(service => service.ReserveBestOfferAsync(
+                lockedPlan,
+                10,
+                _userId,
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                null,
+                plan.Price,
+                10,
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SaleReservationResult.Unavailable());
+        var service = new UserSubscriptionService(
+            _unitOfWorkMock.Object,
+            _payOsMock.Object,
+            _paymentServiceMock.Object,
+            _subscriptionPlanQuotaRepositoryMock.Object,
+            _httpContextAccessorMock.Object,
+            saleRedemptionServiceMock.Object);
+
+        var result = await service.CheckoutAsync(new CheckoutSubscriptionRequest
+        {
+            PlanId = plan.Id,
+            ExpectedOfferId = null,
+            ExpectedEffectivePrice = plan.Price,
+            ExpectedGrantedCredit = 10
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Errors, Contains.Item("SALE_OFFER_UNAVAILABLE"));
+        });
+        _subscriptionsMock.Verify(
+            repository => repository.Add(It.IsAny<UserSubscription>()),
+            Times.Never);
+        _paymentsMock.Verify(
+            repository => repository.Add(It.IsAny<Payment>()),
+            Times.Never);
+        _transactionsMock.Verify(
+            repository => repository.Add(It.IsAny<PaymentTransaction>()),
+            Times.Never);
+        _quotaUsageRepositoryMock.Verify(repository => repository.GetOrCreateAsync(
+            It.IsAny<Guid>(),
+            It.IsAny<Guid>(),
+            It.IsAny<DateTime>(),
+            It.IsAny<DateTime?>(),
+            It.IsAny<int>(),
+            It.IsAny<DateTime>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        _payOsMock.Verify(service => service.CreatePaymentLinkAsync(
+            It.IsAny<PayOSCreatePaymentRequest>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        _unitOfWorkMock.Verify(
+            unitOfWork => unitOfWork.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
+        _unitOfWorkMock.Verify(
+            unitOfWork => unitOfWork.RollbackTransactionAsync(CancellationToken.None),
+            Times.Once);
     }
 
     [Test]
