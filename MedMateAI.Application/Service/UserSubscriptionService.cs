@@ -133,7 +133,11 @@ public sealed class UserSubscriptionService : IUserSubscriptionService
             SaleReservationResult saleReservation;
             if (_saleRedemptionService is null)
             {
-                saleReservation = request.ExpectedOfferId.HasValue
+                var hasExpectedPricingSnapshot =
+                    request.ExpectedOfferId.HasValue
+                    || request.ExpectedEffectivePrice.HasValue
+                    || request.ExpectedGrantedCredit.HasValue;
+                saleReservation = hasExpectedPricingSnapshot
                     ? SaleReservationResult.Unavailable()
                     : SaleReservationResult.NoOffer();
             }
