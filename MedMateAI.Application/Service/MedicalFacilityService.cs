@@ -21,6 +21,8 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
     private const double MaxNearbyRadiusKm = 50;
     private const int DefaultNearbyLimit = 20;
     private const int MaxNearbyLimit = 100;
+    private const int DefaultTopRatedLimit = 5;
+    private const int MaxTopRatedLimit = 20;
 
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
     private static readonly DistributedCacheEntryOptions CacheOptions = new()
@@ -163,6 +165,43 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         await ApplyApprovedRatingsAsync(nearby, cancellationToken);
 
         return (Array.Empty<string>(), nearby);
+    }
+
+    public async Task<(IEnumerable<string> Errors, IReadOnlyList<MedicalFacilityResponse> Data)> ListTopRatedMedicalFacilitiesAsync(
+        Guid? departmentId = null,
+        int limit = DefaultTopRatedLimit,
+        CancellationToken cancellationToken = default)
+    {
+        var errors = ValidateTopRatedQuery(departmentId, limit);
+        if (errors.Count > 0)
+        {
+            return (errors, Array.Empty<MedicalFacilityResponse>());
+        }
+
+        var normalizedLimit = limit < 1 ? DefaultTopRatedLimit : limit;
+        normalizedLimit = normalizedLimit > MaxTopRatedLimit ? MaxTopRatedLimit : normalizedLimit;
+
+        var entities = await _unitOfWork.MedicalFacilities.GetActiveWithDepartmentsAsync(
+            departmentId,
+            search: null,
+            cancellationToken);
+
+        var facilities = entities
+            .Select(facility => _mapper.Map<MedicalFacilityResponse>(facility))
+            .ToList();
+
+        await ApplyApprovedRatingsAsync(facilities, cancellationToken);
+
+        var topRated = facilities
+            .OrderByDescending(facility => facility.AverageRating.HasValue)
+            .ThenByDescending(facility => facility.AverageRating ?? 0)
+            .ThenByDescending(facility => facility.ReviewCount)
+            .ThenBy(facility => (facility.FacilityName ?? string.Empty).ToLowerInvariant())
+            .ThenBy(facility => facility.Id)
+            .Take(normalizedLimit)
+            .ToList();
+
+        return (Array.Empty<string>(), topRated);
     }
 
     public async Task<MedicalFacilityResponse?> GetMedicalFacilityByIdAsync(
@@ -780,6 +819,23 @@ public sealed class MedicalFacilityService : IMedicalFacilityService
         if (limit < 1 || limit > MaxNearbyLimit)
         {
             errors.Add($"Limit phải từ 1 đến {MaxNearbyLimit}");
+        }
+
+        return errors;
+    }
+
+    private static List<string> ValidateTopRatedQuery(Guid? departmentId, int limit)
+    {
+        var errors = new List<string>();
+
+        if (departmentId.HasValue && departmentId.Value == Guid.Empty)
+        {
+            errors.Add("DepartmentId không hợp lệ");
+        }
+
+        if (limit < 1 || limit > MaxTopRatedLimit)
+        {
+            errors.Add($"Limit phải từ 1 đến {MaxTopRatedLimit}");
         }
 
         return errors;

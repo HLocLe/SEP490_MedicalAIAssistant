@@ -687,4 +687,70 @@ public class MedicalFacilityServiceTests
             Assert.That(result.ReviewCount, Is.EqualTo(2));
         });
     }
+
+    // ── ListTopRatedMedicalFacilitiesAsync ───────────────────────────────────
+
+    [Test]
+    [Category("N")]
+    public async Task ListTopRatedMedicalFacilitiesAsync_SystemWide_ReturnsTopByAverageRating()
+    {
+        var low = MakeFacility();
+        low.FacilityName = "Low Rated";
+        var lowId = low.Id;
+
+        var high = MakeFacility();
+        high.FacilityName = "High Rated";
+        var highId = high.Id;
+
+        var unrated = MakeFacility();
+        unrated.FacilityName = "Unrated";
+        var unratedId = unrated.Id;
+
+        _facilityRepoMock.Setup(r => r.GetActiveWithDepartmentsAsync(null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MedicalFacility> { low, high, unrated });
+
+        _feedbackReviewRepoMock.Setup(r => r.GetApprovedRatingSummariesByFacilityIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, FacilityRatingSummary>
+            {
+                [lowId] = new FacilityRatingSummary(3.0, 5),
+                [highId] = new FacilityRatingSummary(4.5, 2),
+            });
+
+        var (errors, data) = await _service.ListTopRatedMedicalFacilitiesAsync(limit: 2);
+
+        Assert.That(errors, Is.Empty);
+        Assert.That(data, Has.Count.EqualTo(2));
+        Assert.Multiple(() =>
+        {
+            Assert.That(data[0].FacilityName, Is.EqualTo("High Rated"));
+            Assert.That(data[0].AverageRating, Is.EqualTo(4.5));
+            Assert.That(data[1].FacilityName, Is.EqualTo("Low Rated"));
+        });
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task ListTopRatedMedicalFacilitiesAsync_DepartmentId_PassedToRepository()
+    {
+        var departmentId = Guid.NewGuid();
+        _facilityRepoMock.Setup(r => r.GetActiveWithDepartmentsAsync(departmentId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MedicalFacility>());
+
+        await _service.ListTopRatedMedicalFacilitiesAsync(departmentId);
+
+        _facilityRepoMock.Verify(r => r.GetActiveWithDepartmentsAsync(
+            departmentId, null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    [Category("N")]
+    public async Task ListTopRatedMedicalFacilitiesAsync_InvalidDepartmentId_ReturnsErrors()
+    {
+        var (errors, data) = await _service.ListTopRatedMedicalFacilitiesAsync(Guid.Empty);
+
+        Assert.That(errors, Is.Not.Empty);
+        Assert.That(data, Is.Empty);
+    }
 }
