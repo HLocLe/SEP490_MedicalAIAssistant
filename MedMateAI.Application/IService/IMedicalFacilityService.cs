@@ -26,6 +26,11 @@ public interface IMedicalFacilityService
         int limit = 20,
         CancellationToken cancellationToken = default);
 
+    Task<(IEnumerable<string> Errors, IReadOnlyList<MedicalFacilityResponse> Data)> ListTopRatedMedicalFacilitiesAsync(
+        Guid? departmentId = null,
+        int limit = 5,
+        CancellationToken cancellationToken = default);
+
     Task<MedicalFacilityResponse?> GetMedicalFacilityByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default);

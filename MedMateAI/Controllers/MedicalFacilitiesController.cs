@@ -93,6 +93,30 @@ public sealed class MedicalFacilitiesController : ControllerBase
         return Ok(ApiResponseFactory.Success(data, "OK"));
     }
 
+    [HttpGet("top-rated")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<MedicalFacilityResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<MedicalFacilityResponse>>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ListTopRated(
+        [FromQuery] Guid? departmentId,
+        [FromQuery] int limit = 5,
+        CancellationToken cancellationToken = default)
+    {
+        var (errors, data) = await _medicalFacilityService.ListTopRatedMedicalFacilitiesAsync(
+            departmentId,
+            limit,
+            cancellationToken);
+
+        if (errors.Any())
+        {
+            return BadRequest(ApiResponseFactory.FailFromErrors<IReadOnlyList<MedicalFacilityResponse>>(
+                errors,
+                "Lấy danh sách cơ sở y tế đánh giá cao thất bại"));
+        }
+
+        return Ok(ApiResponseFactory.Success(data, "OK"));
+    }
+
     [HttpGet("{id:guid}")]
     [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponse<MedicalFacilityResponse>), StatusCodes.Status200OK)]
