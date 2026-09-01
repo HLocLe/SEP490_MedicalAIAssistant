@@ -13,4 +13,7 @@ public interface INotificationEmailRenderer
     NotificationEmailContent RenderMedicationReminder(
         string medicineName,
         string? dosageInstruction);
+    NotificationEmailContent RenderSaleCampaignAnnouncement(
+        SaleCampaignAnnouncementContext context,
+        SaleCampaignNotificationContent content);
 }

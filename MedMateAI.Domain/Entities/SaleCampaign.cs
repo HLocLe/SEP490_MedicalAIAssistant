@@ -24,6 +24,8 @@ public sealed class SaleCampaign : BaseEntity
 
     public bool IsActive { get; set; }
 
+    public bool AnnounceToUsers { get; set; }
+
     public ICollection<SaleCampaignPlan> CampaignPlans { get; set; } =
         new List<SaleCampaignPlan>();
 
