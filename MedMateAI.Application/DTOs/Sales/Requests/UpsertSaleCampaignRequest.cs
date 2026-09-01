@@ -24,6 +24,8 @@ public sealed class UpsertSaleCampaignRequest
 
     public bool IsActive { get; set; }
 
+    public bool? AnnounceToUsers { get; set; }
+
     public IReadOnlyList<SaleCampaignPlanRequest> Plans { get; set; } =
         Array.Empty<SaleCampaignPlanRequest>();
 }

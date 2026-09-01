@@ -73,6 +73,7 @@ public sealed class NotificationRepository : INotificationRepository
         var completedType = NotificationTypes.RecoveryPlanCompleted;
         var cancelledType = NotificationTypes.RecoveryPlanCancelled;
         var medicationReminderType = NotificationTypes.MedicationReminder;
+        var saleAnnouncementType = NotificationTypes.SaleCampaignAnnouncement;
 
         await using var transaction =
             await _context.Database.BeginTransactionAsync(cancellationToken);
@@ -90,7 +91,8 @@ public sealed class NotificationRepository : INotificationRepository
                           {readyType},
                           {completedType},
                           {cancelledType},
-                          {medicationReminderType})
+                          {medicationReminderType},
+                          {saleAnnouncementType})
                       AND (
                           ("Status" = {pendingStatus}
                            AND (COALESCE("NextAttemptAt", "ScheduledAt") IS NULL
@@ -587,6 +589,7 @@ public sealed class NotificationRepository : INotificationRepository
         var completedType = NotificationTypes.RecoveryPlanCompleted;
         var cancelledType = NotificationTypes.RecoveryPlanCancelled;
         var medicationReminderType = NotificationTypes.MedicationReminder;
+        var saleAnnouncementType = NotificationTypes.SaleCampaignAnnouncement;
 
         await using var transaction =
             await _context.Database.BeginTransactionAsync(cancellationToken);
@@ -606,7 +609,7 @@ public sealed class NotificationRepository : INotificationRepository
                           AND "ProviderMessageId" IS NOT NULL
                           AND "NotificationType" IN (
                               {readyType}, {completedType}, {cancelledType},
-                              {medicationReminderType})
+                              {medicationReminderType}, {saleAnnouncementType})
                           AND (
                               ("Status" = {submittedStatus}
                                AND ("NextAttemptAt" IS NULL
@@ -645,7 +648,7 @@ public sealed class NotificationRepository : INotificationRepository
                           AND "PushDeviceId" IS NOT NULL
                           AND "NotificationType" IN (
                               {readyType}, {completedType}, {cancelledType},
-                              {medicationReminderType})
+                              {medicationReminderType}, {saleAnnouncementType})
                           AND (
                               ("Status" = {pendingStatus}
                                AND (COALESCE("NextAttemptAt", "ScheduledAt") IS NULL

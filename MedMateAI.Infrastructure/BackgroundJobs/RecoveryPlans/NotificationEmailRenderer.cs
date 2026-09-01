@@ -1,4 +1,5 @@
 using System.Text.Encodings.Web;
+using System.Globalization;
 using MedMateAI.Application.Common;
 using MedMateAI.Application.IService;
 using MedMateAI.Application.Models.Notifications;
@@ -10,10 +11,18 @@ namespace MedMateAI.Infrastructure.BackgroundJobs.RecoveryPlans;
 public sealed class NotificationEmailRenderer : INotificationEmailRenderer
 {
     private readonly string? _loginUrl;
+    private readonly string? _saleCtaUrl;
+    private readonly SaleCampaignNotificationOptions _saleOptions;
 
-    public NotificationEmailRenderer(IOptions<FrontendOptions> frontendOptions)
+    public NotificationEmailRenderer(
+        IOptions<FrontendOptions> frontendOptions,
+        IOptions<SaleCampaignNotificationOptions> saleOptions)
     {
-        _loginUrl = BuildLoginUrl(frontendOptions.Value.BaseUrl);
+        _loginUrl = BuildFrontendUrl(frontendOptions.Value.BaseUrl, "login");
+        _saleCtaUrl = BuildFrontendUrl(
+            frontendOptions.Value.BaseUrl,
+            "subscription");
+        _saleOptions = saleOptions.Value;
     }
 
     public NotificationEmailContent RenderRecoveryPlanReady()
@@ -106,6 +115,52 @@ public sealed class NotificationEmailRenderer : INotificationEmailRenderer
             html);
     }
 
+    public NotificationEmailContent RenderSaleCampaignAnnouncement(
+        SaleCampaignAnnouncementContext context,
+        SaleCampaignNotificationContent content)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(content);
+
+        var encodedTitle = HtmlEncoder.Default.Encode(content.Title);
+        var encodedBody = HtmlEncoder.Default.Encode(content.Body);
+        var encodedCampaignName = HtmlEncoder.Default.Encode(
+            context.CampaignName.Trim());
+        var description = string.IsNullOrWhiteSpace(context.Description)
+            ? string.Empty
+            : $"<p>{HtmlEncoder.Default.Encode(context.Description.Trim())}</p>";
+        var badge = string.IsNullOrWhiteSpace(context.BadgeText)
+            ? string.Empty
+            : $"<p><strong>{HtmlEncoder.Default.Encode(context.BadgeText.Trim())}</strong></p>";
+        var offerItems = context.Offers
+            .Take(_saleOptions.MaxOffersInEmail)
+            .Select(BuildOfferItem)
+            .ToList();
+        var moreOffers = context.Offers.Count > offerItems.Count
+            ? "<p>...và các ưu đãi khác.</p>"
+            : string.Empty;
+        var endAt = AsUtc(context.EndAt).ToString(
+            "dd/MM/yyyy HH:mm 'UTC'",
+            CultureInfo.InvariantCulture);
+        var html =
+            $"""
+            <div style="font-family:Arial,sans-serif;line-height:1.6">
+              <h2>{encodedTitle}</h2>
+              <p>{encodedBody}</p>
+              <p>Chương trình <strong>{encodedCampaignName}</strong> đang diễn ra.</p>
+              {badge}
+              {description}
+              <p><strong>Ưu đãi hiện dành cho bạn:</strong></p>
+              <ul>{string.Join(string.Empty, offerItems)}</ul>
+              {moreOffers}
+              <p>Chương trình kết thúc lúc {endAt}.</p>
+              {BuildSaleAction()}
+            </div>
+            """;
+
+        return new NotificationEmailContent(content.Title, html);
+    }
+
     private string BuildRecoveryPlanHtml(string heading, string message)
     {
         return
@@ -129,9 +184,26 @@ public sealed class NotificationEmailRenderer : INotificationEmailRenderer
         return $"""<p><a href="{encodedUrl}">Đăng nhập để xem kế hoạch hồi phục</a></p>""";
     }
 
-    private static string? BuildLoginUrl(string? baseUrl)
+    private string BuildSaleAction()
     {
-        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var parsedBaseUrl)
+        if (_saleCtaUrl is null)
+        {
+            return string.Empty;
+        }
+
+        var encodedUrl = HtmlEncoder.Default.Encode(_saleCtaUrl);
+        return $"""<p><a href="{encodedUrl}">Xem ưu đãi ngay</a></p>""";
+    }
+
+    private static string? BuildFrontendUrl(
+        string? baseUrl,
+        string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl)
+            || !Uri.TryCreate(
+                baseUrl.Trim(),
+                UriKind.Absolute,
+                out var parsedBaseUrl)
             || parsedBaseUrl.Scheme is not ("http" or "https"))
         {
             return null;
@@ -143,6 +215,46 @@ public sealed class NotificationEmailRenderer : INotificationEmailRenderer
             ? parsedBaseUrl
             : new Uri($"{parsedBaseUrl.AbsoluteUri}/", UriKind.Absolute);
 
-        return new Uri(normalizedBaseUrl, "login").AbsoluteUri;
+        return new Uri(normalizedBaseUrl, relativePath).AbsoluteUri;
+    }
+
+    private static string BuildOfferItem(SaleCampaignAnnouncementOffer offer)
+    {
+        var planName = HtmlEncoder.Default.Encode(
+            string.IsNullOrWhiteSpace(offer.PlanName)
+                ? "Gói phù hợp"
+                : offer.PlanName.Trim());
+        var parts = new List<string>();
+        if (offer.EffectivePrice < offer.OriginalPrice)
+        {
+            parts.Add(
+                $"<s>{FormatVnd(offer.OriginalPrice)}</s> → <strong>{FormatVnd(offer.EffectivePrice)}</strong>");
+        }
+        else
+        {
+            parts.Add(FormatVnd(offer.OriginalPrice));
+        }
+
+        if (offer.BonusCredit > 0)
+        {
+            parts.Add($"+{offer.BonusCredit} lượt (tổng nhận {offer.GrantedCredit} lượt)");
+        }
+
+        return $"<li><strong>{planName}</strong>: {string.Join("; ", parts)}</li>";
+    }
+
+    private static string FormatVnd(decimal amount)
+    {
+        return $"{amount.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"))}đ";
+    }
+
+    private static DateTime AsUtc(DateTime value)
+    {
+        return value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+            _ => value.ToUniversalTime()
+        };
     }
 }

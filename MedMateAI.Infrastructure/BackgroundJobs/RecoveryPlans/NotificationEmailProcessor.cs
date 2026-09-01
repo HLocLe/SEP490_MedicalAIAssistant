@@ -20,10 +20,16 @@ public sealed class NotificationEmailProcessor : INotificationEmailProcessor
         "Notification reference is no longer eligible.";
     private const string UnsupportedTypeError = "Unsupported notification type.";
     private const string DeliveryFailureError = "Email delivery failed.";
+    private const string SaleIneligibleError =
+        "Sale campaign is no longer eligible.";
+    private const string SaleUndeliverableError =
+        "Sale campaign notification is no longer deliverable.";
 
     private readonly INotificationRepository _notificationRepository;
     private readonly INotificationEmailRenderer _renderer;
     private readonly IEmailSender _emailSender;
+    private readonly ISaleCampaignAnnouncementContextService _saleContextService;
+    private readonly ISaleCampaignNotificationContentBuilder _saleContentBuilder;
     private readonly RecoveryPlanJobOptions _options;
     private readonly TimeSpan _deliveryTimeout;
     private readonly ILogger<NotificationEmailProcessor> _logger;
@@ -32,12 +38,16 @@ public sealed class NotificationEmailProcessor : INotificationEmailProcessor
         INotificationRepository notificationRepository,
         INotificationEmailRenderer renderer,
         IEmailSender emailSender,
+        ISaleCampaignAnnouncementContextService saleContextService,
+        ISaleCampaignNotificationContentBuilder saleContentBuilder,
         IOptions<RecoveryPlanJobOptions> options,
         ILogger<NotificationEmailProcessor> logger)
     {
         _notificationRepository = notificationRepository;
         _renderer = renderer;
         _emailSender = emailSender;
+        _saleContextService = saleContextService;
+        _saleContentBuilder = saleContentBuilder;
         _options = options.Value;
         _logger = logger;
 
@@ -210,9 +220,48 @@ public sealed class NotificationEmailProcessor : INotificationEmailProcessor
                     utcNow,
                     cancellationToken);
 
+            case NotificationTypes.SaleCampaignAnnouncement:
+                return await PrepareSaleCampaignEmailAsync(
+                    notification,
+                    utcNow,
+                    cancellationToken);
+
             default:
                 return DeliveryPreparation.Failed(UnsupportedTypeError);
         }
+    }
+
+    private async Task<DeliveryPreparation> PrepareSaleCampaignEmailAsync(
+        NotificationProcessingItem notification,
+        DateTime utcNow,
+        CancellationToken cancellationToken)
+    {
+        if (notification.ReferenceType != NotificationReferenceTypes.SaleCampaign
+            || !notification.ReferenceId.HasValue)
+        {
+            return DeliveryPreparation.Cancelled(SaleIneligibleError);
+        }
+
+        var context = await _saleContextService.GetEligibleContextAsync(
+            notification.UserId,
+            notification.ReferenceId.Value,
+            utcNow,
+            cancellationToken);
+        if (context is null)
+        {
+            return DeliveryPreparation.Cancelled(SaleIneligibleError);
+        }
+
+        if (string.IsNullOrWhiteSpace(context.Email))
+        {
+            return DeliveryPreparation.Cancelled(SaleUndeliverableError);
+        }
+
+        var content = _saleContentBuilder.Build(
+            context,
+            NotificationChannels.Email);
+        return DeliveryPreparation.Ready(
+            _renderer.RenderSaleCampaignAnnouncement(context, content));
     }
 
     private async Task<DeliveryPreparation> PrepareRecoveryPlanEmailAsync(

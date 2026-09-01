@@ -42,4 +42,9 @@ public interface ISaleCampaignService
     Task<IReadOnlyList<SubscriptionPlanOfferResponse>> GetOffersAsync(
         Guid? userId,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<SubscriptionPlanOfferResponse>> GetOffersAtAsync(
+        Guid? userId,
+        DateTime utcNow,
+        CancellationToken cancellationToken = default);
 }

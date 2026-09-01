@@ -30,6 +30,11 @@ public interface IUserPushDeviceRepository
         Guid userId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<UserPushDeviceData>>>
+        GetActiveByUserIdsAsync(
+            IReadOnlyCollection<Guid> userIds,
+            CancellationToken cancellationToken = default);
+
     Task<UserPushDeviceData?> GetActiveAsync(
         Guid deviceId,
         Guid expectedUserId,

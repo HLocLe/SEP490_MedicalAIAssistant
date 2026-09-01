@@ -23,6 +23,7 @@ using MedMateAI.Infrastructure.AI;
 using MedMateAI.Infrastructure.AI.Options;
 using MedMateAI.Infrastructure.BackgroundJobs;
 using MedMateAI.Infrastructure.BackgroundJobs.RecoveryPlans;
+using MedMateAI.Infrastructure.BackgroundJobs.Sales;
 using MedMateAI.Infrastructure.ComputerVision;
 using MedMateAI.Infrastructure.ComputerVision.Options;
 using MedMateAI.Infrastructure.Payments.PayOS;
@@ -93,8 +94,20 @@ public static class DependencyInjection
         services.AddScoped<ISubscriptionPlanService, SubscriptionPlanService>();
         services.AddScoped<ISaleCampaignRepository, SaleCampaignRepository>();
         services.AddScoped<ISaleRedemptionRepository, SaleRedemptionRepository>();
+        services.AddScoped<
+            ISaleCampaignAnnouncementRepository,
+            SaleCampaignAnnouncementRepository>();
         services.AddScoped<ISaleCampaignService, SaleCampaignService>();
         services.AddScoped<ISaleRedemptionService, SaleRedemptionService>();
+        services.AddScoped<
+            ISaleCampaignAnnouncementContextService,
+            SaleCampaignAnnouncementContextService>();
+        services.AddScoped<
+            ISaleCampaignNotificationContentBuilder,
+            SaleCampaignNotificationContentBuilder>();
+        services.AddScoped<
+            ISaleCampaignNotificationScheduler,
+            SaleCampaignNotificationScheduler>();
         services.AddScoped<IAIConfigService, AIConfigService>();
         services.AddScoped<IWebChatbotService, WebChatbotService>();
         services.AddScoped<ISymptomAnalysisService, SymptomAnalysisService>();
@@ -223,6 +236,23 @@ public static class DependencyInjection
                 "RecoveryPlanJobs MedicationSchedulerBatchSize must be between 1 and 1000.")
             .ValidateOnStart();
 
+        services.AddOptions<SaleCampaignNotificationOptions>()
+            .Bind(configuration.GetSection(
+                SaleCampaignNotificationOptions.SectionName))
+            .Validate(
+                options => options.PollingSeconds is >= 10 and <= 3600,
+                "SaleCampaignNotifications PollingSeconds must be between 10 and 3600.")
+            .Validate(
+                options => options.UserBatchSize is >= 1 and <= 1000,
+                "SaleCampaignNotifications UserBatchSize must be between 1 and 1000.")
+            .Validate(
+                options => options.CampaignBatchSize is >= 1 and <= 100,
+                "SaleCampaignNotifications CampaignBatchSize must be between 1 and 100.")
+            .Validate(
+                options => options.MaxOffersInEmail is >= 1 and <= 10,
+                "SaleCampaignNotifications MaxOffersInEmail must be between 1 and 10.")
+            .ValidateOnStart();
+
         services.AddOptions<ExpoPushOptions>()
             .Bind(configuration.GetSection(ExpoPushOptions.SectionName))
             .Validate(
@@ -342,6 +372,7 @@ public static class DependencyInjection
         services.AddHostedService<NotificationPushReceiptBackgroundService>();
         services.AddHostedService<RecoveryPlanLifecycleBackgroundService>();
         services.AddHostedService<MedicationReminderBackgroundService>();
+        services.AddHostedService<SaleCampaignNotificationBackgroundService>();
         
         //
         services.AddOptions<JwtOptions>()

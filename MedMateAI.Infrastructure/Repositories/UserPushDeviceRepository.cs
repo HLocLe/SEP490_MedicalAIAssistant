@@ -225,6 +225,41 @@ public sealed class UserPushDeviceRepository : IUserPushDeviceRepository
             .SingleOrDefaultAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<UserPushDeviceData>>>
+        GetActiveByUserIdsAsync(
+            IReadOnlyCollection<Guid> userIds,
+            CancellationToken cancellationToken = default)
+    {
+        if (userIds.Count == 0)
+        {
+            return new Dictionary<Guid, IReadOnlyList<UserPushDeviceData>>();
+        }
+
+        var normalizedUserIds = userIds.Distinct().ToArray();
+        var devices = await _context.UserPushDevices
+            .AsNoTracking()
+            .Where(device =>
+                normalizedUserIds.Contains(device.UserId)
+                && device.IsActive
+                && !device.IsDeleted)
+            .OrderBy(device => device.UserId)
+            .ThenBy(device => device.Id)
+            .Select(device => new UserPushDeviceData(
+                device.Id,
+                device.UserId,
+                device.ExpoPushToken,
+                device.TokenVersion,
+                device.Platform,
+                device.IsActive))
+            .ToListAsync(cancellationToken);
+
+        return devices
+            .GroupBy(device => device.UserId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<UserPushDeviceData>)group.ToList());
+    }
+
     private Task AcquireRegistrationLockAsync(
         string lockKey,
         CancellationToken cancellationToken)

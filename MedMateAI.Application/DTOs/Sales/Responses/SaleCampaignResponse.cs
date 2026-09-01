@@ -26,6 +26,8 @@ public sealed class SaleCampaignResponse
 
     public bool IsActive { get; set; }
 
+    public bool AnnounceToUsers { get; set; }
+
     public string DisplayStatus { get; set; } = string.Empty;
 
     public int OccupiedRedemptions { get; set; }

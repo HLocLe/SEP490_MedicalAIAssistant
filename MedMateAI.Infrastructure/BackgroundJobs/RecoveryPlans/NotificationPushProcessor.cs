@@ -21,10 +21,14 @@ public sealed class NotificationPushProcessor : INotificationPushProcessor
         "Notification reference is no longer eligible.";
     private const string UnsupportedTypeError = "Unsupported notification type.";
     private const string DeliveryFailureError = "Push delivery failed.";
+    private const string SaleIneligibleError =
+        "Sale campaign is no longer eligible.";
 
     private readonly INotificationRepository _notificationRepository;
     private readonly IUserPushDeviceRepository _pushDeviceRepository;
     private readonly IPushNotificationGateway _gateway;
+    private readonly ISaleCampaignAnnouncementContextService _saleContextService;
+    private readonly ISaleCampaignNotificationContentBuilder _saleContentBuilder;
     private readonly RecoveryPlanJobOptions _jobOptions;
     private readonly ExpoPushOptions _pushOptions;
     private readonly TimeSpan _deliveryTimeout;
@@ -34,6 +38,8 @@ public sealed class NotificationPushProcessor : INotificationPushProcessor
         INotificationRepository notificationRepository,
         IUserPushDeviceRepository pushDeviceRepository,
         IPushNotificationGateway gateway,
+        ISaleCampaignAnnouncementContextService saleContextService,
+        ISaleCampaignNotificationContentBuilder saleContentBuilder,
         IOptions<RecoveryPlanJobOptions> jobOptions,
         IOptions<ExpoPushOptions> pushOptions,
         ILogger<NotificationPushProcessor> logger)
@@ -41,6 +47,8 @@ public sealed class NotificationPushProcessor : INotificationPushProcessor
         _notificationRepository = notificationRepository;
         _pushDeviceRepository = pushDeviceRepository;
         _gateway = gateway;
+        _saleContextService = saleContextService;
+        _saleContentBuilder = saleContentBuilder;
         _jobOptions = jobOptions.Value;
         _pushOptions = pushOptions.Value;
         _logger = logger;
@@ -218,8 +226,57 @@ public sealed class NotificationPushProcessor : INotificationPushProcessor
                     recipient,
                     utcNow,
                     cancellationToken),
+            NotificationTypes.SaleCampaignAnnouncement =>
+                await PrepareSaleCampaignAsync(
+                    notification,
+                    utcNow,
+                    cancellationToken),
             _ => PushPreparation.Cancelled(UnsupportedTypeError)
         };
+    }
+
+    private async Task<PushPreparation> PrepareSaleCampaignAsync(
+        PushNotificationProcessingItem notification,
+        DateTime utcNow,
+        CancellationToken cancellationToken)
+    {
+        if (notification.ReferenceType != NotificationReferenceTypes.SaleCampaign
+            || !notification.ReferenceId.HasValue)
+        {
+            return PushPreparation.Cancelled(SaleIneligibleError);
+        }
+
+        var context = await _saleContextService.GetEligibleContextAsync(
+            notification.UserId,
+            notification.ReferenceId.Value,
+            utcNow,
+            cancellationToken);
+        if (context is null)
+        {
+            return PushPreparation.Cancelled(SaleIneligibleError);
+        }
+
+        var remaining = AsUtc(context.EndAt) - utcNow;
+        if (remaining <= TimeSpan.Zero)
+        {
+            return PushPreparation.Cancelled(SaleIneligibleError);
+        }
+
+        var ttlSeconds = (int)Math.Min(
+            Math.Floor(remaining.TotalSeconds),
+            int.MaxValue);
+        if (ttlSeconds < 1)
+        {
+            return PushPreparation.Cancelled(SaleIneligibleError);
+        }
+
+        var content = _saleContentBuilder.Build(
+            context,
+            NotificationChannels.Push);
+        return PushPreparation.Deliver(
+            content.Title,
+            content.Body,
+            ttlSeconds);
     }
 
     private async Task<PushPreparation> PrepareRecoveryPlanAsync(

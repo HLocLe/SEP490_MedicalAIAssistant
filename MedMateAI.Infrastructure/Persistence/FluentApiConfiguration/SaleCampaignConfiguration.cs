@@ -44,6 +44,9 @@ public sealed class SaleCampaignConfiguration : IEntityTypeConfiguration<SaleCam
             .HasMaxLength(32)
             .HasDefaultValue(SaleCampaignEligibilityType.All)
             .IsRequired();
+        builder.Property(campaign => campaign.AnnounceToUsers)
+            .HasDefaultValue(false)
+            .IsRequired();
 
         builder.HasIndex(campaign => new
         {

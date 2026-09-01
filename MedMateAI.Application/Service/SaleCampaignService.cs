@@ -77,6 +77,7 @@ public sealed class SaleCampaignService : ISaleCampaignService
             MaxRedemptionsPerUser = request.MaxRedemptionsPerUser,
             Priority = request.Priority,
             IsActive = request.IsActive,
+            AnnounceToUsers = request.AnnounceToUsers ?? false,
             CreatedAt = utcNow
         };
 
@@ -163,6 +164,8 @@ public sealed class SaleCampaignService : ISaleCampaignService
             campaign.MaxRedemptionsPerUser = request.MaxRedemptionsPerUser;
             campaign.Priority = request.Priority;
             campaign.IsActive = request.IsActive;
+            campaign.AnnounceToUsers = request.AnnounceToUsers
+                ?? campaign.AnnounceToUsers;
             campaign.UpdatedAt = utcNow;
             SynchronizePlans(campaign, request.Plans, utcNow);
 
@@ -293,7 +296,15 @@ public sealed class SaleCampaignService : ISaleCampaignService
         Guid? userId,
         CancellationToken cancellationToken = default)
     {
-        var utcNow = DateTime.UtcNow;
+        return await GetOffersAtAsync(userId, DateTime.UtcNow, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<SubscriptionPlanOfferResponse>> GetOffersAtAsync(
+        Guid? userId,
+        DateTime utcNow,
+        CancellationToken cancellationToken = default)
+    {
+        utcNow = NormalizeUtc(utcNow);
         var plans = (await _unitOfWork.SubscriptionPlans.GetAllAsync(cancellationToken))
             .Where(plan =>
                 !plan.IsDeleted
@@ -586,6 +597,7 @@ public sealed class SaleCampaignService : ISaleCampaignService
             MaxRedemptionsPerUser = campaign.MaxRedemptionsPerUser,
             Priority = campaign.Priority,
             IsActive = campaign.IsActive,
+            AnnounceToUsers = campaign.AnnounceToUsers,
             DisplayStatus = GetDisplayStatus(campaign, occupied, utcNow),
             OccupiedRedemptions = occupied,
             CompletedRedemptions = completed,

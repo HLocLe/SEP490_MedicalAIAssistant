@@ -40,6 +40,7 @@ public static class NotificationTypes
     public const string RecoveryPlanCancelled = "RecoveryPlanCancelled";
     public const string MedicationReminder = "MedicationReminder";
     public const string ConsultationReminder = "ConsultationReminder";
+    public const string SaleCampaignAnnouncement = "SaleCampaignAnnouncement";
 }
 
 public static class NotificationReferenceTypes
@@ -47,6 +48,7 @@ public static class NotificationReferenceTypes
     public const string RecoveryPlan = "RecoveryPlan";
     public const string UserMedicationReminderTime = "UserMedicationReminderTime";
     public const string ConsultationSession = "ConsultationSession";
+    public const string SaleCampaign = "SaleCampaign";
 }
 
 public static class RecoveryPlanNotificationContent
